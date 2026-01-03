@@ -1,12 +1,14 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  output: 'export',           // Static export for Firebase
+  // 🔥 REMOVED: output: 'export' - Vercel SSR ke liye
   images: {
-    unoptimized: true         // Required for static export
+    unoptimized: true
   },
-  trailingSlash: true,        // Firebase routing
-  assetPrefix: './',          // Static assets
+  // Vercel server components support
+  experimental: {
+    serverComponentsExternalPackages: ['firebase-admin']
+  }
 };
 
 export default nextConfig;
