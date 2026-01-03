@@ -1,7 +1,7 @@
 'use client'
 
 import { createContext, useContext, useEffect, useState, ReactNode } from 'react'
-import { 
+import {
   User,
   onAuthStateChanged,
   signOut as firebaseSignOut
@@ -17,7 +17,7 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType>({
   user: null,
   loading: true,
-  signOut: async () => {}
+  signOut: async () => { }
 })
 
 export const useAuth = () => {

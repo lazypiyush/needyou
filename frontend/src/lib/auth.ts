@@ -1,4 +1,4 @@
-import { 
+import {
   createUserWithEmailAndPassword,
   signInWithEmailAndPassword,
   signInWithPhoneNumber,
@@ -29,7 +29,7 @@ export const clearRecaptcha = () => {
     }
     recaptchaVerifier = null
   }
-  
+
   // Clear the container DOM
   const container = document.getElementById('recaptcha-container')
   if (container) {
@@ -40,13 +40,22 @@ export const clearRecaptcha = () => {
 
 // Setup Recaptcha for Phone Auth - INVISIBLE (No checkbox, automatic)
 export const setupRecaptcha = (): RecaptchaVerifier => {
+  // Ensure we're in browser environment
+  if (typeof window === 'undefined') {
+    throw new Error('reCAPTCHA can only be initialized in browser')
+  }
+
   // Always clear first
   clearRecaptcha()
-  
+
   // Check if container exists
   const container = document.getElementById('recaptcha-container')
   if (!container) {
     throw new Error('reCAPTCHA container not found')
+  }
+
+  if (!auth) {
+    throw new Error('Firebase Auth not initialized')
   }
 
   try {
@@ -79,28 +88,28 @@ export const setupRecaptcha = (): RecaptchaVerifier => {
 export const sendOTP = async (phoneNumber: string): Promise<ConfirmationResult> => {
   try {
     console.log('📱 Sending OTP to:', phoneNumber)
-    
+
     // Ensure phone number has country code
     if (!phoneNumber.startsWith('+')) {
       phoneNumber = '+91' + phoneNumber.replace(/^\+91/, '')
     }
-    
+
     console.log('📱 Formatted phone:', phoneNumber)
-    
+
     // Setup invisible reCAPTCHA
     const verifier = setupRecaptcha()
-    
+
     console.log('📤 Sending SMS (invisible reCAPTCHA will verify automatically)...')
     const confirmationResult = await signInWithPhoneNumber(auth, phoneNumber, verifier)
     console.log('✅ OTP sent successfully to', phoneNumber)
-    
+
     return confirmationResult
   } catch (error: any) {
     console.error('❌ OTP Send Error:', error)
     console.error('Error code:', error.code)
     console.error('Error message:', error.message)
     clearRecaptcha()
-    
+
     // Better error messages
     if (error.code === 'auth/invalid-phone-number') {
       throw new Error('Invalid phone number format. Use 10-digit number.')
@@ -126,7 +135,7 @@ export const sendOTP = async (phoneNumber: string): Promise<ConfirmationResult> 
 
 // Verify OTP (for sign-in)
 export const verifyOTPSignIn = async (
-  confirmationResult: ConfirmationResult, 
+  confirmationResult: ConfirmationResult,
   otp: string
 ) => {
   try {
@@ -137,7 +146,7 @@ export const verifyOTPSignIn = async (
     return userCredential.user
   } catch (error: any) {
     console.error('❌ OTP Verify Error:', error)
-    
+
     if (error.code === 'auth/invalid-verification-code') {
       throw new Error('Invalid OTP. Please check and try again.')
     } else if (error.code === 'auth/code-expired') {
@@ -151,8 +160,8 @@ export const verifyOTPSignIn = async (
 
 // Sign Up with Email/Password
 export const signUpWithEmail = async (
-  email: string, 
-  password: string, 
+  email: string,
+  password: string,
   name: string
 ) => {
   try {
@@ -188,7 +197,7 @@ export const signUpWithEmail = async (
     return user
   } catch (error: any) {
     console.error('❌ Sign Up Error:', error)
-    
+
     // Handle specific error codes
     if (error.code === 'auth/email-already-in-use') {
       throw new Error('This email is already registered. Please sign in instead.')
@@ -227,23 +236,23 @@ export const getUserVerificationStatus = async (userId: string) => {
 export const checkEmailVerification = async (email: string, password: string) => {
   try {
     console.log('🔍 Checking email verification for:', email)
-    
+
     // Sign in user to check verification status
     const userCredential = await signInWithEmailAndPassword(auth, email, password)
     const user = userCredential.user
-    
+
     // Reload user to get latest verification status
     await reload(user)
     console.log('✅ User data reloaded')
-    
+
     if (user.emailVerified) {
       console.log('✅ Email verified!')
-      
+
       // Update Firestore with verification status
       await updateDoc(doc(db, 'users', user.uid), {
         emailVerified: true
       })
-      
+
       return { verified: true, userId: user.uid }
     } else {
       console.log('⚠️ Email not verified yet')
@@ -263,13 +272,13 @@ export const addPhoneToUser = async (
 ) => {
   try {
     console.log('📱 Adding phone number to user:', userId)
-    
+
     await updateDoc(doc(db, 'users', userId), {
       phoneNumber: phoneNumber,
       phoneVerified: true,
       profileComplete: true
     })
-    
+
     console.log('✅ Phone number added successfully')
   } catch (error: any) {
     console.error('❌ Add Phone Error:', error)
@@ -284,15 +293,15 @@ export const signInWithEmail = async (email: string, password: string) => {
     console.log('🔐 Signing in:', email)
     const userCredential = await signInWithEmailAndPassword(auth, email, password)
     const user = userCredential.user
-    
+
     console.log('✅ Sign in successful for:', user.uid)
-    
+
     // Return user object - Let UI handle verification checks and redirects
     return user
-    
+
   } catch (error: any) {
     console.error('❌ Sign In Error:', error)
-    
+
     // Handle specific error codes
     if (error.code === 'auth/user-not-found') {
       throw new Error('No account found with this email. Please sign up first.')
@@ -319,7 +328,7 @@ export const resetPassword = async (email: string) => {
     console.log('✅ Password reset email sent')
   } catch (error: any) {
     console.error('❌ Password Reset Error:', error)
-    
+
     if (error.code === 'auth/user-not-found') {
       throw new Error('No account found with this email address.')
     } else if (error.code === 'auth/invalid-email') {
@@ -337,11 +346,11 @@ export const resetPassword = async (email: string) => {
 export const resendVerificationEmail = async (email: string, password: string) => {
   try {
     console.log('📧 Resending verification email to:', email)
-    
+
     // Sign in user to send verification email
     const userCredential = await signInWithEmailAndPassword(auth, email, password)
     const user = userCredential.user
-    
+
     if (!user.emailVerified) {
       await sendEmailVerification(user)
       console.log('✅ Verification email sent')

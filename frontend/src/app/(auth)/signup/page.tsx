@@ -1,16 +1,16 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { motion } from 'framer-motion'
 import { Mail, Lock, User, Phone, ArrowRight, Loader2, CheckCircle, Eye, EyeOff, RefreshCw, AlertCircle } from 'lucide-react'
-import { 
-  signUpWithEmail, 
-  sendOTP, 
-  verifyOTPSignIn, 
-  addPhoneToUser, 
-  checkEmailVerification, 
-  resendVerificationEmail, 
+import {
+  signUpWithEmail,
+  sendOTP,
+  verifyOTPSignIn,
+  addPhoneToUser,
+  checkEmailVerification,
+  resendVerificationEmail,
   clearRecaptcha,
   onAuthStateChange,
   getUserVerificationStatus,
@@ -25,7 +25,7 @@ import { useTheme } from 'next-themes'
 
 type SignUpStep = 'email' | 'verify-email' | 'phone' | 'verify-phone'
 
-export default function SignUpPage() {
+function SignUpPageContent() {
   const [step, setStep] = useState<SignUpStep>('email')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -39,30 +39,30 @@ export default function SignUpPage() {
   const [mounted, setMounted] = useState(false)
   const [confirmationResult, setConfirmationResult] = useState<ConfirmationResult | null>(null)
   const [tempUserId, setTempUserId] = useState('')
-  
+
   const router = useRouter()
   const searchParams = useSearchParams()
   const { theme } = useTheme()
 
   useEffect(() => {
     setMounted(true)
-    
+
     // Check URL parameters for redirects from signin
     const stepParam = searchParams.get('step')
-    
+
     // Check if user is already authenticated and resume process
     const unsubscribe = onAuthStateChange(async (user) => {
       if (user) {
         console.log('👤 User found:', user.email)
-        
+
         // Get user verification status
         const status = await getUserVerificationStatus(user.uid)
-        
+
         if (status) {
           setTempUserId(user.uid)
           setEmail(user.email || '')
           setName(user.displayName || '')
-          
+
           // Check if redirected from signin with specific step
           if (stepParam === 'phone' && !status.phoneVerified) {
             console.log('📱 Redirected from signin - Resuming phone verification')
@@ -71,7 +71,7 @@ export default function SignUpPage() {
             setLoading(false)
             return
           }
-          
+
           // Resume from where user left off
           if (status.profileComplete) {
             // Both email and phone verified - redirect to dashboard
@@ -103,7 +103,7 @@ export default function SignUpPage() {
         setLoading(false)
       }
     })
-    
+
     // Cleanup on unmount
     return () => {
       unsubscribe()
@@ -128,10 +128,10 @@ export default function SignUpPage() {
     try {
       const newUser = await signUpWithEmail(email, password, name)
       setTempUserId(newUser.uid)
-      
+
       // Sign out user immediately after account creation
       await signOut(auth)
-      
+
       setSuccess('✅ Account created! Verification email sent.')
       setStep('verify-email')
     } catch (err: any) {
@@ -149,11 +149,11 @@ export default function SignUpPage() {
 
     try {
       const result = await checkEmailVerification(email, password)
-      
+
       if (result.verified) {
         setTempUserId(result.userId)
         setSuccess('✅ Email verified successfully!')
-        
+
         // User is now signed in, proceed to phone step
         setTimeout(() => {
           setStep('phone')
@@ -220,26 +220,26 @@ export default function SignUpPage() {
 
     try {
       if (!confirmationResult) throw new Error('Please request OTP first')
-      
+
       // Verify OTP
       await verifyOTPSignIn(confirmationResult, otp)
-      
+
       // Add phone to user document
       const formattedPhone = phoneNumber.startsWith('+91') ? phoneNumber : `+91${phoneNumber}`
       await addPhoneToUser(tempUserId, formattedPhone)
-      
+
       console.log('✅ Phone verified and added to profile')
-      
+
       // Sign out user after complete signup
       await signOutUser()
-      
+
       setSuccess('🎉 Sign up complete! Redirecting to sign in...')
-      
+
       // Redirect to sign in page
       setTimeout(() => {
         router.push('/signin')
       }, 2000)
-      
+
     } catch (err: any) {
       setError(err.message || 'Invalid OTP')
     } finally {
@@ -280,10 +280,10 @@ export default function SignUpPage() {
         {/* Logo */}
         <div className="text-center mb-8">
           <Link href="/">
-            <Image 
-              src="/logo.jpg" 
-              alt="NeedYou" 
-              width={80} 
+            <Image
+              src="/logo.jpg"
+              alt="NeedYou"
+              width={80}
               height={80}
               className="w-20 h-20 mx-auto rounded-2xl shadow-lg mb-4"
             />
@@ -291,7 +291,7 @@ export default function SignUpPage() {
           <h1 className="text-3xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
             Create Account
           </h1>
-          <p 
+          <p
             className="mt-2"
             style={{
               color: mounted && theme === 'dark' ? '#ffffff' : 'rgb(75, 85, 99)'
@@ -310,7 +310,7 @@ export default function SignUpPage() {
             const steps: SignUpStep[] = ['email', 'verify-email', 'phone', 'verify-phone']
             const currentIndex = steps.indexOf(step)
             const isActive = index <= currentIndex
-            
+
             return (
               <div key={num} className={`flex flex-col items-center ${isActive ? 'text-blue-600' : 'text-gray-400'}`}>
                 <div className={`w-8 h-8 rounded-full flex items-center justify-center ${isActive ? 'bg-blue-600 text-white' : 'bg-gray-300 dark:bg-gray-700'}`}>
@@ -449,7 +449,7 @@ export default function SignUpPage() {
                   Can't find it? Check your spam/junk folder
                 </p>
               </div>
-              
+
               <button
                 onClick={handleEmailVerified}
                 disabled={loading}
@@ -592,5 +592,22 @@ export default function SignUpPage() {
         </div>
       </motion.div>
     </div>
+  )
+}
+
+// Wrap in Suspense to handle useSearchParams during SSR
+export default function SignUpPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen w-full flex items-center justify-center"
+        style={{
+          background: 'linear-gradient(to bottom right, rgb(var(--gradient-from)), rgb(var(--gradient-via)), rgb(var(--gradient-to)))'
+        }}
+      >
+        <Loader2 className="w-12 h-12 animate-spin text-blue-600" />
+      </div>
+    }>
+      <SignUpPageContent />
+    </Suspense>
   )
 }

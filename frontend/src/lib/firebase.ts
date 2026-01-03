@@ -1,11 +1,6 @@
-import { initializeApp } from 'firebase/app';
-import { getAuth, GoogleAuthProvider } from 'firebase/auth';
-import { getFirestore } from 'firebase/firestore'
-
-// Add this check - rest same!
-if (typeof window === 'undefined') {
-  throw new Error('Firebase can only be initialized in browser');
-}
+import { initializeApp, getApps, FirebaseApp } from 'firebase/app';
+import { getAuth, GoogleAuthProvider, Auth } from 'firebase/auth';
+import { getFirestore, Firestore } from 'firebase/firestore'
 
 const firebaseConfig = {
   apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
@@ -16,7 +11,27 @@ const firebaseConfig = {
   appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID
 };
 
-const app = initializeApp(firebaseConfig);
-export const auth = getAuth(app);
-export const googleProvider = new GoogleAuthProvider();
-export const db = getFirestore(app)
+// Initialize Firebase only in browser environment
+let firebaseApp: FirebaseApp | undefined;
+let firebaseAuth: Auth | undefined;
+let firebaseDb: Firestore | undefined;
+let firebaseGoogleProvider: GoogleAuthProvider | undefined;
+
+if (typeof window !== 'undefined') {
+  // Check if Firebase is already initialized
+  if (!getApps().length) {
+    firebaseApp = initializeApp(firebaseConfig);
+  } else {
+    firebaseApp = getApps()[0];
+  }
+
+  firebaseAuth = getAuth(firebaseApp);
+  firebaseGoogleProvider = new GoogleAuthProvider();
+  firebaseDb = getFirestore(firebaseApp);
+}
+
+// Export with non-null assertions since these are only used in client components
+export const auth = firebaseAuth as Auth;
+export const googleProvider = firebaseGoogleProvider as GoogleAuthProvider;
+export const db = firebaseDb as Firestore;
+
