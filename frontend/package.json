@@ -1,0 +1,40 @@
+{
+  "name": "frontend",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint",
+    "build:firebase": "next build",
+    "deploy:firebase": "npm run build:firebase && firebase deploy --only hosting"
+  },
+  "dependencies": {
+    "@hookform/resolvers": "^5.2.2",
+    "@vis.gl/react-google-maps": "^1.7.1",
+    "firebase": "^12.7.0",
+    "framer-motion": "^12.23.26",
+    "lucide-react": "^0.562.0",
+    "next": "16.1.1",
+    "next-themes": "^0.4.6",
+    "react": "19.2.3",
+    "react-dom": "19.2.3",
+    "react-hook-form": "^7.69.0",
+    "react-hot-toast": "^2.6.0",
+    "react-webcam": "^7.2.0",
+    "zod": "^4.3.4",
+    "zustand": "^5.0.9"
+  },
+  "devDependencies": {
+    "@types/node": "^20",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "autoprefixer": "^10.4.23",
+    "eslint": "^9",
+    "eslint-config-next": "16.1.1",
+    "postcss": "^8.5.6",
+    "tailwindcss": "^3.4.1",
+    "typescript": "^5"
+  }
+}
