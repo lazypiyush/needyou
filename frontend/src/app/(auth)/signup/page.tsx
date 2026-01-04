@@ -14,7 +14,8 @@ import {
   clearRecaptcha,
   onAuthStateChange,
   getUserVerificationStatus,
-  signOutUser
+  signOutUser,
+  checkPhoneNumberExists
 } from '@/lib/auth'
 import { signOut } from 'firebase/auth'
 import { auth } from '@/lib/firebase'
@@ -39,6 +40,7 @@ function SignUpPageContent() {
   const [mounted, setMounted] = useState(false)
   const [confirmationResult, setConfirmationResult] = useState<ConfirmationResult | null>(null)
   const [tempUserId, setTempUserId] = useState('')
+  const [resendCooldown, setResendCooldown] = useState(0)
 
   const router = useRouter()
   const searchParams = useSearchParams()
@@ -118,6 +120,16 @@ function SignUpPageContent() {
     }
   }, [step])
 
+  // Handle resend cooldown timer
+  useEffect(() => {
+    if (resendCooldown > 0) {
+      const timer = setTimeout(() => {
+        setResendCooldown(resendCooldown - 1)
+      }, 1000)
+      return () => clearTimeout(timer)
+    }
+  }, [resendCooldown])
+
   // Step 1: Create email account
   const handleEmailSignup = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -129,13 +141,58 @@ function SignUpPageContent() {
       const newUser = await signUpWithEmail(email, password, name)
       setTempUserId(newUser.uid)
 
-      // Sign out user immediately after account creation
-      await signOut(auth)
+      // Keep user signed in for email verification (don't sign out)
+      // This allows resend email to work properly
 
       setSuccess('✅ Account created! Verification email sent.')
       setStep('verify-email')
     } catch (err: any) {
-      setError(err.message || 'Failed to create account')
+      // Check if email already exists
+      if (err.message && err.message.includes('already registered')) {
+        // Try to sign in and check verification status
+        try {
+          console.log('📧 Email exists, checking verification status...')
+          const { signInWithEmail } = await import('@/lib/auth')
+          const existingUser = await signInWithEmail(email, password)
+
+          setTempUserId(existingUser.uid)
+
+          if (!existingUser.emailVerified) {
+            // Email exists but not verified - help them verify
+            setSuccess('📧 Account found! We\'ve sent a new verification email. Please check your inbox.')
+            setStep('verify-email')
+
+            // Send a new verification email
+            try {
+              await resendVerificationEmail(email, password)
+              setResendCooldown(60) // Set cooldown
+            } catch (resendErr) {
+              console.log('Note: Verification email may have been sent recently')
+            }
+          } else {
+            // Email verified - redirect to phone or dashboard
+            const { getUserVerificationStatus } = await import('@/lib/auth')
+            const status = await getUserVerificationStatus(existingUser.uid)
+
+            if (status?.phoneVerified) {
+              setError('✅ This account is already complete! Redirecting to sign in...')
+              setTimeout(() => router.push('/signin'), 2000)
+            } else {
+              setSuccess('✅ Email verified! Please complete phone verification.')
+              setStep('phone')
+            }
+          }
+        } catch (signInErr: any) {
+          // Wrong password or other sign-in error
+          if (signInErr.message && signInErr.message.includes('password')) {
+            setError('❌ This email is already registered with a different password.\n\nPlease sign in instead or use "Forgot Password" if you don\'t remember it.')
+          } else {
+            setError(signInErr.message || 'This email is already registered. Please sign in instead.')
+          }
+        }
+      } else {
+        setError(err.message || 'Failed to create account')
+      }
     } finally {
       setLoading(false)
     }
@@ -170,6 +227,12 @@ function SignUpPageContent() {
 
   // Resend verification email
   const handleResendEmail = async () => {
+    // Check cooldown
+    if (resendCooldown > 0) {
+      setError(`⏱️ Please wait ${resendCooldown} seconds before requesting another email.`)
+      return
+    }
+
     setError('')
     setSuccess('')
     setLoading(true)
@@ -177,8 +240,10 @@ function SignUpPageContent() {
     try {
       await resendVerificationEmail(email, password)
       setSuccess('✅ Verification email sent again! Check your inbox.')
+      // Set 60-second cooldown
+      setResendCooldown(60)
     } catch (err: any) {
-      setError('Failed to resend email. Please try again.')
+      setError(err.message || 'Failed to resend email. Please try again.')
     } finally {
       setLoading(false)
     }
@@ -191,14 +256,28 @@ function SignUpPageContent() {
     setSuccess('')
     setLoading(true)
 
-    // Clear any existing recaptcha before starting
-    clearRecaptcha()
-
-    // Small delay to ensure cleanup is complete
-    await new Promise(resolve => setTimeout(resolve, 300))
-
     try {
       const formattedPhone = phoneNumber.startsWith('+91') ? phoneNumber : `+91${phoneNumber}`
+
+      // Check if phone number already exists (excluding current user)
+      console.log('🔍 Checking if phone number already exists:', formattedPhone)
+      console.log('👤 Current user ID:', tempUserId)
+      const phoneExists = await checkPhoneNumberExists(formattedPhone, tempUserId)
+
+      if (phoneExists) {
+        setError('❌ This phone number is already registered with another account.\n\nPlease use a different phone number or sign in with your existing account.')
+        setLoading(false)
+        return
+      }
+
+      console.log('✅ Phone number is unique, proceeding...')
+
+      // Clear any existing recaptcha before starting
+      clearRecaptcha()
+
+      // Small delay to ensure cleanup is complete
+      await new Promise(resolve => setTimeout(resolve, 300))
+
       console.log('🚀 Sending OTP with invisible reCAPTCHA...')
       const result = await sendOTP(formattedPhone)
       setConfirmationResult(result)
@@ -470,11 +549,25 @@ function SignUpPageContent() {
 
               <button
                 onClick={handleResendEmail}
-                disabled={loading}
-                className="w-full text-sm text-blue-600 dark:text-blue-400 hover:underline flex items-center justify-center gap-1"
+                disabled={loading || resendCooldown > 0}
+                className="w-full text-sm text-blue-600 dark:text-blue-400 hover:underline flex items-center justify-center gap-1 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 <RefreshCw className="w-4 h-4" />
-                Resend Verification Email
+                {resendCooldown > 0
+                  ? `Resend in ${resendCooldown}s`
+                  : 'Resend Verification Email'}
+              </button>
+
+              <button
+                onClick={() => {
+                  setStep('email')
+                  setError('')
+                  setSuccess('')
+                }}
+                disabled={loading}
+                className="w-full text-sm text-gray-600 dark:text-gray-400 hover:underline"
+              >
+                Change Email Address
               </button>
             </div>
           )}
@@ -542,9 +635,6 @@ function SignUpPageContent() {
                 />
                 <p className="text-xs text-gray-500 dark:text-gray-400 mt-1 text-center">
                   📱 OTP sent to +91{phoneNumber} via SMS
-                </p>
-                <p className="text-xs text-blue-600 dark:text-blue-400 mt-1 text-center">
-                  💡 Test number OTP: <strong>123456</strong>
                 </p>
               </div>
 

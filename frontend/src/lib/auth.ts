@@ -200,7 +200,7 @@ export const signUpWithEmail = async (
 
     // Handle specific error codes
     if (error.code === 'auth/email-already-in-use') {
-      throw new Error('This email is already registered. Please sign in instead.')
+      throw new Error('This email is already registered.')
     } else if (error.code === 'auth/weak-password') {
       throw new Error('Password should be at least 6 characters.')
     } else if (error.code === 'auth/invalid-email') {
@@ -237,9 +237,14 @@ export const checkEmailVerification = async (email: string, password: string) =>
   try {
     console.log('🔍 Checking email verification for:', email)
 
-    // Sign in user to check verification status
-    const userCredential = await signInWithEmailAndPassword(auth, email, password)
-    const user = userCredential.user
+    // Check if user is already signed in
+    let user = auth.currentUser
+
+    // If not signed in or different email, sign in
+    if (!user || user.email !== email) {
+      const userCredential = await signInWithEmailAndPassword(auth, email, password)
+      user = userCredential.user
+    }
 
     // Reload user to get latest verification status
     await reload(user)
@@ -347,9 +352,14 @@ export const resendVerificationEmail = async (email: string, password: string) =
   try {
     console.log('📧 Resending verification email to:', email)
 
-    // Sign in user to send verification email
-    const userCredential = await signInWithEmailAndPassword(auth, email, password)
-    const user = userCredential.user
+    // Check if user is already signed in
+    let user = auth.currentUser
+
+    // If not signed in, sign in first
+    if (!user) {
+      const userCredential = await signInWithEmailAndPassword(auth, email, password)
+      user = userCredential.user
+    }
 
     if (!user.emailVerified) {
       await sendEmailVerification(user)
@@ -359,7 +369,17 @@ export const resendVerificationEmail = async (email: string, password: string) =
     }
   } catch (error: any) {
     console.error('❌ Resend Email Error:', error)
-    throw new Error('Failed to resend verification email')
+
+    // Handle specific error codes
+    if (error.code === 'auth/too-many-requests') {
+      throw new Error('⏱️ Too many requests. Please wait a few minutes before requesting another verification email.\n\nTip: Check your spam/junk folder - the email may already be there!')
+    } else if (error.code === 'auth/user-not-found') {
+      throw new Error('No account found with this email.')
+    } else if (error.code === 'auth/wrong-password') {
+      throw new Error('Incorrect password.')
+    } else {
+      throw new Error(error.message || 'Failed to resend verification email')
+    }
   }
 }
 
@@ -384,15 +404,36 @@ export const onAuthStateChange = (callback: (user: User | null) => void) => {
 }
 
 
-// Check if phone number exists in Firestore
-export const checkPhoneNumberExists = async (phoneNumber: string) => {
+// Check if phone number exists in Firestore (excluding current user)
+export const checkPhoneNumberExists = async (phoneNumber: string, excludeUserId?: string) => {
   try {
+    console.log('🔍 Checking phone number:', phoneNumber)
+    console.log('🔍 Excluding user ID:', excludeUserId || 'none')
+
     const usersRef = collection(db, 'users')
     const q = query(usersRef, where('phoneNumber', '==', phoneNumber))
     const snapshot = await getDocs(q)
-    return !snapshot.empty
+
+    console.log('📊 Query results:', snapshot.size, 'documents found')
+
+    if (snapshot.empty) {
+      console.log('✅ Phone number is available')
+      return false
+    }
+
+    // If we have an excludeUserId, check if all matches are for that user
+    if (excludeUserId) {
+      const otherUsers = snapshot.docs.filter(doc => doc.id !== excludeUserId)
+      console.log('📊 Other users with this phone:', otherUsers.length)
+      return otherUsers.length > 0
+    }
+
+    console.log('⚠️ Phone number already exists')
+    return true
   } catch (error: any) {
     console.error('❌ Check Phone Number Error:', error)
+    console.error('Error details:', error.code, error.message)
+    // On error, allow the operation to proceed (fail open for better UX)
     return false
   }
 }

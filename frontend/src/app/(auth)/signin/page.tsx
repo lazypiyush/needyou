@@ -98,7 +98,29 @@ export default function SignInPage() {
 
       // Step 2: Check email verification
       if (!user.emailVerified) {
-        setError('⚠️ Please verify your email first. Check your inbox for the verification link.')
+        console.log('⚠️ Email not verified, attempting to send verification email...')
+
+        // Automatically send verification email
+        try {
+          const { resendVerificationEmail } = await import('@/lib/auth')
+          await resendVerificationEmail(email, password)
+
+          console.log('✅ Verification email sent successfully!')
+          setSuccess('📧 Verification email sent! Please check your inbox and verify your email before signing in.\n\nOnce verified, come back and sign in again.')
+        } catch (emailErr: any) {
+          console.error('❌ Failed to send verification email:', emailErr)
+          console.error('Error message:', emailErr.message)
+
+          // If sending fails (e.g., rate limit), show helpful message
+          if (emailErr.message && emailErr.message.includes('Too many requests')) {
+            console.log('⏱️ Rate limited - too many verification emails sent recently')
+            setError('⚠️ Email not verified yet.\n\n🔄 A verification email was sent recently (within the last few minutes).\n\n📧 Please check your inbox and spam folder for the verification link.\n\n⏱️ If you need another email, please wait a few minutes and try again.')
+          } else {
+            console.log('⚠️ Could not send verification email, but one may have been sent earlier')
+            setError('⚠️ Email not verified yet.\n\nPlease check your inbox (and spam folder) for the verification link.\n\nIf you don\'t see it, wait a few minutes and try signing in again.')
+          }
+        }
+
         setLoading(false)
         return
       }
@@ -323,8 +345,8 @@ export default function SignInPage() {
                 clearRecaptcha()
               }}
               className={`py-2 px-4 rounded-lg font-medium transition-all ${authMethod === 'email'
-                  ? 'bg-white dark:bg-gray-800 text-blue-600 dark:text-blue-400 shadow-md'
-                  : 'text-gray-600 dark:text-gray-400'
+                ? 'bg-white dark:bg-gray-800 text-blue-600 dark:text-blue-400 shadow-md'
+                : 'text-gray-600 dark:text-gray-400'
                 }`}
             >
               <Mail className="w-4 h-4 inline mr-2" />
@@ -340,8 +362,8 @@ export default function SignInPage() {
                 clearRecaptcha()
               }}
               className={`py-2 px-4 rounded-lg font-medium transition-all ${authMethod === 'phone'
-                  ? 'bg-white dark:bg-gray-800 text-blue-600 dark:text-blue-400 shadow-md'
-                  : 'text-gray-600 dark:text-gray-400'
+                ? 'bg-white dark:bg-gray-800 text-blue-600 dark:text-blue-400 shadow-md'
+                : 'text-gray-600 dark:text-gray-400'
                 }`}
             >
               <Phone className="w-4 h-4 inline mr-2" />
@@ -463,9 +485,6 @@ export default function SignInPage() {
                     maxLength={10}
                   />
                 </div>
-                <p className="text-xs text-blue-600 dark:text-blue-400 mt-1">
-                  💡 For testing: Use <strong>9876543210</strong> with OTP <strong>123456</strong>
-                </p>
               </div>
 
               <button
@@ -507,9 +526,6 @@ export default function SignInPage() {
                 />
                 <p className="text-xs text-gray-500 dark:text-gray-400 mt-1 text-center">
                   OTP sent to +91{phoneNumber}
-                </p>
-                <p className="text-xs text-blue-600 dark:text-blue-400 mt-1 text-center">
-                  💡 Test number OTP: <strong>123456</strong>
                 </p>
               </div>
 
