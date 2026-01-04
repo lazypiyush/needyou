@@ -11,7 +11,7 @@ import {
   onAuthStateChanged,
   User
 } from 'firebase/auth'
-import { doc, setDoc, updateDoc, getDoc } from 'firebase/firestore'
+import { doc, setDoc, updateDoc, getDoc, collection, query, where, getDocs } from 'firebase/firestore'
 import { auth, db } from './firebase'
 
 
@@ -382,3 +382,47 @@ export const signOutUser = async () => {
 export const onAuthStateChange = (callback: (user: User | null) => void) => {
   return onAuthStateChanged(auth, callback)
 }
+
+
+// Check if phone number exists in Firestore
+export const checkPhoneNumberExists = async (phoneNumber: string) => {
+  try {
+    const usersRef = collection(db, 'users')
+    const q = query(usersRef, where('phoneNumber', '==', phoneNumber))
+    const snapshot = await getDocs(q)
+    return !snapshot.empty
+  } catch (error: any) {
+    console.error('❌ Check Phone Number Error:', error)
+    return false
+  }
+}
+
+
+// Get user by phone number
+export const getUserByPhoneNumber = async (phoneNumber: string) => {
+  try {
+    const usersRef = collection(db, 'users')
+    const q = query(usersRef, where('phoneNumber', '==', phoneNumber))
+    const snapshot = await getDocs(q)
+
+    if (snapshot.empty) {
+      console.log('⚠️ No user found with phone number:', phoneNumber)
+      return null
+    }
+
+    const userData = snapshot.docs[0].data()
+    console.log('✅ Found user by phone:', userData.uid)
+    return {
+      uid: userData.uid,
+      email: userData.email,
+      name: userData.name,
+      emailVerified: userData.emailVerified || false,
+      phoneVerified: userData.phoneVerified || false,
+      profileComplete: userData.profileComplete || false
+    }
+  } catch (error: any) {
+    console.error('❌ Get User By Phone Error:', error)
+    return null
+  }
+}
+

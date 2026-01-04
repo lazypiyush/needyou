@@ -4,13 +4,15 @@ import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { motion } from 'framer-motion'
 import { Mail, Lock, Phone, ArrowRight, Loader2, AlertCircle, Eye, EyeOff, X } from 'lucide-react'
-import { 
-  signInWithEmail, 
-  sendOTP, 
-  verifyOTPSignIn, 
-  getUserVerificationStatus, 
+import {
+  signInWithEmail,
+  sendOTP,
+  verifyOTPSignIn,
+  getUserVerificationStatus,
   clearRecaptcha,
-  resetPassword
+  resetPassword,
+  checkPhoneNumberExists,
+  getUserByPhoneNumber
 } from '@/lib/auth'
 import { useAuth } from '@/context/AuthContext'
 import { ConfirmationResult } from 'firebase/auth'
@@ -34,21 +36,21 @@ export default function SignInPage() {
   const [success, setSuccess] = useState('')
   const [mounted, setMounted] = useState(false)
   const [confirmationResult, setConfirmationResult] = useState<ConfirmationResult | null>(null)
-  
+
   // Forgot Password states
   const [showForgotPassword, setShowForgotPassword] = useState(false)
   const [resetEmail, setResetEmail] = useState('')
   const [resetLoading, setResetLoading] = useState(false)
   const [resetError, setResetError] = useState('')
   const [resetSuccess, setResetSuccess] = useState(false)
-  
+
   const router = useRouter()
   const { user, loading: authLoading } = useAuth()
   const { theme } = useTheme()
 
   useEffect(() => {
     setMounted(true)
-    
+
     // Cleanup on unmount
     return () => {
       clearRecaptcha()
@@ -66,7 +68,7 @@ export default function SignInPage() {
     if (user && !authLoading) {
       const checkProfileAndRedirect = async () => {
         const status = await getUserVerificationStatus(user.uid)
-        
+
         // Only redirect if profile is complete
         if (status?.profileComplete && status?.emailVerified && status?.phoneVerified) {
           console.log('✅ Profile complete, redirecting to dashboard')
@@ -75,7 +77,7 @@ export default function SignInPage() {
           console.log('⚠️ Profile incomplete, staying on signin page')
         }
       }
-      
+
       checkProfileAndRedirect()
     }
   }, [user, authLoading, router])
@@ -89,42 +91,42 @@ export default function SignInPage() {
     try {
       // Step 1: Sign in with email
       const user = await signInWithEmail(email, password)
-      
+
       console.log('👤 User signed in:', user.uid)
       console.log('📧 Email verified:', user.emailVerified)
       console.log('📱 Phone number:', user.phoneNumber)
-      
+
       // Step 2: Check email verification
       if (!user.emailVerified) {
         setError('⚠️ Please verify your email first. Check your inbox for the verification link.')
         setLoading(false)
         return
       }
-      
+
       // Step 3: Get verification status from Firestore
       const verificationStatus = await getUserVerificationStatus(user.uid)
-      
+
       console.log('🔍 Verification status:', verificationStatus)
-      
+
       // Step 4: Check phone verification
       const hasPhoneNumber = user.phoneNumber || verificationStatus?.phoneVerified
-      
+
       if (!hasPhoneNumber) {
         setError('⚠️ Phone verification pending. Redirecting to complete setup...')
-        
+
         // Redirect to signup page with phone step
         setTimeout(() => {
           router.push('/signup?step=phone')
         }, 1500)
-        
+
         setLoading(false)
         return
       }
-      
+
       // Step 5: All verified - proceed to dashboard
       console.log('✅ Authentication complete! Redirecting to dashboard...')
       router.push('/dashboard')
-      
+
     } catch (err: any) {
       console.error('❌ Sign in error:', err)
       setError('❌ ' + (err.message || 'Failed to sign in'))
@@ -139,14 +141,27 @@ export default function SignInPage() {
     setSuccess('')
     setLoading(true)
 
-    // Clear any existing recaptcha before starting
-    clearRecaptcha()
-
-    // Small delay to ensure cleanup is complete
-    await new Promise(resolve => setTimeout(resolve, 300))
-
     try {
       const formattedPhone = phoneNumber.startsWith('+91') ? phoneNumber : `+91${phoneNumber}`
+
+      // Check if phone number exists in database
+      console.log('🔍 Checking if phone number exists:', formattedPhone)
+      const phoneExists = await checkPhoneNumberExists(formattedPhone)
+
+      if (!phoneExists) {
+        setError('❌ No account found with this phone number.\n\nPlease sign up first or sign in with email if you already have an account.')
+        setLoading(false)
+        return
+      }
+
+      console.log('✅ Phone number exists, sending OTP...')
+
+      // Clear any existing recaptcha before starting
+      clearRecaptcha()
+
+      // Small delay to ensure cleanup is complete
+      await new Promise(resolve => setTimeout(resolve, 300))
+
       const result = await sendOTP(formattedPhone)
       setConfirmationResult(result)
       setSuccess('✅ OTP sent successfully!')
@@ -168,45 +183,48 @@ export default function SignInPage() {
 
     try {
       if (!confirmationResult) throw new Error('Please request OTP first')
-      
+
       // Verify OTP - This signs in user with phone
       const phoneUser = await verifyOTPSignIn(confirmationResult, otp)
-      
+
       console.log('✅ Phone OTP verified, user:', phoneUser.uid)
       console.log('📱 Phone number:', phoneUser.phoneNumber)
-      
-      // Check if user profile exists in Firestore
-      const verificationStatus = await getUserVerificationStatus(phoneUser.uid)
-      
-      if (!verificationStatus) {
+
+      // Get user by phone number (not by UID, since phone auth might create different UID)
+      const formattedPhone = phoneNumber.startsWith('+91') ? phoneNumber : `+91${phoneNumber}`
+      const userData = await getUserByPhoneNumber(formattedPhone)
+
+      if (!userData) {
         // Profile doesn't exist - this phone number not registered
         setError('❌ No account found with this phone number.\n\nPlease sign up first or sign in with email if you already have an account.')
         setLoading(false)
         return
       }
-      
+
+      console.log('✅ Found user data:', userData)
+
       // Check if email is verified
-      if (!verificationStatus.emailVerified) {
+      if (!userData.emailVerified) {
         setError('⚠️ Please verify your email before signing in.\n\nSign in with email to complete verification.')
         setLoading(false)
         return
       }
-      
+
       // Check if profile is complete
-      if (!verificationStatus.profileComplete) {
+      if (!userData.profileComplete) {
         setError('⚠️ Profile incomplete. Please complete signup with email first.')
         setLoading(false)
         return
       }
-      
+
       // All verified - redirect to dashboard
       console.log('✅ Phone login successful!')
       setSuccess('✅ Login successful! Redirecting...')
-      
+
       setTimeout(() => {
         router.push('/dashboard')
       }, 1000)
-      
+
     } catch (err: any) {
       setError('❌ ' + (err.message || 'Invalid OTP'))
     } finally {
@@ -259,10 +277,10 @@ export default function SignInPage() {
         {/* Logo */}
         <div className="text-center mb-8">
           <Link href="/">
-            <Image 
-              src="/logo.jpg" 
-              alt="NeedYou" 
-              width={80} 
+            <Image
+              src="/logo.jpg"
+              alt="NeedYou"
+              width={80}
               height={80}
               className="w-20 h-20 mx-auto rounded-2xl shadow-lg mb-4"
             />
@@ -270,7 +288,7 @@ export default function SignInPage() {
           <h1 className="text-3xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
             Welcome Back
           </h1>
-          <p 
+          <p
             className="mt-2"
             style={{
               color: mounted && theme === 'dark' ? '#ffffff' : 'rgb(75, 85, 99)'
@@ -282,7 +300,7 @@ export default function SignInPage() {
 
         {/* Form Card */}
         <div className="bg-white/80 dark:bg-gray-800/80 backdrop-blur-xl p-8 rounded-3xl shadow-2xl border border-gray-200 dark:border-gray-700">
-          
+
           {/* Important Notice */}
           <div className="mb-6 p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
             <p className="text-xs text-blue-800 dark:text-blue-300 flex items-start gap-2">
@@ -304,11 +322,10 @@ export default function SignInPage() {
                 setSuccess('')
                 clearRecaptcha()
               }}
-              className={`py-2 px-4 rounded-lg font-medium transition-all ${
-                authMethod === 'email'
+              className={`py-2 px-4 rounded-lg font-medium transition-all ${authMethod === 'email'
                   ? 'bg-white dark:bg-gray-800 text-blue-600 dark:text-blue-400 shadow-md'
                   : 'text-gray-600 dark:text-gray-400'
-              }`}
+                }`}
             >
               <Mail className="w-4 h-4 inline mr-2" />
               Email
@@ -322,11 +339,10 @@ export default function SignInPage() {
                 setSuccess('')
                 clearRecaptcha()
               }}
-              className={`py-2 px-4 rounded-lg font-medium transition-all ${
-                authMethod === 'phone'
+              className={`py-2 px-4 rounded-lg font-medium transition-all ${authMethod === 'phone'
                   ? 'bg-white dark:bg-gray-800 text-blue-600 dark:text-blue-400 shadow-md'
                   : 'text-gray-600 dark:text-gray-400'
-              }`}
+                }`}
             >
               <Phone className="w-4 h-4 inline mr-2" />
               Phone
