@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useRef, useCallback, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { motion } from 'framer-motion'
 import { MapPin, Navigation, Home, Building2, ArrowRight, Loader2, AlertCircle, Check } from 'lucide-react'
@@ -19,7 +19,7 @@ import ThemeToggle from '@/components/ThemeToggle'
 
 type AddressType = 'home' | 'office' | 'other'
 
-export default function LocationPage() {
+function LocationContent() {
     const router = useRouter()
     const searchParams = useSearchParams()
     const { user, loading: authLoading } = useAuth()
@@ -593,5 +593,17 @@ export default function LocationPage() {
                 </motion.div>
             </div>
         </>
+    )
+}
+
+export default function LocationPage() {
+    return (
+        <Suspense fallback={
+            <div className="min-h-screen w-full flex items-center justify-center">
+                <Loader2 className="w-12 h-12 animate-spin text-blue-600" />
+            </div>
+        }>
+            <LocationContent />
+        </Suspense>
     )
 }
