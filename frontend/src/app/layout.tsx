@@ -1,6 +1,6 @@
 import { AuthProvider } from '@/context/AuthContext'
-import { ThemeProvider } from 'next-themes'
 import type { Metadata } from 'next'
+import { Providers } from '@/components/Providers'
 import './globals.css'
 
 export const metadata: Metadata = {
@@ -20,12 +20,12 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en" suppressHydrationWarning>
-      <body>
-        <ThemeProvider attribute="class" defaultTheme="dark" enableSystem>
+      <body className="bg-white dark:bg-[#181818] text-gray-900 dark:text-white transition-colors duration-300">
+        <Providers>
           <AuthProvider>
             {children}
           </AuthProvider>
-        </ThemeProvider>
+        </Providers>
       </body>
     </html>
   )

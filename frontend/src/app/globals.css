@@ -4,15 +4,21 @@
 
 @layer base {
   :root {
-    --gradient-from: 239 246 255; /* blue-50 */
-    --gradient-via: 238 242 255;  /* indigo-50 */
-    --gradient-to: 250 245 255;   /* purple-50 */
+    --gradient-from: 239 246 255;
+    /* blue-50 */
+    --gradient-via: 238 242 255;
+    /* indigo-50 */
+    --gradient-to: 250 245 255;
+    /* purple-50 */
   }
 
-  .dark {
-    --gradient-from: 30 35 45;    /* Balanced dark grey-blue */
-    --gradient-via: 35 40 50;     /* Medium dark grey */
-    --gradient-to: 40 45 55;      /* Lighter dark grey */
+  html.dark {
+    --gradient-from: 24 24 24;
+    /* #181818 */
+    --gradient-via: 28 28 28;
+    /* Slightly lighter #1c1c1c */
+    --gradient-to: 32 32 32;
+    /* Even lighter #202020 */
   }
 }
 
@@ -30,6 +36,12 @@ body {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   min-height: 100vh;
+  transition: background-color 0.3s ease, color 0.3s ease;
+}
+
+html.dark body {
+  background-color: #181818;
+  color: #f9fafb;
 }
 
 /* Custom scrollbar - Light mode */
@@ -52,14 +64,14 @@ body {
 }
 
 /* Custom scrollbar - Dark mode */
-.dark ::-webkit-scrollbar-track {
+html.dark ::-webkit-scrollbar-track {
   background-color: transparent;
 }
 
-.dark ::-webkit-scrollbar-thumb {
+html.dark ::-webkit-scrollbar-thumb {
   background-color: #64748b;
 }
 
-.dark ::-webkit-scrollbar-thumb:hover {
+html.dark ::-webkit-scrollbar-thumb:hover {
   background-color: #3b82f6;
 }

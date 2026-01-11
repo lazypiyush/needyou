@@ -6,8 +6,10 @@ const nextConfig: NextConfig = {
     unoptimized: true
   },
   // Vercel server components support
-  experimental: {
-    serverComponentsExternalPackages: ['firebase-admin']
+  serverExternalPackages: ['firebase-admin'],
+  // Move Next.js development indicator to bottom-right
+  devIndicators: {
+    position: 'bottom-right'
   }
 };
 

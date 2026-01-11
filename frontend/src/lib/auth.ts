@@ -187,6 +187,13 @@ export const signUpWithEmail = async (
       phoneVerified: false,
       createdAt: new Date().toISOString(),
       profileComplete: false,
+      // Onboarding fields
+      onboardingComplete: false,
+      education: null,
+      employment: null,
+      location: null,
+      address: null,
+      // Stats
       jobsCompleted: 0,
       servicesOffered: 0,
       rating: 0,
@@ -464,6 +471,295 @@ export const getUserByPhoneNumber = async (phoneNumber: string) => {
   } catch (error: any) {
     console.error('❌ Get User By Phone Error:', error)
     return null
+  }
+}
+
+
+// ========================================
+// ONBOARDING FUNCTIONS
+// ========================================
+
+// Check onboarding completion status
+export const checkOnboardingStatus = async (userId: string) => {
+  try {
+    const userDoc = await getDoc(doc(db, 'users', userId))
+    if (userDoc.exists()) {
+      const data = userDoc.data()
+      return {
+        onboardingComplete: data.onboardingComplete || false,
+        education: data.education || null,
+        employment: data.employment || null,
+        location: data.location || null,
+        address: data.address || null
+      }
+    }
+    return null
+  } catch (error: any) {
+    console.error('❌ Check Onboarding Status Error:', error)
+    return null
+  }
+}
+
+
+// Update user education information
+export const updateUserEducation = async (
+  userId: string,
+  educationData: {
+    degree: string
+    fieldOfStudy: string
+    institution: string
+    graduationYear: number
+  }
+) => {
+  try {
+    console.log('📚 Updating education for user:', userId)
+    await updateDoc(doc(db, 'users', userId), {
+      education: educationData
+    })
+    console.log('✅ Education updated successfully')
+  } catch (error: any) {
+    console.error('❌ Update Education Error:', error)
+    throw new Error(error.message || 'Failed to update education')
+  }
+}
+
+
+// Update user employment information
+export const updateUserEmployment = async (
+  userId: string,
+  employmentData: {
+    status: string
+    company: string | null
+    position: string | null
+    experienceYears: number | null
+  }
+) => {
+  try {
+    console.log('💼 Updating employment for user:', userId)
+    await updateDoc(doc(db, 'users', userId), {
+      employment: employmentData
+    })
+    console.log('✅ Employment updated successfully')
+  } catch (error: any) {
+    console.error('❌ Update Employment Error:', error)
+    throw new Error(error.message || 'Failed to update employment')
+  }
+}
+
+
+// Update user location information
+export const updateUserLocation = async (
+  userId: string,
+  locationData: {
+    latitude: number
+    longitude: number
+    city: string
+    state: string
+    country: string
+  }
+) => {
+  try {
+    console.log('📍 Updating location for user:', userId)
+    await updateDoc(doc(db, 'users', userId), {
+      location: locationData
+    })
+    console.log('✅ Location updated successfully')
+  } catch (error: any) {
+    console.error('❌ Update Location Error:', error)
+    throw new Error(error.message || 'Failed to update location')
+  }
+}
+
+
+// Update user address
+export const updateUserAddress = async (userId: string, address: string) => {
+  try {
+    console.log('🏠 Updating address for user:', userId)
+    await updateDoc(doc(db, 'users', userId), {
+      address: address
+    })
+    console.log('✅ Address updated successfully')
+  } catch (error: any) {
+    console.error('❌ Update Address Error:', error)
+    throw new Error(error.message || 'Failed to update address')
+  }
+}
+
+
+// Complete onboarding process
+export const completeOnboarding = async (userId: string) => {
+  try {
+    console.log('🎉 Completing onboarding for user:', userId)
+    await updateDoc(doc(db, 'users', userId), {
+      onboardingComplete: true
+    })
+    console.log('✅ Onboarding completed successfully')
+  } catch (error: any) {
+    console.error('❌ Complete Onboarding Error:', error)
+    throw new Error(error.message || 'Failed to complete onboarding')
+  }
+}
+
+// ========================================
+// MULTIPLE ADDRESSES FUNCTIONS
+// ========================================
+
+export interface SavedAddress {
+  id: string
+  type: 'home' | 'office' | 'other'
+  label: string
+  houseNumber: string
+  detailedAddress: string
+  location: {
+    latitude: number
+    longitude: number
+    city: string
+    state: string
+    country: string
+    area?: string
+  }
+  isDefault: boolean
+  createdAt: number
+}
+
+// Get all saved addresses for a user
+export const getUserAddresses = async (userId: string): Promise<SavedAddress[]> => {
+  try {
+    const userDoc = await getDoc(doc(db, 'users', userId))
+    if (userDoc.exists()) {
+      const userData = userDoc.data()
+      return userData.savedAddresses || []
+    }
+    return []
+  } catch (error: any) {
+    console.error('❌ Get Addresses Error:', error)
+    throw new Error(error.message || 'Failed to get addresses')
+  }
+}
+
+// Add a new address
+export const addUserAddress = async (
+  userId: string,
+  address: Omit<SavedAddress, 'id' | 'createdAt'>
+): Promise<string> => {
+  try {
+    const addresses = await getUserAddresses(userId)
+
+    // Generate unique ID
+    const newId = `addr_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
+
+    // If this is set as default, unset all other defaults
+    const updatedAddresses = address.isDefault
+      ? addresses.map(addr => ({ ...addr, isDefault: false }))
+      : addresses
+
+    const newAddress: SavedAddress = {
+      ...address,
+      id: newId,
+      createdAt: Date.now()
+    }
+
+    updatedAddresses.push(newAddress)
+
+    await updateDoc(doc(db, 'users', userId), {
+      savedAddresses: updatedAddresses,
+      // Update primary location if this is default
+      ...(address.isDefault && {
+        location: address.location,
+        address: `${address.type === 'home' ? 'Home' : address.type === 'office' ? 'Office' : 'Other'}: ${address.houseNumber}, ${address.detailedAddress}`
+      })
+    })
+
+    console.log('✅ Address added successfully')
+    return newId
+  } catch (error: any) {
+    console.error('❌ Add Address Error:', error)
+    throw new Error(error.message || 'Failed to add address')
+  }
+}
+
+// Update an existing address
+export const updateAddress = async (
+  userId: string,
+  addressId: string,
+  updates: Partial<Omit<SavedAddress, 'id' | 'createdAt'>>
+): Promise<void> => {
+  try {
+    const addresses = await getUserAddresses(userId)
+    const addressIndex = addresses.findIndex(addr => addr.id === addressId)
+
+    if (addressIndex === -1) {
+      throw new Error('Address not found')
+    }
+
+    // If setting as default, unset all other defaults
+    let updatedAddresses = addresses
+    if (updates.isDefault) {
+      updatedAddresses = addresses.map(addr => ({ ...addr, isDefault: false }))
+    }
+
+    updatedAddresses[addressIndex] = {
+      ...updatedAddresses[addressIndex],
+      ...updates
+    }
+
+    await updateDoc(doc(db, 'users', userId), {
+      savedAddresses: updatedAddresses,
+      // Update primary location if this is default
+      ...(updates.isDefault && {
+        location: updatedAddresses[addressIndex].location,
+        address: `${updatedAddresses[addressIndex].type === 'home' ? 'Home' : updatedAddresses[addressIndex].type === 'office' ? 'Office' : 'Other'}: ${updatedAddresses[addressIndex].houseNumber}, ${updatedAddresses[addressIndex].detailedAddress}`
+      })
+    })
+
+    console.log('✅ Address updated successfully')
+  } catch (error: any) {
+    console.error('❌ Update Address Error:', error)
+    throw new Error(error.message || 'Failed to update address')
+  }
+}
+
+// Delete an address
+export const deleteAddress = async (userId: string, addressId: string): Promise<void> => {
+  try {
+    const addresses = await getUserAddresses(userId)
+    const updatedAddresses = addresses.filter(addr => addr.id !== addressId)
+
+    await updateDoc(doc(db, 'users', userId), {
+      savedAddresses: updatedAddresses
+    })
+
+    console.log('✅ Address deleted successfully')
+  } catch (error: any) {
+    console.error('❌ Delete Address Error:', error)
+    throw new Error(error.message || 'Failed to delete address')
+  }
+}
+
+// Set an address as default
+export const setDefaultAddress = async (userId: string, addressId: string): Promise<void> => {
+  try {
+    const addresses = await getUserAddresses(userId)
+    const updatedAddresses = addresses.map(addr => ({
+      ...addr,
+      isDefault: addr.id === addressId
+    }))
+
+    const defaultAddress = updatedAddresses.find(addr => addr.id === addressId)
+    if (!defaultAddress) {
+      throw new Error('Address not found')
+    }
+
+    await updateDoc(doc(db, 'users', userId), {
+      savedAddresses: updatedAddresses,
+      location: defaultAddress.location,
+      address: `${defaultAddress.type === 'home' ? 'Home' : defaultAddress.type === 'office' ? 'Office' : 'Other'}: ${defaultAddress.houseNumber}, ${defaultAddress.detailedAddress}`
+    })
+
+    console.log('✅ Default address set successfully')
+  } catch (error: any) {
+    console.error('❌ Set Default Address Error:', error)
+    throw new Error(error.message || 'Failed to set default address')
   }
 }
 

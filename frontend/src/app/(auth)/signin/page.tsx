@@ -12,12 +12,14 @@ import {
   clearRecaptcha,
   resetPassword,
   checkPhoneNumberExists,
-  getUserByPhoneNumber
+  getUserByPhoneNumber,
+  checkOnboardingStatus
 } from '@/lib/auth'
 import { useAuth } from '@/context/AuthContext'
 import { ConfirmationResult } from 'firebase/auth'
 import Link from 'next/link'
 import Image from 'next/image'
+import ThemeToggle from '@/components/ThemeToggle'
 import { useTheme } from 'next-themes'
 
 type AuthMethod = 'email' | 'phone'
@@ -145,7 +147,31 @@ export default function SignInPage() {
         return
       }
 
-      // Step 5: All verified - proceed to dashboard
+      // Step 5: Check onboarding status
+      const onboardingStatus = await checkOnboardingStatus(user.uid)
+      console.log('🔍 Onboarding status:', onboardingStatus)
+
+      if (!onboardingStatus?.onboardingComplete) {
+        console.log('⚠️ Onboarding incomplete, redirecting...')
+
+        // Redirect to appropriate onboarding step
+        if (!onboardingStatus?.education || !onboardingStatus?.employment) {
+          setError('⚠️ Please complete your profile. Redirecting...')
+          setTimeout(() => {
+            router.push('/onboarding/education')
+          }, 1500)
+        } else if (!onboardingStatus?.location || !onboardingStatus?.address) {
+          setError('⚠️ Please add your location. Redirecting...')
+          setTimeout(() => {
+            router.push('/onboarding/location')
+          }, 1500)
+        }
+
+        setLoading(false)
+        return
+      }
+
+      // Step 6: All verified and onboarded - proceed to dashboard
       console.log('✅ Authentication complete! Redirecting to dashboard...')
       router.push('/dashboard')
 
@@ -239,7 +265,31 @@ export default function SignInPage() {
         return
       }
 
-      // All verified - redirect to dashboard
+      // Check onboarding status
+      const onboardingStatus = await checkOnboardingStatus(userData.uid)
+      console.log('🔍 Onboarding status:', onboardingStatus)
+
+      if (!onboardingStatus?.onboardingComplete) {
+        console.log('⚠️ Onboarding incomplete, redirecting...')
+
+        // Redirect to appropriate onboarding step
+        if (!onboardingStatus?.education || !onboardingStatus?.employment) {
+          setError('⚠️ Please complete your profile. Redirecting...')
+          setTimeout(() => {
+            router.push('/onboarding/education')
+          }, 1500)
+        } else if (!onboardingStatus?.location || !onboardingStatus?.address) {
+          setError('⚠️ Please add your location. Redirecting...')
+          setTimeout(() => {
+            router.push('/onboarding/location')
+          }, 1500)
+        }
+
+        setLoading(false)
+        return
+      }
+
+      // All verified and onboarded - redirect to dashboard
       console.log('✅ Phone login successful!')
       setSuccess('✅ Login successful! Redirecting...')
 
@@ -284,403 +334,406 @@ export default function SignInPage() {
   }
 
   return (
-    <div className="min-h-screen w-full flex items-center justify-center px-4 py-12"
-      style={{
-        background: 'linear-gradient(to bottom right, rgb(var(--gradient-from)), rgb(var(--gradient-via)), rgb(var(--gradient-to)))'
-      }}
-    >
-      <div id="recaptcha-container"></div>
-
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        className="w-full max-w-md"
+    <>
+      <ThemeToggle />
+      <div className="min-h-screen w-full flex items-center justify-center px-4 py-12"
+        style={{
+          background: 'linear-gradient(to bottom right, rgb(var(--gradient-from)), rgb(var(--gradient-via)), rgb(var(--gradient-to)))'
+        }}
       >
-        {/* Logo */}
-        <div className="text-center mb-8">
-          <Link href="/">
-            <Image
-              src="/logo.jpg"
-              alt="NeedYou"
-              width={80}
-              height={80}
-              className="w-20 h-20 mx-auto rounded-2xl shadow-lg mb-4"
-            />
-          </Link>
-          <h1 className="text-3xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
-            Welcome Back
-          </h1>
-          <p
-            className="mt-2"
-            style={{
-              color: mounted && theme === 'dark' ? '#ffffff' : 'rgb(75, 85, 99)'
-            }}
-          >
-            Sign in to continue to NeedYou
-          </p>
-        </div>
+        <div id="recaptcha-container"></div>
 
-        {/* Form Card */}
-        <div className="bg-white/80 dark:bg-gray-800/80 backdrop-blur-xl p-8 rounded-3xl shadow-2xl border border-gray-200 dark:border-gray-700">
-
-          {/* Important Notice */}
-          <div className="mb-6 p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
-            <p className="text-xs text-blue-800 dark:text-blue-300 flex items-start gap-2">
-              <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
-              <span>
-                <strong>Note:</strong> You can only sign in if both your email and phone number are verified.
-              </span>
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="w-full max-w-md"
+        >
+          {/* Logo */}
+          <div className="text-center mb-8">
+            <Link href="/">
+              <Image
+                src="/logo.jpg"
+                alt="NeedYou"
+                width={80}
+                height={80}
+                className="w-20 h-20 mx-auto rounded-2xl shadow-lg mb-4"
+              />
+            </Link>
+            <h1 className="text-3xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
+              Welcome Back
+            </h1>
+            <p
+              className="mt-2"
+              style={{
+                color: mounted && theme === 'dark' ? '#ffffff' : 'rgb(75, 85, 99)'
+              }}
+            >
+              Sign in to continue to NeedYou
             </p>
           </div>
 
-          {/* Auth Method Toggle */}
-          <div className="grid grid-cols-2 gap-2 mb-6 p-1 bg-gray-100 dark:bg-gray-700 rounded-xl">
-            <button
-              type="button"
-              onClick={() => {
-                setAuthMethod('email')
-                setPhoneStep('number')
-                setError('')
-                setSuccess('')
-                clearRecaptcha()
-              }}
-              className={`py-2 px-4 rounded-lg font-medium transition-all ${authMethod === 'email'
-                ? 'bg-white dark:bg-gray-800 text-blue-600 dark:text-blue-400 shadow-md'
-                : 'text-gray-600 dark:text-gray-400'
-                }`}
-            >
-              <Mail className="w-4 h-4 inline mr-2" />
-              Email
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                setAuthMethod('phone')
-                setPhoneStep('number')
-                setError('')
-                setSuccess('')
-                clearRecaptcha()
-              }}
-              className={`py-2 px-4 rounded-lg font-medium transition-all ${authMethod === 'phone'
-                ? 'bg-white dark:bg-gray-800 text-blue-600 dark:text-blue-400 shadow-md'
-                : 'text-gray-600 dark:text-gray-400'
-                }`}
-            >
-              <Phone className="w-4 h-4 inline mr-2" />
-              Phone
-            </button>
-          </div>
+          {/* Form Card */}
+          <div className="bg-white/80 dark:bg-[#1c1c1c]/80 backdrop-blur-xl p-8 rounded-3xl shadow-2xl border border-gray-200 dark:border-gray-700">
 
-          {error && (
-            <div className="mb-4 p-3 bg-red-100 dark:bg-red-900/30 border border-red-300 dark:border-red-700 rounded-lg text-red-700 dark:text-red-300 text-sm flex items-start gap-2">
-              <AlertCircle className="w-5 h-5 flex-shrink-0 mt-0.5" />
-              <span className="whitespace-pre-line">{error}</span>
+            {/* Important Notice */}
+            <div className="mb-6 p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
+              <p className="text-xs text-blue-800 dark:text-blue-300 flex items-start gap-2">
+                <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
+                <span>
+                  <strong>Note:</strong> You can only sign in if both your email and phone number are verified.
+                </span>
+              </p>
             </div>
-          )}
 
-          {success && (
-            <div className="mb-4 p-3 bg-green-100 dark:bg-green-900/30 border border-green-300 dark:border-green-700 rounded-lg text-green-700 dark:text-green-300 text-sm flex items-start gap-2">
-              <AlertCircle className="w-5 h-5 flex-shrink-0 mt-0.5" />
-              <span>{success}</span>
-            </div>
-          )}
-
-          {/* Email Form */}
-          {authMethod === 'email' && (
-            <form onSubmit={handleEmailSignIn} className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                  Email
-                </label>
-                <div className="relative">
-                  <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
-                  <input
-                    type="email"
-                    required
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    className="w-full pl-10 pr-4 py-3 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-gray-900 dark:text-white"
-                    placeholder="your@email.com"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                  Password
-                </label>
-                <div className="relative">
-                  <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
-                  <input
-                    type={showPassword ? 'text' : 'password'}
-                    required
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    className="w-full pl-10 pr-12 py-3 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-gray-900 dark:text-white"
-                    placeholder="••••••••"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowPassword(!showPassword)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
-                  >
-                    {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
-                  </button>
-                </div>
-              </div>
-
-              {/* Forgot Password Link */}
-              <div className="text-right">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setShowForgotPassword(true)
-                    setResetEmail(email)
-                  }}
-                  className="text-sm text-blue-600 dark:text-blue-400 hover:underline"
-                >
-                  Forgot Password?
-                </button>
-              </div>
-
-              <button
-                type="submit"
-                disabled={loading}
-                className="w-full py-3 bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-bold rounded-xl hover:shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-              >
-                {loading ? (
-                  <>
-                    <Loader2 className="w-5 h-5 animate-spin" />
-                    Signing In...
-                  </>
-                ) : (
-                  <>
-                    Sign In
-                    <ArrowRight className="w-5 h-5" />
-                  </>
-                )}
-              </button>
-            </form>
-          )}
-
-          {/* Phone Form - Enter Number */}
-          {authMethod === 'phone' && phoneStep === 'number' && (
-            <form onSubmit={handleSendOTP} className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                  Phone Number
-                </label>
-                <div className="relative">
-                  <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
-                  <div className="absolute left-10 top-1/2 -translate-y-1/2 text-gray-500 font-medium">
-                    +91
-                  </div>
-                  <input
-                    type="tel"
-                    required
-                    value={phoneNumber}
-                    onChange={(e) => setPhoneNumber(e.target.value.replace(/\D/g, '').slice(0, 10))}
-                    className="w-full pl-20 pr-4 py-3 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-gray-900 dark:text-white"
-                    placeholder="9876543210"
-                    maxLength={10}
-                  />
-                </div>
-              </div>
-
-              <button
-                type="submit"
-                disabled={loading || phoneNumber.length !== 10}
-                className="w-full py-3 bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-bold rounded-xl hover:shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-              >
-                {loading ? (
-                  <>
-                    <Loader2 className="w-5 h-5 animate-spin" />
-                    Sending OTP...
-                  </>
-                ) : (
-                  <>
-                    Send OTP
-                    <ArrowRight className="w-5 h-5" />
-                  </>
-                )}
-              </button>
-            </form>
-          )}
-
-          {/* Phone Form - Verify OTP */}
-          {authMethod === 'phone' && phoneStep === 'otp' && (
-            <form onSubmit={handleVerifyOTP} className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                  Enter OTP
-                </label>
-                <input
-                  type="text"
-                  required
-                  value={otp}
-                  onChange={(e) => setOtp(e.target.value.replace(/\D/g, '').slice(0, 6))}
-                  className="w-full px-4 py-3 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-gray-900 dark:text-white text-center text-2xl tracking-widest"
-                  placeholder="000000"
-                  maxLength={6}
-                  autoFocus
-                />
-                <p className="text-xs text-gray-500 dark:text-gray-400 mt-1 text-center">
-                  OTP sent to +91{phoneNumber}
-                </p>
-              </div>
-
-              <button
-                type="submit"
-                disabled={loading || otp.length !== 6}
-                className="w-full py-3 bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-bold rounded-xl hover:shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-              >
-                {loading ? (
-                  <>
-                    <Loader2 className="w-5 h-5 animate-spin" />
-                    Verifying...
-                  </>
-                ) : (
-                  <>
-                    Verify & Sign In
-                    <ArrowRight className="w-5 h-5" />
-                  </>
-                )}
-              </button>
-
+            {/* Auth Method Toggle */}
+            <div className="grid grid-cols-2 gap-2 mb-6 p-1 bg-gray-100 dark:bg-gray-700 rounded-xl">
               <button
                 type="button"
                 onClick={() => {
+                  setAuthMethod('email')
                   setPhoneStep('number')
-                  setOtp('')
-                  setConfirmationResult(null)
-                  setPhoneNumber('')
                   setError('')
                   setSuccess('')
                   clearRecaptcha()
                 }}
-                className="w-full text-sm text-blue-600 dark:text-blue-400 hover:underline"
+                className={`py-2 px-4 rounded-lg font-medium transition-all ${authMethod === 'email'
+                  ? 'bg-white dark:bg-[#1c1c1c] text-blue-600 dark:text-blue-400 shadow-md'
+                  : 'text-gray-600 dark:text-gray-400'
+                  }`}
               >
-                Change Number / Resend OTP
+                <Mail className="w-4 h-4 inline mr-2" />
+                Email
               </button>
-            </form>
-          )}
+              <button
+                type="button"
+                onClick={() => {
+                  setAuthMethod('phone')
+                  setPhoneStep('number')
+                  setError('')
+                  setSuccess('')
+                  clearRecaptcha()
+                }}
+                className={`py-2 px-4 rounded-lg font-medium transition-all ${authMethod === 'phone'
+                  ? 'bg-white dark:bg-[#1c1c1c] text-blue-600 dark:text-blue-400 shadow-md'
+                  : 'text-gray-600 dark:text-gray-400'
+                  }`}
+              >
+                <Phone className="w-4 h-4 inline mr-2" />
+                Phone
+              </button>
+            </div>
 
-          {/* Sign Up Link */}
-          <p className="text-center mt-6 text-sm text-gray-600 dark:text-gray-400">
-            Don't have an account?{' '}
-            <Link href="/signup" className="text-blue-600 dark:text-blue-400 font-semibold hover:underline">
-              Sign Up
-            </Link>
-          </p>
-        </div>
-      </motion.div>
+            {error && (
+              <div className="mb-4 p-3 bg-red-100 dark:bg-red-900/30 border border-red-300 dark:border-red-700 rounded-lg text-red-700 dark:text-red-300 text-sm flex items-start gap-2">
+                <AlertCircle className="w-5 h-5 flex-shrink-0 mt-0.5" />
+                <span className="whitespace-pre-line">{error}</span>
+              </div>
+            )}
 
-      {/* Forgot Password Modal */}
-      {showForgotPassword && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <motion.div
-            initial={{ opacity: 0, scale: 0.95 }}
-            animate={{ opacity: 1, scale: 1 }}
-            className="bg-white dark:bg-gray-800 rounded-2xl p-6 max-w-md w-full shadow-2xl"
-          >
-            {!resetSuccess ? (
-              <>
-                <div className="flex items-center justify-between mb-4">
-                  <h2 className="text-2xl font-bold text-gray-900 dark:text-white">
-                    Reset Password
-                  </h2>
+            {success && (
+              <div className="mb-4 p-3 bg-green-100 dark:bg-green-900/30 border border-green-300 dark:border-green-700 rounded-lg text-green-700 dark:text-green-300 text-sm flex items-start gap-2">
+                <AlertCircle className="w-5 h-5 flex-shrink-0 mt-0.5" />
+                <span>{success}</span>
+              </div>
+            )}
+
+            {/* Email Form */}
+            {authMethod === 'email' && (
+              <form onSubmit={handleEmailSignIn} className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                    Email
+                  </label>
+                  <div className="relative">
+                    <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+                    <input
+                      type="email"
+                      required
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      className="w-full pl-10 pr-4 py-3 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-gray-900 dark:text-white"
+                      placeholder="your@email.com"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                    Password
+                  </label>
+                  <div className="relative">
+                    <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+                    <input
+                      type={showPassword ? 'text' : 'password'}
+                      required
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      className="w-full pl-10 pr-12 py-3 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-gray-900 dark:text-white"
+                      placeholder="••••••••"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword(!showPassword)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+                    >
+                      {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                    </button>
+                  </div>
+                </div>
+
+                {/* Forgot Password Link */}
+                <div className="text-right">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowForgotPassword(true)
+                      setResetEmail(email)
+                    }}
+                    className="text-sm text-blue-600 dark:text-blue-400 hover:underline"
+                  >
+                    Forgot Password?
+                  </button>
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={loading}
+                  className="w-full py-3 bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-bold rounded-xl hover:shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                >
+                  {loading ? (
+                    <>
+                      <Loader2 className="w-5 h-5 animate-spin" />
+                      Signing In...
+                    </>
+                  ) : (
+                    <>
+                      Sign In
+                      <ArrowRight className="w-5 h-5" />
+                    </>
+                  )}
+                </button>
+              </form>
+            )}
+
+            {/* Phone Form - Enter Number */}
+            {authMethod === 'phone' && phoneStep === 'number' && (
+              <form onSubmit={handleSendOTP} className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                    Phone Number
+                  </label>
+                  <div className="relative">
+                    <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+                    <div className="absolute left-10 top-1/2 -translate-y-1/2 text-gray-500 font-medium">
+                      +91
+                    </div>
+                    <input
+                      type="tel"
+                      required
+                      value={phoneNumber}
+                      onChange={(e) => setPhoneNumber(e.target.value.replace(/\D/g, '').slice(0, 10))}
+                      className="w-full pl-20 pr-4 py-3 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-gray-900 dark:text-white"
+                      placeholder="9876543210"
+                      maxLength={10}
+                    />
+                  </div>
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={loading || phoneNumber.length !== 10}
+                  className="w-full py-3 bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-bold rounded-xl hover:shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                >
+                  {loading ? (
+                    <>
+                      <Loader2 className="w-5 h-5 animate-spin" />
+                      Sending OTP...
+                    </>
+                  ) : (
+                    <>
+                      Send OTP
+                      <ArrowRight className="w-5 h-5" />
+                    </>
+                  )}
+                </button>
+              </form>
+            )}
+
+            {/* Phone Form - Verify OTP */}
+            {authMethod === 'phone' && phoneStep === 'otp' && (
+              <form onSubmit={handleVerifyOTP} className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                    Enter OTP
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={otp}
+                    onChange={(e) => setOtp(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                    className="w-full px-4 py-3 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-gray-900 dark:text-white text-center text-2xl tracking-widest"
+                    placeholder="000000"
+                    maxLength={6}
+                    autoFocus
+                  />
+                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-1 text-center">
+                    OTP sent to +91{phoneNumber}
+                  </p>
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={loading || otp.length !== 6}
+                  className="w-full py-3 bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-bold rounded-xl hover:shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                >
+                  {loading ? (
+                    <>
+                      <Loader2 className="w-5 h-5 animate-spin" />
+                      Verifying...
+                    </>
+                  ) : (
+                    <>
+                      Verify & Sign In
+                      <ArrowRight className="w-5 h-5" />
+                    </>
+                  )}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPhoneStep('number')
+                    setOtp('')
+                    setConfirmationResult(null)
+                    setPhoneNumber('')
+                    setError('')
+                    setSuccess('')
+                    clearRecaptcha()
+                  }}
+                  className="w-full text-sm text-blue-600 dark:text-blue-400 hover:underline"
+                >
+                  Change Number / Resend OTP
+                </button>
+              </form>
+            )}
+
+            {/* Sign Up Link */}
+            <p className="text-center mt-6 text-sm text-gray-600 dark:text-gray-400">
+              Don't have an account?{' '}
+              <Link href="/signup" className="text-blue-600 dark:text-blue-400 font-semibold hover:underline">
+                Sign Up
+              </Link>
+            </p>
+          </div>
+        </motion.div>
+
+        {/* Forgot Password Modal */}
+        {showForgotPassword && (
+          <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              className="bg-white dark:bg-[#1c1c1c] rounded-2xl p-6 max-w-md w-full shadow-2xl"
+            >
+              {!resetSuccess ? (
+                <>
+                  <div className="flex items-center justify-between mb-4">
+                    <h2 className="text-2xl font-bold text-gray-900 dark:text-white">
+                      Reset Password
+                    </h2>
+                    <button
+                      onClick={() => {
+                        setShowForgotPassword(false)
+                        setResetError('')
+                        setResetSuccess(false)
+                        setResetEmail('')
+                      }}
+                      className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+                    >
+                      <X className="w-6 h-6" />
+                    </button>
+                  </div>
+
+                  <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
+                    Enter your email address and we'll send you a link to reset your password.
+                  </p>
+
+                  {resetError && (
+                    <div className="mb-4 p-3 bg-red-100 dark:bg-red-900/30 border border-red-300 dark:border-red-700 rounded-lg text-red-700 dark:text-red-300 text-sm">
+                      {resetError}
+                    </div>
+                  )}
+
+                  <form onSubmit={handleForgotPassword} className="space-y-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                        Email Address
+                      </label>
+                      <div className="relative">
+                        <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+                        <input
+                          type="email"
+                          required
+                          value={resetEmail}
+                          onChange={(e) => setResetEmail(e.target.value)}
+                          className="w-full pl-10 pr-4 py-3 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-gray-900 dark:text-white"
+                          placeholder="your@email.com"
+                        />
+                      </div>
+                    </div>
+
+                    <button
+                      type="submit"
+                      disabled={resetLoading}
+                      className="w-full py-3 bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-bold rounded-xl hover:shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                    >
+                      {resetLoading ? (
+                        <>
+                          <Loader2 className="w-5 h-5 animate-spin" />
+                          Sending...
+                        </>
+                      ) : (
+                        <>
+                          Send Reset Link
+                          <ArrowRight className="w-5 h-5" />
+                        </>
+                      )}
+                    </button>
+                  </form>
+                </>
+              ) : (
+                <div className="text-center py-4">
+                  <div className="w-16 h-16 bg-green-100 dark:bg-green-900/30 rounded-full flex items-center justify-center mx-auto mb-4">
+                    <Mail className="w-8 h-8 text-green-600" />
+                  </div>
+                  <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-2">
+                    Check Your Email
+                  </h3>
+                  <p className="text-sm text-gray-600 dark:text-gray-400 mb-2">
+                    We've sent a password reset link to:
+                  </p>
+                  <p className="text-blue-600 dark:text-blue-400 font-semibold mb-4">
+                    {resetEmail}
+                  </p>
+                  <p className="text-xs text-gray-500 dark:text-gray-400 mb-6">
+                    Click the link in the email to reset your password. The link will expire in 1 hour.
+                  </p>
                   <button
                     onClick={() => {
                       setShowForgotPassword(false)
-                      setResetError('')
                       setResetSuccess(false)
                       setResetEmail('')
                     }}
-                    className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+                    className="w-full py-3 bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-bold rounded-xl hover:shadow-lg transition-all"
                   >
-                    <X className="w-6 h-6" />
+                    Done
                   </button>
                 </div>
-
-                <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
-                  Enter your email address and we'll send you a link to reset your password.
-                </p>
-
-                {resetError && (
-                  <div className="mb-4 p-3 bg-red-100 dark:bg-red-900/30 border border-red-300 dark:border-red-700 rounded-lg text-red-700 dark:text-red-300 text-sm">
-                    {resetError}
-                  </div>
-                )}
-
-                <form onSubmit={handleForgotPassword} className="space-y-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                      Email Address
-                    </label>
-                    <div className="relative">
-                      <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
-                      <input
-                        type="email"
-                        required
-                        value={resetEmail}
-                        onChange={(e) => setResetEmail(e.target.value)}
-                        className="w-full pl-10 pr-4 py-3 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-gray-900 dark:text-white"
-                        placeholder="your@email.com"
-                      />
-                    </div>
-                  </div>
-
-                  <button
-                    type="submit"
-                    disabled={resetLoading}
-                    className="w-full py-3 bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-bold rounded-xl hover:shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-                  >
-                    {resetLoading ? (
-                      <>
-                        <Loader2 className="w-5 h-5 animate-spin" />
-                        Sending...
-                      </>
-                    ) : (
-                      <>
-                        Send Reset Link
-                        <ArrowRight className="w-5 h-5" />
-                      </>
-                    )}
-                  </button>
-                </form>
-              </>
-            ) : (
-              <div className="text-center py-4">
-                <div className="w-16 h-16 bg-green-100 dark:bg-green-900/30 rounded-full flex items-center justify-center mx-auto mb-4">
-                  <Mail className="w-8 h-8 text-green-600" />
-                </div>
-                <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-2">
-                  Check Your Email
-                </h3>
-                <p className="text-sm text-gray-600 dark:text-gray-400 mb-2">
-                  We've sent a password reset link to:
-                </p>
-                <p className="text-blue-600 dark:text-blue-400 font-semibold mb-4">
-                  {resetEmail}
-                </p>
-                <p className="text-xs text-gray-500 dark:text-gray-400 mb-6">
-                  Click the link in the email to reset your password. The link will expire in 1 hour.
-                </p>
-                <button
-                  onClick={() => {
-                    setShowForgotPassword(false)
-                    setResetSuccess(false)
-                    setResetEmail('')
-                  }}
-                  className="w-full py-3 bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-bold rounded-xl hover:shadow-lg transition-all"
-                >
-                  Done
-                </button>
-              </div>
-            )}
-          </motion.div>
-        </div>
-      )}
-    </div>
+              )}
+            </motion.div>
+          </div>
+        )}
+      </div>
+    </>
   )
 }

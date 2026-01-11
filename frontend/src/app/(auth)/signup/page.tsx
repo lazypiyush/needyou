@@ -22,6 +22,7 @@ import { auth } from '@/lib/firebase'
 import { ConfirmationResult } from 'firebase/auth'
 import Link from 'next/link'
 import Image from 'next/image'
+import ThemeToggle from '@/components/ThemeToggle'
 import { useTheme } from 'next-themes'
 
 type SignUpStep = 'email' | 'verify-email' | 'phone' | 'verify-phone'
@@ -30,7 +31,9 @@ function SignUpPageContent() {
   const [step, setStep] = useState<SignUpStep>('email')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [confirmPassword, setConfirmPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false)
   const [name, setName] = useState('')
   const [phoneNumber, setPhoneNumber] = useState('')
   const [otp, setOtp] = useState('')
@@ -138,6 +141,13 @@ function SignUpPageContent() {
     setLoading(true)
 
     try {
+      // Validate passwords match
+      if (password !== confirmPassword) {
+        setError('❌ Passwords do not match. Please try again.')
+        setLoading(false)
+        return
+      }
+
       const newUser = await signUpWithEmail(email, password, name)
       setTempUserId(newUser.uid)
 
@@ -343,345 +353,376 @@ function SignUpPageContent() {
   }
 
   return (
-    <div className="min-h-screen w-full flex items-center justify-center px-4 py-12"
-      style={{
-        background: 'linear-gradient(to bottom right, rgb(var(--gradient-from)), rgb(var(--gradient-via)), rgb(var(--gradient-to)))'
-      }}
-    >
-      {/* Hidden reCAPTCHA container - invisible mode */}
-      <div id="recaptcha-container" className="hidden"></div>
-
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        className="w-full max-w-md"
+    <>
+      <ThemeToggle />
+      <div className="min-h-screen w-full flex items-center justify-center px-4 py-12"
+        style={{
+          background: 'linear-gradient(to bottom right, rgb(var(--gradient-from)), rgb(var(--gradient-via)), rgb(var(--gradient-to)))'
+        }}
       >
-        {/* Logo */}
-        <div className="text-center mb-8">
-          <Link href="/">
-            <Image
-              src="/logo.jpg"
-              alt="NeedYou"
-              width={80}
-              height={80}
-              className="w-20 h-20 mx-auto rounded-2xl shadow-lg mb-4"
-            />
-          </Link>
-          <h1 className="text-3xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
-            Create Account
-          </h1>
-          <p
-            className="mt-2"
-            style={{
-              color: mounted && theme === 'dark' ? '#ffffff' : 'rgb(75, 85, 99)'
-            }}
-          >
-            {step === 'email' && 'Step 1: Enter your details'}
-            {step === 'verify-email' && 'Step 2: Verify your email'}
-            {step === 'phone' && 'Step 3: Add phone number'}
-            {step === 'verify-phone' && 'Step 4: Verify phone number'}
-          </p>
-        </div>
+        {/* reCAPTCHA container - must be in DOM for invisible reCAPTCHA */}
+        <div id="recaptcha-container" style={{ position: 'absolute', opacity: 0, pointerEvents: 'none' }}></div>
 
-        {/* Progress Indicator */}
-        <div className="flex justify-between mb-8 px-4">
-          {['1', '2', '3', '4'].map((num, index) => {
-            const steps: SignUpStep[] = ['email', 'verify-email', 'phone', 'verify-phone']
-            const currentIndex = steps.indexOf(step)
-            const isActive = index <= currentIndex
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="w-full max-w-md"
+        >
+          {/* Logo */}
+          <div className="text-center mb-8">
+            <Link href="/">
+              <Image
+                src="/logo.jpg"
+                alt="NeedYou"
+                width={80}
+                height={80}
+                className="w-20 h-20 mx-auto rounded-2xl shadow-lg mb-4"
+              />
+            </Link>
+            <h1 className="text-3xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
+              Create Account
+            </h1>
+            <p
+              className="mt-2"
+              style={{
+                color: mounted && theme === 'dark' ? '#ffffff' : 'rgb(75, 85, 99)'
+              }}
+            >
+              {step === 'email' && 'Step 1: Enter your details'}
+              {step === 'verify-email' && 'Step 2: Verify your email'}
+              {step === 'phone' && 'Step 3: Add phone number'}
+              {step === 'verify-phone' && 'Step 4: Verify phone number'}
+            </p>
+          </div>
 
-            return (
-              <div key={num} className={`flex flex-col items-center ${isActive ? 'text-blue-600' : 'text-gray-400'}`}>
-                <div className={`w-8 h-8 rounded-full flex items-center justify-center ${isActive ? 'bg-blue-600 text-white' : 'bg-gray-300 dark:bg-gray-700'}`}>
-                  {num}
+          {/* Progress Indicator */}
+          <div className="flex justify-between mb-8 px-4">
+            {['1', '2', '3', '4'].map((num, index) => {
+              const steps: SignUpStep[] = ['email', 'verify-email', 'phone', 'verify-phone']
+              const currentIndex = steps.indexOf(step)
+              const isActive = index <= currentIndex
+
+              return (
+                <div key={num} className={`flex flex-col items-center ${isActive ? 'text-blue-600' : 'text-gray-400'}`}>
+                  <div className={`w-8 h-8 rounded-full flex items-center justify-center ${isActive ? 'bg-blue-600 text-white' : 'bg-gray-300 dark:bg-gray-700'}`}>
+                    {num}
+                  </div>
+                  <span className="text-xs mt-1">
+                    {index === 0 && 'Email'}
+                    {index === 1 && 'Verify'}
+                    {index === 2 && 'Phone'}
+                    {index === 3 && 'Done'}
+                  </span>
                 </div>
-                <span className="text-xs mt-1">
-                  {index === 0 && 'Email'}
-                  {index === 1 && 'Verify'}
-                  {index === 2 && 'Phone'}
-                  {index === 3 && 'Done'}
-                </span>
+              )
+            })}
+          </div>
+
+          {/* Form Card */}
+          <div className="bg-white/80 dark:bg-[#1c1c1c]/80 backdrop-blur-xl p-8 rounded-3xl shadow-2xl border border-gray-200 dark:border-gray-700">
+            {error && (
+              <div className="mb-4 p-3 bg-red-100 dark:bg-red-900/30 border border-red-300 dark:border-red-700 rounded-lg text-red-700 dark:text-red-300 text-sm flex items-start gap-2">
+                <AlertCircle className="w-5 h-5 flex-shrink-0 mt-0.5" />
+                <span className="whitespace-pre-line">{error}</span>
               </div>
-            )
-          })}
-        </div>
+            )}
 
-        {/* Form Card */}
-        <div className="bg-white/80 dark:bg-gray-800/80 backdrop-blur-xl p-8 rounded-3xl shadow-2xl border border-gray-200 dark:border-gray-700">
-          {error && (
-            <div className="mb-4 p-3 bg-red-100 dark:bg-red-900/30 border border-red-300 dark:border-red-700 rounded-lg text-red-700 dark:text-red-300 text-sm flex items-start gap-2">
-              <AlertCircle className="w-5 h-5 flex-shrink-0 mt-0.5" />
-              <span className="whitespace-pre-line">{error}</span>
-            </div>
-          )}
+            {success && (
+              <div className="mb-4 p-3 bg-green-100 dark:bg-green-900/30 border border-green-300 dark:border-green-700 rounded-lg text-green-700 dark:text-green-300 text-sm flex items-start gap-2">
+                <CheckCircle className="w-5 h-5 flex-shrink-0 mt-0.5" />
+                <span>{success}</span>
+              </div>
+            )}
 
-          {success && (
-            <div className="mb-4 p-3 bg-green-100 dark:bg-green-900/30 border border-green-300 dark:border-green-700 rounded-lg text-green-700 dark:text-green-300 text-sm flex items-start gap-2">
-              <CheckCircle className="w-5 h-5 flex-shrink-0 mt-0.5" />
-              <span>{success}</span>
-            </div>
-          )}
+            {/* Step 1: Email Signup */}
+            {step === 'email' && (
+              <form onSubmit={handleEmailSignup} className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                    Full Name
+                  </label>
+                  <div className="relative">
+                    <User className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+                    <input
+                      type="text"
+                      required
+                      value={name}
+                      onChange={(e) => setName(e.target.value)}
+                      className="w-full pl-10 pr-4 py-3 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-gray-900 dark:text-white"
+                      placeholder="Enter your name"
+                    />
+                  </div>
+                </div>
 
-          {/* Step 1: Email Signup */}
-          {step === 'email' && (
-            <form onSubmit={handleEmailSignup} className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                  Full Name
-                </label>
-                <div className="relative">
-                  <User className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                    Email
+                  </label>
+                  <div className="relative">
+                    <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+                    <input
+                      type="email"
+                      required
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      className="w-full pl-10 pr-4 py-3 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-gray-900 dark:text-white"
+                      placeholder="your@email.com"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                    Password
+                  </label>
+                  <div className="relative">
+                    <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+                    <input
+                      type={showPassword ? 'text' : 'password'}
+                      required
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      className="w-full pl-10 pr-12 py-3 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-gray-900 dark:text-white"
+                      placeholder="••••••••"
+                      minLength={6}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword(!showPassword)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+                    >
+                      {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                    </button>
+                  </div>
+                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                    Minimum 6 characters
+                  </p>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                    Confirm Password
+                  </label>
+                  <div className="relative">
+                    <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+                    <input
+                      type={showConfirmPassword ? 'text' : 'password'}
+                      required
+                      value={confirmPassword}
+                      onChange={(e) => setConfirmPassword(e.target.value)}
+                      className="w-full pl-10 pr-12 py-3 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-gray-900 dark:text-white"
+                      placeholder="••••••••"
+                      minLength={6}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+                    >
+                      {showConfirmPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                    </button>
+                  </div>
+                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                    Re-enter your password to confirm
+                  </p>
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={loading}
+                  className="w-full py-3 bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-bold rounded-xl hover:shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                >
+                  {loading ? (
+                    <>
+                      <Loader2 className="w-5 h-5 animate-spin" />
+                      Creating Account...
+                    </>
+                  ) : (
+                    <>
+                      Continue
+                      <ArrowRight className="w-5 h-5" />
+                    </>
+                  )}
+                </button>
+              </form>
+            )}
+
+            {/* Step 2: Email Verification Notice */}
+            {step === 'verify-email' && (
+              <div className="space-y-4 text-center">
+                <div className="w-16 h-16 bg-blue-100 dark:bg-blue-900/30 rounded-full flex items-center justify-center mx-auto">
+                  <Mail className="w-8 h-8 text-blue-600" />
+                </div>
+                <h3 className="text-xl font-bold text-gray-900 dark:text-white">
+                  Check Your Email
+                </h3>
+                <div className="text-gray-600 dark:text-gray-400 space-y-2">
+                  <p>
+                    We've sent a verification link to <strong className="text-blue-600 dark:text-blue-400">{email}</strong>
+                  </p>
+                  <p className="text-sm">
+                    Click the link in the email to verify your address, then click the button below.
+                  </p>
+                  <p className="text-xs text-orange-600 dark:text-orange-400 flex items-center justify-center gap-1">
+                    <AlertCircle className="w-4 h-4" />
+                    Can't find it? Check your spam/junk folder
+                  </p>
+                </div>
+
+                <button
+                  onClick={handleEmailVerified}
+                  disabled={loading}
+                  className="w-full py-3 bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-bold rounded-xl hover:shadow-lg transition-all disabled:opacity-50 flex items-center justify-center gap-2"
+                >
+                  {loading ? (
+                    <>
+                      <Loader2 className="w-5 h-5 animate-spin" />
+                      Checking...
+                    </>
+                  ) : (
+                    <>
+                      <CheckCircle className="w-5 h-5" />
+                      I've Verified My Email
+                    </>
+                  )}
+                </button>
+
+                <button
+                  onClick={handleResendEmail}
+                  disabled={loading || resendCooldown > 0}
+                  className="w-full text-sm text-blue-600 dark:text-blue-400 hover:underline flex items-center justify-center gap-1 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <RefreshCw className="w-4 h-4" />
+                  {resendCooldown > 0
+                    ? `Resend in ${resendCooldown}s`
+                    : 'Resend Verification Email'}
+                </button>
+
+                <button
+                  onClick={() => {
+                    setStep('email')
+                    setError('')
+                    setSuccess('')
+                  }}
+                  disabled={loading}
+                  className="w-full text-sm text-gray-600 dark:text-gray-400 hover:underline"
+                >
+                  Change Email Address
+                </button>
+              </div>
+            )}
+
+            {/* Step 3: Phone Number - INVISIBLE reCAPTCHA */}
+            {step === 'phone' && (
+              <form onSubmit={handleSendOTP} className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                    Phone Number
+                  </label>
+                  <div className="relative">
+                    <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+                    <div className="absolute left-10 top-1/2 -translate-y-1/2 text-gray-500 font-medium">
+                      +91
+                    </div>
+                    <input
+                      type="tel"
+                      required
+                      value={phoneNumber}
+                      onChange={(e) => setPhoneNumber(e.target.value.replace(/\D/g, '').slice(0, 10))}
+                      className="w-full pl-20 pr-4 py-3 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-gray-900 dark:text-white"
+                      placeholder="9876543210"
+                      maxLength={10}
+                    />
+                  </div>
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={loading || phoneNumber.length !== 10}
+                  className="w-full py-3 bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-bold rounded-xl hover:shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                >
+                  {loading ? (
+                    <>
+                      <Loader2 className="w-5 h-5 animate-spin" />
+                      Sending OTP...
+                    </>
+                  ) : (
+                    <>
+                      Send OTP via SMS
+                      <ArrowRight className="w-5 h-5" />
+                    </>
+                  )}
+                </button>
+              </form>
+            )}
+
+            {/* Step 4: Verify Phone OTP */}
+            {step === 'verify-phone' && (
+              <form onSubmit={handleVerifyPhone} className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                    Enter OTP
+                  </label>
                   <input
                     type="text"
                     required
-                    value={name}
-                    onChange={(e) => setName(e.target.value)}
-                    className="w-full pl-10 pr-4 py-3 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-gray-900 dark:text-white"
-                    placeholder="Enter your name"
+                    value={otp}
+                    onChange={(e) => setOtp(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                    className="w-full px-4 py-3 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-gray-900 dark:text-white text-center text-2xl tracking-widest"
+                    placeholder="000000"
+                    maxLength={6}
+                    autoFocus
                   />
+                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-1 text-center">
+                    📱 OTP sent to +91{phoneNumber} via SMS
+                  </p>
                 </div>
-              </div>
 
-              <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                  Email
-                </label>
-                <div className="relative">
-                  <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
-                  <input
-                    type="email"
-                    required
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    className="w-full pl-10 pr-4 py-3 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-gray-900 dark:text-white"
-                    placeholder="your@email.com"
-                  />
-                </div>
-              </div>
+                <button
+                  type="submit"
+                  disabled={loading || otp.length !== 6}
+                  className="w-full py-3 bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-bold rounded-xl hover:shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                >
+                  {loading ? (
+                    <>
+                      <Loader2 className="w-5 h-5 animate-spin" />
+                      Verifying...
+                    </>
+                  ) : (
+                    <>
+                      Complete Sign Up
+                      <ArrowRight className="w-5 h-5" />
+                    </>
+                  )}
+                </button>
 
-              <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                  Password
-                </label>
-                <div className="relative">
-                  <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
-                  <input
-                    type={showPassword ? 'text' : 'password'}
-                    required
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    className="w-full pl-10 pr-12 py-3 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-gray-900 dark:text-white"
-                    placeholder="••••••••"
-                    minLength={6}
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowPassword(!showPassword)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
-                  >
-                    {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
-                  </button>
-                </div>
-                <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                  Minimum 6 characters
-                </p>
-              </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setStep('phone')
+                    setOtp('')
+                    setConfirmationResult(null)
+                    setPhoneNumber('')
+                    clearRecaptcha()
+                  }}
+                  className="w-full text-sm text-blue-600 dark:text-blue-400 hover:underline"
+                >
+                  Change Number / Resend OTP
+                </button>
+              </form>
+            )}
 
-              <button
-                type="submit"
-                disabled={loading}
-                className="w-full py-3 bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-bold rounded-xl hover:shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-              >
-                {loading ? (
-                  <>
-                    <Loader2 className="w-5 h-5 animate-spin" />
-                    Creating Account...
-                  </>
-                ) : (
-                  <>
-                    Continue
-                    <ArrowRight className="w-5 h-5" />
-                  </>
-                )}
-              </button>
-            </form>
-          )}
-
-          {/* Step 2: Email Verification Notice */}
-          {step === 'verify-email' && (
-            <div className="space-y-4 text-center">
-              <div className="w-16 h-16 bg-blue-100 dark:bg-blue-900/30 rounded-full flex items-center justify-center mx-auto">
-                <Mail className="w-8 h-8 text-blue-600" />
-              </div>
-              <h3 className="text-xl font-bold text-gray-900 dark:text-white">
-                Check Your Email
-              </h3>
-              <div className="text-gray-600 dark:text-gray-400 space-y-2">
-                <p>
-                  We've sent a verification link to <strong className="text-blue-600 dark:text-blue-400">{email}</strong>
-                </p>
-                <p className="text-sm">
-                  Click the link in the email to verify your address, then click the button below.
-                </p>
-                <p className="text-xs text-orange-600 dark:text-orange-400 flex items-center justify-center gap-1">
-                  <AlertCircle className="w-4 h-4" />
-                  Can't find it? Check your spam/junk folder
-                </p>
-              </div>
-
-              <button
-                onClick={handleEmailVerified}
-                disabled={loading}
-                className="w-full py-3 bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-bold rounded-xl hover:shadow-lg transition-all disabled:opacity-50 flex items-center justify-center gap-2"
-              >
-                {loading ? (
-                  <>
-                    <Loader2 className="w-5 h-5 animate-spin" />
-                    Checking...
-                  </>
-                ) : (
-                  <>
-                    <CheckCircle className="w-5 h-5" />
-                    I've Verified My Email
-                  </>
-                )}
-              </button>
-
-              <button
-                onClick={handleResendEmail}
-                disabled={loading || resendCooldown > 0}
-                className="w-full text-sm text-blue-600 dark:text-blue-400 hover:underline flex items-center justify-center gap-1 disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                <RefreshCw className="w-4 h-4" />
-                {resendCooldown > 0
-                  ? `Resend in ${resendCooldown}s`
-                  : 'Resend Verification Email'}
-              </button>
-
-              <button
-                onClick={() => {
-                  setStep('email')
-                  setError('')
-                  setSuccess('')
-                }}
-                disabled={loading}
-                className="w-full text-sm text-gray-600 dark:text-gray-400 hover:underline"
-              >
-                Change Email Address
-              </button>
-            </div>
-          )}
-
-          {/* Step 3: Phone Number - INVISIBLE reCAPTCHA */}
-          {step === 'phone' && (
-            <form onSubmit={handleSendOTP} className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                  Phone Number
-                </label>
-                <div className="relative">
-                  <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
-                  <div className="absolute left-10 top-1/2 -translate-y-1/2 text-gray-500 font-medium">
-                    +91
-                  </div>
-                  <input
-                    type="tel"
-                    required
-                    value={phoneNumber}
-                    onChange={(e) => setPhoneNumber(e.target.value.replace(/\D/g, '').slice(0, 10))}
-                    className="w-full pl-20 pr-4 py-3 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-gray-900 dark:text-white"
-                    placeholder="9876543210"
-                    maxLength={10}
-                  />
-                </div>
-              </div>
-
-              <button
-                type="submit"
-                disabled={loading || phoneNumber.length !== 10}
-                className="w-full py-3 bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-bold rounded-xl hover:shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-              >
-                {loading ? (
-                  <>
-                    <Loader2 className="w-5 h-5 animate-spin" />
-                    Sending OTP...
-                  </>
-                ) : (
-                  <>
-                    Send OTP via SMS
-                    <ArrowRight className="w-5 h-5" />
-                  </>
-                )}
-              </button>
-            </form>
-          )}
-
-          {/* Step 4: Verify Phone OTP */}
-          {step === 'verify-phone' && (
-            <form onSubmit={handleVerifyPhone} className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                  Enter OTP
-                </label>
-                <input
-                  type="text"
-                  required
-                  value={otp}
-                  onChange={(e) => setOtp(e.target.value.replace(/\D/g, '').slice(0, 6))}
-                  className="w-full px-4 py-3 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-gray-900 dark:text-white text-center text-2xl tracking-widest"
-                  placeholder="000000"
-                  maxLength={6}
-                  autoFocus
-                />
-                <p className="text-xs text-gray-500 dark:text-gray-400 mt-1 text-center">
-                  📱 OTP sent to +91{phoneNumber} via SMS
-                </p>
-              </div>
-
-              <button
-                type="submit"
-                disabled={loading || otp.length !== 6}
-                className="w-full py-3 bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-bold rounded-xl hover:shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-              >
-                {loading ? (
-                  <>
-                    <Loader2 className="w-5 h-5 animate-spin" />
-                    Verifying...
-                  </>
-                ) : (
-                  <>
-                    Complete Sign Up
-                    <ArrowRight className="w-5 h-5" />
-                  </>
-                )}
-              </button>
-
-              <button
-                type="button"
-                onClick={() => {
-                  setStep('phone')
-                  setOtp('')
-                  setConfirmationResult(null)
-                  setPhoneNumber('')
-                  clearRecaptcha()
-                }}
-                className="w-full text-sm text-blue-600 dark:text-blue-400 hover:underline"
-              >
-                Change Number / Resend OTP
-              </button>
-            </form>
-          )}
-
-          {/* Sign In Link */}
-          <p className="text-center mt-6 text-sm text-gray-600 dark:text-gray-400">
-            Already have an account?{' '}
-            <Link href="/signin" className="text-blue-600 dark:text-blue-400 font-semibold hover:underline">
-              Sign In
-            </Link>
-          </p>
-        </div>
-      </motion.div>
-    </div>
+            {/* Sign In Link */}
+            <p className="text-center mt-6 text-sm text-gray-600 dark:text-gray-400">
+              Already have an account?{' '}
+              <Link href="/signin" className="text-blue-600 dark:text-blue-400 font-semibold hover:underline">
+                Sign In
+              </Link>
+            </p>
+          </div>
+        </motion.div>
+      </div>
+    </>
   )
 }
 
