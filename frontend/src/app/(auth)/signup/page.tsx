@@ -7,7 +7,7 @@ import { Mail, Lock, User, Phone, ArrowRight, Loader2, CheckCircle, Eye, EyeOff,
 import {
   signUpWithEmail,
   sendOTP,
-  verifyOTPSignIn,
+  linkPhoneToEmailAccount,
   addPhoneToUser,
   checkEmailVerification,
   resendVerificationEmail,
@@ -310,19 +310,19 @@ function SignUpPageContent() {
     try {
       if (!confirmationResult) throw new Error('Please request OTP first')
 
-      // Verify OTP
-      await verifyOTPSignIn(confirmationResult, otp)
+      // Link phone credential to email account (instead of creating separate account)
+      await linkPhoneToEmailAccount(confirmationResult, otp)
 
-      // Add phone to user document
+      // Add phone to user document in Firestore
       const formattedPhone = phoneNumber.startsWith('+91') ? phoneNumber : `+91${phoneNumber}`
       await addPhoneToUser(tempUserId, formattedPhone)
 
-      console.log('✅ Phone verified and added to profile')
+      console.log('✅ Phone credential linked and added to profile')
 
       // Sign out user after complete signup
       await signOutUser()
 
-      setSuccess('🎉 Sign up complete! Redirecting to sign in...')
+      setSuccess('🎉 Sign up complete! You can now sign in with either email or phone number.')
 
       // Redirect to sign in page
       setTimeout(() => {

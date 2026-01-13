@@ -222,7 +222,7 @@ export default function SignInPage() {
     }
   }
 
-  // ✅ UPDATED: Fixed phone login verification
+  // ✅ UPDATED: Phone login with linked credentials
   const handleVerifyOTP = async (e: React.FormEvent) => {
     e.preventDefault()
     setError('')
@@ -232,41 +232,32 @@ export default function SignInPage() {
     try {
       if (!confirmationResult) throw new Error('Please request OTP first')
 
-      // Verify OTP - This signs in user with phone
+      // Verify OTP - Firebase returns the same user whether signing in with email or phone (if linked)
       const phoneUser = await verifyOTPSignIn(confirmationResult, otp)
 
       console.log('✅ Phone OTP verified, user:', phoneUser.uid)
       console.log('📱 Phone number:', phoneUser.phoneNumber)
 
-      // Get user by phone number (not by UID, since phone auth might create different UID)
-      const formattedPhone = phoneNumber.startsWith('+91') ? phoneNumber : `+91${phoneNumber}`
-      const userData = await getUserByPhoneNumber(formattedPhone)
-
-      if (!userData) {
-        // Profile doesn't exist - this phone number not registered
-        setError('❌ No account found with this phone number.\n\nPlease sign up first or sign in with email if you already have an account.')
-        setLoading(false)
-        return
-      }
-
-      console.log('✅ Found user data:', userData)
+      // Get user verification status
+      const verificationStatus = await getUserVerificationStatus(phoneUser.uid)
+      console.log('🔍 Verification status:', verificationStatus)
 
       // Check if email is verified
-      if (!userData.emailVerified) {
+      if (!verificationStatus?.emailVerified) {
         setError('⚠️ Please verify your email before signing in.\n\nSign in with email to complete verification.')
         setLoading(false)
         return
       }
 
       // Check if profile is complete
-      if (!userData.profileComplete) {
+      if (!verificationStatus?.profileComplete) {
         setError('⚠️ Profile incomplete. Please complete signup with email first.')
         setLoading(false)
         return
       }
 
       // Check onboarding status
-      const onboardingStatus = await checkOnboardingStatus(userData.uid)
+      const onboardingStatus = await checkOnboardingStatus(phoneUser.uid)
       console.log('🔍 Onboarding status:', onboardingStatus)
 
       if (!onboardingStatus?.onboardingComplete) {

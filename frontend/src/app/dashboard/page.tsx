@@ -6,6 +6,8 @@ import { useAuth } from '@/context/AuthContext'
 import { Loader2, MapPin, Search, Filter, Home, Plus, Bell, User, Briefcase, Edit, Trash2 } from 'lucide-react'
 import ThemeToggle from '@/components/ThemeToggle'
 import { useTheme } from 'next-themes'
+import { getJobs, Job } from '@/lib/auth'
+import JobCard from '@/components/JobCard'
 
 export default function DashboardPage() {
     const router = useRouter()
@@ -18,6 +20,8 @@ export default function DashboardPage() {
     const [hoveredTab, setHoveredTab] = useState<string | null>(null)
     const [userLocation, setUserLocation] = useState<{ city: string; state: string; country: string } | null>(null)
     const [showLocationModal, setShowLocationModal] = useState(false)
+    const [jobs, setJobs] = useState<Job[]>([])
+    const [loadingJobs, setLoadingJobs] = useState(false)
 
     useEffect(() => {
         setMounted(true)
@@ -78,6 +82,32 @@ export default function DashboardPage() {
             fetchSavedAddresses()
         }
     }, [showLocationModal, user])
+
+    // Fetch jobs
+    const fetchJobs = async () => {
+        setLoadingJobs(true)
+        try {
+            const allJobs = await getJobs({ status: 'open' })
+            setJobs(allJobs)
+        } catch (error) {
+            console.error('Error fetching jobs:', error)
+        } finally {
+            setLoadingJobs(false)
+        }
+    }
+
+    useEffect(() => {
+        if (user) {
+            fetchJobs()
+        }
+    }, [user])
+
+    // Navigate to create job page when create tab is clicked
+    useEffect(() => {
+        if (activeTab === 'create') {
+            router.push('/dashboard/create-job')
+        }
+    }, [activeTab, router])
 
     const handleSetDefaultAddress = async (addressId: string) => {
         if (!user) return
@@ -214,7 +244,7 @@ export default function DashboardPage() {
                             </div>
 
                             {/* Theme Toggle - Right */}
-                            <ThemeToggle />
+                            <ThemeToggle variant="inline" />
                         </div>
                     </div>
                 </div>
@@ -223,37 +253,79 @@ export default function DashboardPage() {
                 <div className="max-w-7xl mx-auto px-4 py-6 md:ml-64">
                     {activeTab === 'home' && (
                         <div>
-                            <h1 className="text-2xl font-bold mb-4" style={{ color: mounted && isDark ? '#ffffff' : '#111827' }}>
-                                Welcome back, {user?.displayName || 'User'}! 👋
+                            <h1 className="text-2xl font-bold mb-6" style={{ color: mounted && isDark ? '#ffffff' : '#111827' }}>
+                                Available Jobs
                             </h1>
-                            <p style={{ color: mounted && isDark ? '#dbd7d7ff' : '#6b7280' }}>
-                                Your dashboard content will go here
-                            </p>
+                            {loadingJobs ? (
+                                <div className="flex items-center justify-center py-12">
+                                    <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
+                                </div>
+                            ) : jobs.length === 0 ? (
+                                <div className="text-center py-12">
+                                    <Briefcase className="w-16 h-16 mx-auto mb-4 text-gray-400" />
+                                    <p className="text-gray-500 dark:text-gray-400">No jobs available yet</p>
+                                </div>
+                            ) : (
+                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                                    {jobs.map((job) => (
+                                        <JobCard
+                                            key={job.id}
+                                            job={job}
+                                            onApply={() => {
+                                                // Refresh jobs after applying
+                                                fetchJobs()
+                                            }}
+                                        />
+                                    ))}
+                                </div>
+                            )}
                         </div>
                     )}
-
                     {activeTab === 'jobs' && (
                         <div>
-                            <h1 className="text-2xl font-bold mb-4" style={{ color: mounted && isDark ? '#ffffff' : '#111827' }}>
+                            <h1 className="text-2xl font-bold mb-6" style={{ color: mounted && isDark ? '#ffffff' : '#111827' }}>
                                 My Jobs
                             </h1>
-                            <p style={{ color: mounted && isDark ? '#dbd7d7ff' : '#6b7280' }}>
-                                Your active and completed jobs will appear here
-                            </p>
+                            {loadingJobs ? (
+                                <div className="flex items-center justify-center py-12">
+                                    <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
+                                </div>
+                            ) : jobs.filter(j => j.userId === user?.uid).length === 0 ? (
+                                <div className="text-center py-12">
+                                    <Briefcase className="w-16 h-16 mx-auto mb-4 text-gray-400" />
+                                    <p className="text-gray-500 dark:text-gray-400 mb-4">You haven't created any jobs yet</p>
+                                    <button
+                                        onClick={() => setActiveTab('create')}
+                                        className="px-6 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-bold rounded-xl hover:shadow-lg transition-all"
+                                    >
+                                        Create Your First Job
+                                    </button>
+                                </div>
+                            ) : (
+                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                                    {jobs.filter(j => j.userId === user?.uid).map((job) => (
+                                        <JobCard
+                                            key={job.id}
+                                            job={job}
+                                            onDelete={() => {
+                                                // Refresh jobs after deleting
+                                                fetchJobs()
+                                            }}
+                                            onEdit={() => {
+                                                // TODO: Navigate to edit page
+                                                alert('Edit functionality coming soon!')
+                                            }}
+                                        />
+                                    ))}
+                                </div>
+                            )}
                         </div>
                     )}
-
                     {activeTab === 'create' && (
-                        <div>
-                            <h1 className="text-2xl font-bold mb-4" style={{ color: mounted && isDark ? '#ffffff' : '#111827' }}>
-                                Create New Job
-                            </h1>
-                            <p style={{ color: mounted && isDark ? '#dbd7d7ff' : '#6b7280' }}>
-                                Job creation form will go here
-                            </p>
+                        <div className="flex items-center justify-center py-12">
+                            <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
                         </div>
                     )}
-
                     {activeTab === 'notifications' && (
                         <div>
                             <h1 className="text-2xl font-bold mb-4" style={{ color: mounted && isDark ? '#ffffff' : '#111827' }}>

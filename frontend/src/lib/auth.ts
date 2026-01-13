@@ -158,6 +158,52 @@ export const verifyOTPSignIn = async (
 }
 
 
+// Link phone credential to existing email account (for signup)
+export const linkPhoneToEmailAccount = async (
+  confirmationResult: ConfirmationResult,
+  otp: string
+) => {
+  try {
+    console.log('🔗 Linking phone credential to email account...')
+
+    const currentUser = auth.currentUser
+    if (!currentUser) {
+      throw new Error('No user signed in. Please sign in with email first.')
+    }
+
+    // Get phone credential from OTP verification
+    const { PhoneAuthProvider, linkWithCredential } = await import('firebase/auth')
+    const credential = PhoneAuthProvider.credential(
+      confirmationResult.verificationId,
+      otp
+    )
+
+    // Link credential to current user
+    await linkWithCredential(currentUser, credential)
+
+    console.log('✅ Phone credential linked successfully')
+    clearRecaptcha()
+
+    return currentUser
+  } catch (error: any) {
+    console.error('❌ Link Phone Credential Error:', error)
+    clearRecaptcha()
+
+    if (error.code === 'auth/invalid-verification-code') {
+      throw new Error('Invalid OTP. Please check and try again.')
+    } else if (error.code === 'auth/code-expired') {
+      throw new Error('OTP expired. Please request a new one.')
+    } else if (error.code === 'auth/credential-already-in-use') {
+      throw new Error('This phone number is already linked to another account.')
+    } else if (error.code === 'auth/provider-already-linked') {
+      throw new Error('Phone number is already linked to this account.')
+    } else {
+      throw new Error(error.message || 'Failed to link phone number')
+    }
+  }
+}
+
+
 // Sign Up with Email/Password
 export const signUpWithEmail = async (
   email: string,
@@ -760,6 +806,211 @@ export const setDefaultAddress = async (userId: string, addressId: string): Prom
   } catch (error: any) {
     console.error('❌ Set Default Address Error:', error)
     throw new Error(error.message || 'Failed to set default address')
+  }
+}
+
+// ========================================
+// JOB MANAGEMENT FUNCTIONS
+// ========================================
+
+export interface JobMedia {
+  type: 'image' | 'video'
+  url: string
+  publicId: string
+  thumbnailUrl?: string
+}
+
+export interface Job {
+  id: string
+  userId: string
+  userName: string
+  userEmail: string
+  caption: string
+  budget: number
+  media: JobMedia[]
+  location: {
+    latitude: number
+    longitude: number
+    city: string
+    state: string
+    country: string
+  }
+  status: 'open' | 'in-progress' | 'completed' | 'cancelled'
+  applicants: string[]
+  createdAt: number
+  updatedAt: number
+}
+
+export interface CreateJobData {
+  caption: string
+  budget: number
+  media: JobMedia[]
+  location: {
+    latitude: number
+    longitude: number
+    city: string
+    state: string
+    country: string
+  }
+}
+
+// Create a new job
+export const createJob = async (userId: string, jobData: CreateJobData): Promise<string> => {
+  try {
+    console.log('💼 Creating job for user:', userId)
+
+    // Get user info
+    const userDoc = await getDoc(doc(db, 'users', userId))
+    if (!userDoc.exists()) {
+      throw new Error('User not found')
+    }
+
+    const userData = userDoc.data()
+    const jobId = `job_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
+
+    const job: Job = {
+      id: jobId,
+      userId,
+      userName: userData.name || 'Unknown',
+      userEmail: userData.email || '',
+      caption: jobData.caption,
+      budget: jobData.budget,
+      media: jobData.media,
+      location: jobData.location,
+      status: 'open',
+      applicants: [],
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    }
+
+    await setDoc(doc(db, 'jobs', jobId), job)
+    console.log('✅ Job created successfully:', jobId)
+
+    return jobId
+  } catch (error: any) {
+    console.error('❌ Create Job Error:', error)
+    throw new Error(error.message || 'Failed to create job')
+  }
+}
+
+// Get all jobs with optional filters
+export const getJobs = async (filters?: {
+  userId?: string
+  status?: string
+  limit?: number
+}): Promise<Job[]> => {
+  try {
+    console.log('📋 Fetching jobs with filters:', filters)
+
+    const jobsRef = collection(db, 'jobs')
+    let q = query(jobsRef)
+
+    // Apply filters
+    if (filters?.userId) {
+      q = query(q, where('userId', '==', filters.userId))
+    }
+    if (filters?.status) {
+      q = query(q, where('status', '==', filters.status))
+    }
+
+    const snapshot = await getDocs(q)
+    const jobs: Job[] = []
+
+    snapshot.forEach((doc) => {
+      jobs.push(doc.data() as Job)
+    })
+
+    // Sort by newest first
+    jobs.sort((a, b) => b.createdAt - a.createdAt)
+
+    // Apply limit if specified
+    if (filters?.limit) {
+      return jobs.slice(0, filters.limit)
+    }
+
+    console.log('✅ Fetched', jobs.length, 'jobs')
+    return jobs
+  } catch (error: any) {
+    console.error('❌ Get Jobs Error:', error)
+    throw new Error(error.message || 'Failed to fetch jobs')
+  }
+}
+
+// Get a single job by ID
+export const getJobById = async (jobId: string): Promise<Job | null> => {
+  try {
+    const jobDoc = await getDoc(doc(db, 'jobs', jobId))
+    if (jobDoc.exists()) {
+      return jobDoc.data() as Job
+    }
+    return null
+  } catch (error: any) {
+    console.error('❌ Get Job Error:', error)
+    throw new Error(error.message || 'Failed to fetch job')
+  }
+}
+
+// Apply to a job
+export const applyToJob = async (jobId: string, userId: string): Promise<void> => {
+  try {
+    console.log('📝 User', userId, 'applying to job', jobId)
+
+    const jobDoc = await getDoc(doc(db, 'jobs', jobId))
+    if (!jobDoc.exists()) {
+      throw new Error('Job not found')
+    }
+
+    const job = jobDoc.data() as Job
+
+    // Check if user is the job owner
+    if (job.userId === userId) {
+      throw new Error('You cannot apply to your own job')
+    }
+
+    // Check if already applied
+    if (job.applicants.includes(userId)) {
+      throw new Error('You have already applied to this job')
+    }
+
+    // Add user to applicants
+    await updateDoc(doc(db, 'jobs', jobId), {
+      applicants: [...job.applicants, userId],
+      updatedAt: Date.now(),
+    })
+
+    console.log('✅ Application submitted successfully')
+  } catch (error: any) {
+    console.error('❌ Apply to Job Error:', error)
+    throw new Error(error.message || 'Failed to apply to job')
+  }
+}
+
+// Update job status
+export const updateJobStatus = async (
+  jobId: string,
+  status: 'open' | 'in-progress' | 'completed' | 'cancelled'
+): Promise<void> => {
+  try {
+    await updateDoc(doc(db, 'jobs', jobId), {
+      status,
+      updatedAt: Date.now(),
+    })
+    console.log('✅ Job status updated to:', status)
+  } catch (error: any) {
+    console.error('❌ Update Job Status Error:', error)
+    throw new Error(error.message || 'Failed to update job status')
+  }
+}
+
+// Delete a job
+export const deleteJob = async (jobId: string): Promise<void> => {
+  try {
+    const { deleteDoc } = await import('firebase/firestore')
+    await deleteDoc(doc(db, 'jobs', jobId))
+    console.log('✅ Job deleted successfully')
+  } catch (error: any) {
+    console.error('❌ Delete Job Error:', error)
+    throw new Error(error.message || 'Failed to delete job')
   }
 }
 
