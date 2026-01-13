@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef, useCallback, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { motion } from 'framer-motion'
-import { MapPin, Navigation, Home, Building2, ArrowRight, Loader2, AlertCircle, Check } from 'lucide-react'
+import { MapPin, Navigation, Home, Building2, ArrowRight, Loader2, AlertCircle, Check, Search } from 'lucide-react'
 import { useAuth } from '@/context/AuthContext'
 import {
     updateUserLocation,
@@ -24,9 +24,11 @@ function LocationContent() {
     const searchParams = useSearchParams()
     const { user, loading: authLoading } = useAuth()
     const mapRef = useRef<HTMLDivElement>(null)
+    const searchInputRef = useRef<HTMLInputElement>(null)
     const isFirstIdle = useRef(true)
     const [map, setMap] = useState<google.maps.Map | null>(null)
     const [googleMapsLoaded, setGoogleMapsLoaded] = useState(false)
+    const [searchQuery, setSearchQuery] = useState('')
 
     const [detecting, setDetecting] = useState(false)
     const [location, setLocation] = useState<LocationData | null>(null)
@@ -152,6 +154,28 @@ function LocationContent() {
             })
 
             setMap(newMap)
+
+            // Initialize Google Places Autocomplete
+            if (searchInputRef.current) {
+                const autocomplete = new google.maps.places.Autocomplete(searchInputRef.current, {
+                    fields: ['geometry', 'formatted_address', 'address_components'],
+                })
+
+                autocomplete.addListener('place_changed', () => {
+                    const place = autocomplete.getPlace()
+                    if (place.geometry && place.geometry.location) {
+                        const lat = place.geometry.location.lat()
+                        const lng = place.geometry.location.lng()
+
+                        // Move map to selected location
+                        newMap.setCenter({ lat, lng })
+                        newMap.setZoom(16)
+
+                        // Update location data
+                        updateLocationFromMapCenter(newMap)
+                    }
+                })
+            }
         }
     }, [googleMapsLoaded, location, map])
 
@@ -391,6 +415,19 @@ function LocationContent() {
                                     </div>
                                 ) : (
                                     <div className="space-y-4">
+                                        {/* Search Location Input */}
+                                        <div className="relative">
+                                            <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+                                            <input
+                                                ref={searchInputRef}
+                                                type="text"
+                                                value={searchQuery}
+                                                onChange={(e) => setSearchQuery(e.target.value)}
+                                                placeholder="Search for a location..."
+                                                className="w-full pl-12 pr-4 py-3 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-gray-900 dark:text-white"
+                                            />
+                                        </div>
+
                                         {/* Map Container with Professional Fixed Center Pin */}
                                         <div className="relative">
                                             <div
@@ -436,7 +473,7 @@ function LocationContent() {
                                                             📍 {location.area ? `${location.area}, ` : ''}{location.city}, {location.state}
                                                         </p>
                                                         <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                                                            Move the map to select your exact location
+                                                            Search or move the map to select your exact location
                                                         </p>
                                                     </div>
                                                     {updatingLocation && (
