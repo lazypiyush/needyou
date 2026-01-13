@@ -17,36 +17,73 @@ export const detectUserLocation = (): Promise<GeolocationPosition> => {
             return
         }
 
-        navigator.geolocation.getCurrentPosition(
-            (position) => {
-                console.log('✅ Location detected:', position.coords)
-                resolve(position)
-            },
-            (error) => {
-                console.error('❌ Geolocation error:', error)
+        // Try with high accuracy first (better for desktop, may timeout on mobile)
+        const tryHighAccuracy = () => {
+            navigator.geolocation.getCurrentPosition(
+                (position) => {
+                    console.log('✅ Location detected (high accuracy):', position.coords)
+                    resolve(position)
+                },
+                (error) => {
+                    console.warn('⚠️ High accuracy failed, trying low accuracy...', error)
 
-                switch (error.code) {
-                    case error.PERMISSION_DENIED:
-                        reject(new Error('Location permission denied. Please enable location access or enter manually.'))
-                        break
-                    case error.POSITION_UNAVAILABLE:
-                        reject(new Error('Location information unavailable. Please enter manually.'))
-                        break
-                    case error.TIMEOUT:
-                        reject(new Error('Location request timed out. Please try again or enter manually.'))
-                        break
-                    default:
-                        reject(new Error('An unknown error occurred. Please enter location manually.'))
+                    // If high accuracy times out, try with lower accuracy (faster on mobile)
+                    if (error.code === error.TIMEOUT) {
+                        tryLowAccuracy()
+                    } else {
+                        handleError(error)
+                    }
+                },
+                {
+                    enableHighAccuracy: true,
+                    timeout: 15000, // 15 seconds for high accuracy
+                    maximumAge: 30000 // Accept cached position up to 30 seconds old
                 }
-            },
-            {
-                enableHighAccuracy: true,
-                timeout: 10000,
-                maximumAge: 0
+            )
+        }
+
+        // Fallback: Try with low accuracy (faster, works better on mobile)
+        const tryLowAccuracy = () => {
+            navigator.geolocation.getCurrentPosition(
+                (position) => {
+                    console.log('✅ Location detected (low accuracy):', position.coords)
+                    resolve(position)
+                },
+                (error) => {
+                    handleError(error)
+                },
+                {
+                    enableHighAccuracy: false, // Faster, uses network/WiFi instead of GPS
+                    timeout: 30000, // 30 seconds for low accuracy
+                    maximumAge: 60000 // Accept older cached position
+                }
+            )
+        }
+
+        // Handle errors
+        const handleError = (error: GeolocationPositionError) => {
+            console.error('❌ Geolocation error:', error)
+
+            switch (error.code) {
+                case error.PERMISSION_DENIED:
+                    reject(new Error('Location permission denied. Please enable location access in your browser settings.'))
+                    break
+                case error.POSITION_UNAVAILABLE:
+                    reject(new Error('Location information unavailable. Please check your device settings and try again.'))
+                    break
+                case error.TIMEOUT:
+                    reject(new Error('Location request timed out. Please ensure location services are enabled and try again.'))
+                    break
+                default:
+                    reject(new Error('Unable to detect location. Please enter your address manually.'))
             }
-        )
+        }
+
+        // Start with high accuracy
+        tryHighAccuracy()
     })
 }
+
 
 
 // Reverse geocode coordinates to get address using Google Maps Geocoding API
