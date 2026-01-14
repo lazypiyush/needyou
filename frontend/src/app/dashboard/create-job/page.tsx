@@ -242,7 +242,7 @@ export default function CreateJobPage() {
                                 Budget (₹) <span className="text-red-500">*</span>
                             </label>
                             <div className="relative">
-                                <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+                                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 font-semibold">₹</span>
                                 <input
                                     type="number"
                                     value={budget}
@@ -251,7 +251,7 @@ export default function CreateJobPage() {
                                     required
                                     min="1"
                                     step="1"
-                                    className="w-full pl-10 pr-4 py-3 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-gray-900 dark:text-white"
+                                    className="w-full pl-8 pr-4 py-3 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-gray-900 dark:text-white"
                                 />
                             </div>
                         </div>
