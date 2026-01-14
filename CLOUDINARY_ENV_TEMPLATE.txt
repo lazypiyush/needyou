@@ -1,0 +1,10 @@
+# Cloudinary Environment Variables Template
+# Copy these lines to your frontend/.env.local file
+
+NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME=dqqqiguao
+NEXT_PUBLIC_CLOUDINARY_API_KEY=639758818134344
+CLOUDINARY_API_SECRET=oHW_ySS8KsO1pCGJt2i3ccDltzc
+NEXT_PUBLIC_CLOUDINARY_UPLOAD_PRESET=needyou_unsigned
+
+# IMPORTANT: After adding these to .env.local, restart your dev server
+# Stop the current server (Ctrl+C) and run: npm run dev

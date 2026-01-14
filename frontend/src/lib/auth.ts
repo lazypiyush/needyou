@@ -834,6 +834,7 @@ export interface Job {
     city: string
     state: string
     country: string
+    area?: string
   }
   status: 'open' | 'in-progress' | 'completed' | 'cancelled'
   applicants: string[]
@@ -868,6 +869,20 @@ export const createJob = async (userId: string, jobData: CreateJobData): Promise
     const userData = userDoc.data()
     const jobId = `job_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
 
+    // Clean location data - remove undefined fields
+    const cleanLocation: any = {
+      latitude: jobData.location.latitude,
+      longitude: jobData.location.longitude,
+      city: jobData.location.city,
+      state: jobData.location.state,
+      country: jobData.location.country,
+    }
+
+    // Only add area if it's defined
+    if (jobData.location.area) {
+      cleanLocation.area = jobData.location.area
+    }
+
     const job: Job = {
       id: jobId,
       userId,
@@ -875,8 +890,8 @@ export const createJob = async (userId: string, jobData: CreateJobData): Promise
       userEmail: userData.email || '',
       caption: jobData.caption,
       budget: jobData.budget,
-      media: jobData.media,
-      location: jobData.location,
+      media: jobData.media || [], // Ensure media is always an array
+      location: cleanLocation,
       status: 'open',
       applicants: [],
       createdAt: Date.now(),
