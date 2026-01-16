@@ -8,6 +8,10 @@ import ThemeToggle from '@/components/ThemeToggle'
 import { useTheme } from 'next-themes'
 import { getJobs, Job } from '@/lib/auth'
 import JobCard from '@/components/JobCard'
+import { filterJobsByDistance, filterJobsByCity, addDistanceToJobs } from '@/lib/distance'
+import { db } from '@/lib/firebase'
+import { doc, getDoc } from 'firebase/firestore'
+import { getUniqueCategories } from '@/lib/gemini'
 
 export default function DashboardPage() {
     const router = useRouter()
@@ -18,10 +22,17 @@ export default function DashboardPage() {
     const [searchQuery, setSearchQuery] = useState('')
     const [showFilters, setShowFilters] = useState(false)
     const [hoveredTab, setHoveredTab] = useState<string | null>(null)
-    const [userLocation, setUserLocation] = useState<{ city: string; state: string; country: string } | null>(null)
+    const [userLocation, setUserLocation] = useState<{ city: string; state: string; country: string; latitude?: number; longitude?: number } | null>(null)
     const [showLocationModal, setShowLocationModal] = useState(false)
     const [jobs, setJobs] = useState<Job[]>([])
     const [loadingJobs, setLoadingJobs] = useState(false)
+
+    // Filter states
+    const [distanceFilter, setDistanceFilter] = useState<string>('all')
+    const [customDistance, setCustomDistance] = useState<string>('')
+    const [filteredJobs, setFilteredJobs] = useState<Job[]>([])
+    const [selectedCategory, setSelectedCategory] = useState<string>('All')
+    const [categories, setCategories] = useState<string[]>([])
 
     useEffect(() => {
         setMounted(true)
@@ -35,8 +46,11 @@ export default function DashboardPage() {
         const fetchUserLocation = async () => {
             if (user) {
                 try {
-                    const { db } = await import('@/lib/firebase')
-                    const { doc, getDoc } = await import('firebase/firestore')
+                    if (!db) {
+                        console.error('Firestore not initialized')
+                        return
+                    }
+
                     const userDoc = await getDoc(doc(db, 'users', user.uid))
 
                     if (userDoc.exists()) {
@@ -45,7 +59,9 @@ export default function DashboardPage() {
                             setUserLocation({
                                 city: userData.location.city || '',
                                 state: userData.location.state || '',
-                                country: userData.location.country || ''
+                                country: userData.location.country || '',
+                                latitude: userData.location.latitude,
+                                longitude: userData.location.longitude,
                             })
                         }
                     }
@@ -87,8 +103,12 @@ export default function DashboardPage() {
     const fetchJobs = async () => {
         setLoadingJobs(true)
         try {
-            const allJobs = await getJobs({ status: 'open' })
+            const allJobs = await getJobs()
             setJobs(allJobs)
+
+            // Extract unique categories
+            const uniqueCategories = getUniqueCategories(allJobs)
+            setCategories(uniqueCategories)
         } catch (error) {
             console.error('Error fetching jobs:', error)
         } finally {
@@ -101,6 +121,79 @@ export default function DashboardPage() {
             fetchJobs()
         }
     }, [user])
+
+    // Apply filters whenever jobs, search, or distance filter changes
+    useEffect(() => {
+        let result = [...jobs]
+
+        // FIRST: Filter by user's city - only show jobs in the same city
+        if (userLocation?.city) {
+            result = result.filter(job =>
+                job.location.city.toLowerCase() === userLocation.city.toLowerCase()
+            )
+        }
+
+        // Apply search filter
+        if (searchQuery.trim()) {
+            const query = searchQuery.toLowerCase()
+            result = result.filter(job =>
+                job.caption.toLowerCase().includes(query) ||
+                job.location.city.toLowerCase().includes(query) ||
+                job.location.state.toLowerCase().includes(query)
+            )
+        }
+
+        // Apply distance filter
+        if (userLocation && distanceFilter !== 'all') {
+            // Check if db is initialized
+            if (!db) {
+                console.error('Firestore not initialized for distance filter')
+                setFilteredJobs(result)
+                return
+            }
+
+            // Get user's full location with coordinates
+            if (user) {
+                getDoc(doc(db, 'users', user.uid)).then((userDoc: any) => {
+                    if (userDoc.exists()) {
+                        const userData = userDoc.data()
+                        if (userData.location?.latitude && userData.location?.longitude) {
+                            const userLat = userData.location.latitude
+                            const userLon = userData.location.longitude
+
+                            if (distanceFilter === '2km') {
+                                result = filterJobsByDistance(result, userLat, userLon, 2)
+                            } else if (distanceFilter === '5km') {
+                                result = filterJobsByDistance(result, userLat, userLon, 5)
+                            } else if (distanceFilter === 'city') {
+                                result = filterJobsByCity(result, userLocation.city)
+                            } else if (distanceFilter === 'custom' && customDistance) {
+                                const distance = parseFloat(customDistance)
+                                if (!isNaN(distance) && distance > 0) {
+                                    result = filterJobsByDistance(result, userLat, userLon, distance)
+                                }
+                            }
+
+                            // Add distance to jobs for display
+                            result = addDistanceToJobs(result, userLat, userLon)
+                            setFilteredJobs(result)
+                        }
+                    }
+                }).catch((error: any) => {
+                    console.error('Error fetching user location for filter:', error)
+                    setFilteredJobs(result)
+                })
+                return
+            }
+        }
+
+        // Apply category filter
+        if (selectedCategory !== 'All') {
+            result = result.filter(job => job.category === selectedCategory)
+        }
+
+        setFilteredJobs(result)
+    }, [jobs, searchQuery, distanceFilter, customDistance, userLocation, user, selectedCategory])
 
     // Navigate to create job page when create tab is clicked
     useEffect(() => {
@@ -194,10 +287,15 @@ export default function DashboardPage() {
                     background: 'linear-gradient(to bottom right, rgb(var(--gradient-from)), rgb(var(--gradient-via)), rgb(var(--gradient-to)))'
                 }}>
                 {/* Top Bar */}
-                <div className="sticky top-0 z-40 backdrop-blur-md border-b border-gray-200 dark:border-gray-700 shadow-sm"
+                <div
+                    className="sticky top-0 z-40 backdrop-blur-md border-b border-gray-200 dark:border-gray-700"
                     style={{
-                        backgroundColor: 'rgba(var(--gradient-from), 0.8)'
-                    }}>
+                        backgroundColor: mounted && isDark ? 'rgba(28, 28, 28, 0.8)' : 'rgba(255, 255, 255, 0.8)',
+                        boxShadow: mounted && isDark
+                            ? '0 1px 2px 0 rgba(255, 255, 255, 0.05)'
+                            : '0 1px 2px 0 rgba(0, 0, 0, 0.05)',
+                    }}
+                >
                     <div className="max-w-7xl mx-auto px-4 py-3">
                         <div className="flex items-center justify-between gap-4">
 
@@ -236,8 +334,12 @@ export default function DashboardPage() {
 
                                 {/* Filter Button */}
                                 <button
-                                    onClick={() => setShowFilters(!showFilters)}
-                                    className="p-2 bg-gray-100 dark:bg-gray-700 rounded-full hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors"
+                                    onClick={() => {
+                                        console.log('Filter button clicked, current state:', showFilters)
+                                        setShowFilters(!showFilters)
+                                    }}
+                                    className="p-2 bg-gray-100 dark:bg-gray-700 rounded-full hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors relative z-10"
+                                    type="button"
                                 >
                                     <Filter className="w-4 h-4 text-gray-600 dark:text-white" />
                                 </button>
@@ -253,26 +355,139 @@ export default function DashboardPage() {
                 <div className="max-w-7xl mx-auto px-4 py-6 md:ml-64">
                     {activeTab === 'home' && (
                         <div>
-                            <h1 className="text-2xl font-bold mb-6" style={{ color: mounted && isDark ? '#ffffff' : '#111827' }}>
-                                Available Jobs
+                            <h1 className="text-2xl font-bold mb-2" style={{ color: mounted && isDark ? '#ffffff' : '#111827' }}>
+                                {filteredJobs.length} {filteredJobs.length === 1 ? 'Job' : 'Jobs'} Available
                             </h1>
+
+                            {/* Category Filter Buttons */}
+                            {categories.length > 0 && (
+                                <div className="mb-4 overflow-x-auto scrollbar-hide">
+                                    <div className="flex gap-2 pb-2">
+                                        {/* All Button */}
+                                        <button
+                                            onClick={() => setSelectedCategory('All')}
+                                            className={`px-4 py-2 rounded-full font-medium whitespace-nowrap transition-all ${selectedCategory === 'All'
+                                                    ? 'bg-blue-600 text-white shadow-lg'
+                                                    : 'bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700'
+                                                }`}
+                                        >
+                                            All
+                                        </button>
+
+                                        {/* Dynamic Category Buttons */}
+                                        {categories.map((category) => (
+                                            <button
+                                                key={category}
+                                                onClick={() => setSelectedCategory(category)}
+                                                className={`px-4 py-2 rounded-full font-medium whitespace-nowrap transition-all ${selectedCategory === category
+                                                        ? 'bg-blue-600 text-white shadow-lg'
+                                                        : 'bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700'
+                                                    }`}
+                                            >
+                                                {category}
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+
+                            <p className="text-sm text-gray-600 dark:text-gray-400 mb-6">
+                                {distanceFilter !== 'all' && `Filtered by distance`}
+                                {distanceFilter !== 'all' && searchQuery && ` • `}
+                                {searchQuery && `Search: "${searchQuery}"`}
+                            </p>
+
+                            {/* Collapsible Filter Panel */}
+                            {showFilters && (
+                                <div
+                                    className="mb-6 p-5 rounded-xl border-2 border-gray-200 dark:border-gray-700 space-y-4 shadow-sm"
+                                    style={{ backgroundColor: mounted && isDark ? '#0a0a0a' : '#f9fafb' }}
+                                >
+                                    <h3
+                                        className="font-bold text-lg flex items-center gap-2"
+                                        style={{ color: mounted && isDark ? '#ffffff' : '#111827' }}
+                                    >
+                                        <Filter className="w-5 h-5 text-blue-600 dark:text-blue-400" />
+                                        Distance Filters
+                                    </h3>
+
+                                    <div className="flex flex-wrap gap-3">
+                                        <select
+                                            value={distanceFilter}
+                                            onChange={(e) => setDistanceFilter(e.target.value)}
+                                            className="px-4 py-2.5 bg-white dark:bg-gray-800 border-2 border-gray-300 dark:border-gray-600 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 dark:focus:border-blue-400 outline-none text-gray-900 dark:text-white font-medium"
+                                        >
+                                            <option value="all">All Locations</option>
+                                            <option value="2km">Within 2 km</option>
+                                            <option value="5km">Within 5 km</option>
+                                            <option value="city">Entire City</option>
+                                            <option value="custom">Custom Distance</option>
+                                        </select>
+
+                                        {distanceFilter === 'custom' && (
+                                            <input
+                                                type="number"
+                                                value={customDistance}
+                                                onChange={(e) => setCustomDistance(e.target.value)}
+                                                placeholder="Enter distance in km"
+                                                min="1"
+                                                step="0.5"
+                                                className="px-4 py-2.5 bg-white dark:bg-gray-800 border-2 border-gray-300 dark:border-gray-600 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 dark:focus:border-blue-400 outline-none text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 w-48 font-medium"
+                                            />
+                                        )}
+
+                                        {(searchQuery || distanceFilter !== 'all') && (
+                                            <button
+                                                onClick={() => {
+                                                    setSearchQuery('')
+                                                    setDistanceFilter('all')
+                                                    setCustomDistance('')
+                                                }}
+                                                className="px-4 py-2.5 bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-400 border-2 border-red-200 dark:border-red-800 rounded-xl hover:bg-red-100 dark:hover:bg-red-900/30 transition-colors font-semibold"
+                                            >
+                                                Clear All Filters
+                                            </button>
+                                        )}
+                                    </div>
+                                </div>
+                            )}
+
                             {loadingJobs ? (
                                 <div className="flex items-center justify-center py-12">
                                     <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
                                 </div>
-                            ) : jobs.length === 0 ? (
+                            ) : filteredJobs.length === 0 ? (
                                 <div className="text-center py-12">
                                     <Briefcase className="w-16 h-16 mx-auto mb-4 text-gray-400" />
-                                    <p className="text-gray-500 dark:text-gray-400">No jobs available yet</p>
+                                    <p className="text-gray-500 dark:text-gray-400">
+                                        {jobs.length === 0 ? 'No jobs available yet' : 'No jobs match your filters'}
+                                    </p>
+                                    {(searchQuery || distanceFilter !== 'all') && (
+                                        <button
+                                            onClick={() => {
+                                                setSearchQuery('')
+                                                setDistanceFilter('all')
+                                                setCustomDistance('')
+                                            }}
+                                            className="mt-4 px-4 py-2 bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition-colors"
+                                        >
+                                            Clear Filters
+                                        </button>
+                                    )}
                                 </div>
                             ) : (
-                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                                    {jobs.map((job) => (
+                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 max-w-md md:max-w-none mx-auto">
+                                    {filteredJobs.map((job) => (
                                         <JobCard
                                             key={job.id}
                                             job={job}
+                                            userLocation={userLocation?.latitude && userLocation?.longitude ? { latitude: userLocation.latitude, longitude: userLocation.longitude } : null}
                                             onApply={() => {
                                                 // Refresh jobs after applying
+                                                fetchJobs()
+                                            }}
+                                            onDelete={() => {
+                                                // Refresh jobs after deletion
                                                 fetchJobs()
                                             }}
                                         />
@@ -311,10 +526,6 @@ export default function DashboardPage() {
                                                 // Refresh jobs after deleting
                                                 fetchJobs()
                                             }}
-                                            onEdit={() => {
-                                                // TODO: Navigate to edit page
-                                                alert('Edit functionality coming soon!')
-                                            }}
                                         />
                                     ))}
                                 </div>
@@ -350,10 +561,15 @@ export default function DashboardPage() {
                 </div>
 
                 {/* Bottom Navigation - Mobile Only */}
-                <div className="fixed bottom-0 left-0 right-0 md:hidden backdrop-blur-md border-t border-gray-200 dark:border-gray-700 shadow-sm z-50"
+                <div
+                    className="fixed bottom-0 left-0 right-0 md:hidden backdrop-blur-md border-t border-gray-200 dark:border-gray-700 z-50"
                     style={{
-                        backgroundColor: 'rgba(var(--gradient-from), 0.8)'
-                    }}>
+                        backgroundColor: mounted && isDark ? 'rgba(28, 28, 28, 0.8)' : 'rgba(255, 255, 255, 0.8)',
+                        boxShadow: mounted && isDark
+                            ? '0 -1px 2px 0 rgba(255, 255, 255, 0.05)'
+                            : '0 -1px 2px 0 rgba(0, 0, 0, 0.05)',
+                    }}
+                >
                     <div className="relative flex items-center justify-around px-2 py-2">
                         {/* Home */}
                         <button

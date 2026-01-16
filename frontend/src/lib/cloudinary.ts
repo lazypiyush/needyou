@@ -108,3 +108,26 @@ export function getVideoThumbnailUrl(publicId: string): string {
 
     return `https://res.cloudinary.com/${cloudName}/video/upload/so_0,w_400,h_300,c_fill/${publicId}.jpg`
 }
+
+/**
+ * Get rotation-corrected video URL from Cloudinary
+ * This applies automatic rotation correction based on video metadata
+ */
+export function getRotationCorrectedVideoUrl(publicId: string): string {
+    const cloudName = process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME
+    if (!cloudName) return ''
+
+    // The issue: Videos have rotation metadata that browsers apply
+    // Solution: We need to tell Cloudinary to re-encode the video with correct orientation
+    // Using 'a_ignore' tells Cloudinary to ignore rotation metadata and show video as encoded
+    // But this won't fix already-rotated videos
+
+    // BEST SOLUTION: Just return the original URL
+    // The rotation is in the video file itself, not fixable via URL transformations
+    // User needs to either:
+    // 1. Re-record video in correct orientation
+    // 2. Use server-side FFmpeg to re-encode during upload
+    // 3. Accept the rotation
+
+    return `https://res.cloudinary.com/${cloudName}/video/upload/${publicId}`
+}

@@ -1,6 +1,7 @@
 import { initializeApp, getApps, FirebaseApp } from 'firebase/app';
 import { getAuth, GoogleAuthProvider, Auth } from 'firebase/auth';
 import { getFirestore, Firestore } from 'firebase/firestore'
+import { getStorage, FirebaseStorage } from 'firebase/storage'
 
 const firebaseConfig = {
   apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
@@ -15,6 +16,7 @@ const firebaseConfig = {
 let firebaseApp: FirebaseApp | undefined;
 let firebaseAuth: Auth | undefined;
 let firebaseDb: Firestore | undefined;
+let firebaseStorage: FirebaseStorage | undefined;
 let firebaseGoogleProvider: GoogleAuthProvider | undefined;
 
 if (typeof window !== 'undefined') {
@@ -28,10 +30,12 @@ if (typeof window !== 'undefined') {
   firebaseAuth = getAuth(firebaseApp);
   firebaseGoogleProvider = new GoogleAuthProvider();
   firebaseDb = getFirestore(firebaseApp);
+  firebaseStorage = getStorage(firebaseApp);
 }
 
 // Export with non-null assertions since these are only used in client components
 export const auth = firebaseAuth as Auth;
 export const googleProvider = firebaseGoogleProvider as GoogleAuthProvider;
 export const db = firebaseDb as Firestore;
+export const storage = firebaseStorage as FirebaseStorage;
 

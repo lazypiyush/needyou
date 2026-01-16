@@ -7,9 +7,9 @@ const nextConfig: NextConfig = {
   },
   // Vercel server components support
   serverExternalPackages: ['firebase-admin'],
-  // Move Next.js development indicator to bottom-right
+  // Move Next.js development indicator to bottom-left to avoid chat button
   devIndicators: {
-    position: 'bottom-right'
+    position: 'bottom-left'
   }
 };
 

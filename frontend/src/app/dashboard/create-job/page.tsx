@@ -23,6 +23,8 @@ export default function CreateJobPage() {
     const [uploadProgress, setUploadProgress] = useState(0)
     const [error, setError] = useState('')
     const [userLocation, setUserLocation] = useState<any>(null)
+    const [savedAddresses, setSavedAddresses] = useState<any[]>([])
+    const [selectedAddressId, setSelectedAddressId] = useState<string>('')
 
     useEffect(() => {
         setMounted(true)
@@ -31,29 +33,41 @@ export default function CreateJobPage() {
     const currentTheme = theme === 'system' ? systemTheme : theme
     const isDark = currentTheme === 'dark'
 
-    // Fetch user location
+    // Fetch user saved addresses
     useEffect(() => {
-        const fetchUserLocation = async () => {
+        const fetchAddresses = async () => {
             if (user) {
                 try {
-                    const { db } = await import('@/lib/firebase')
-                    const { doc, getDoc } = await import('firebase/firestore')
-                    const userDoc = await getDoc(doc(db, 'users', user.uid))
+                    const { getUserAddresses } = await import('@/lib/auth')
+                    const addresses = await getUserAddresses(user.uid)
+                    setSavedAddresses(addresses)
 
-                    if (userDoc.exists()) {
-                        const userData = userDoc.data()
-                        if (userData.location) {
-                            setUserLocation(userData.location)
-                        }
+                    // Set default address as selected
+                    const defaultAddr = addresses.find((addr: any) => addr.isDefault)
+                    if (defaultAddr) {
+                        setSelectedAddressId(defaultAddr.id)
+                        setUserLocation(defaultAddr.location)
+                    } else if (addresses.length > 0) {
+                        setSelectedAddressId(addresses[0].id)
+                        setUserLocation(addresses[0].location)
                     }
                 } catch (error) {
-                    console.error('Error fetching user location:', error)
+                    console.error('Error fetching addresses:', error)
                 }
             }
         }
 
-        fetchUserLocation()
+        fetchAddresses()
     }, [user])
+
+    // Update location when address selection changes
+    const handleAddressChange = (addressId: string) => {
+        setSelectedAddressId(addressId)
+        const selected = savedAddresses.find(addr => addr.id === addressId)
+        if (selected) {
+            setUserLocation(selected.location)
+        }
+    }
 
     // Redirect if not authenticated
     useEffect(() => {
@@ -133,20 +147,35 @@ export default function CreateJobPage() {
 
                 const result = await uploadToCloudinary(file)
 
-                uploadedMedia.push({
+                const mediaItem: any = {
                     type: result.resource_type,
                     url: result.secure_url,
                     publicId: result.public_id,
-                    thumbnailUrl: result.resource_type === 'video' ? getVideoThumbnailUrl(result.public_id) : undefined,
-                })
+                }
+
+                // Only add thumbnailUrl for videos
+                if (result.resource_type === 'video') {
+                    mediaItem.thumbnailUrl = getVideoThumbnailUrl(result.public_id)
+                }
+
+                uploadedMedia.push(mediaItem)
             }
 
-            // Create job data
+            // Create job data with clean location (no undefined fields)
+            const cleanLocation = {
+                latitude: userLocation.latitude,
+                longitude: userLocation.longitude,
+                city: userLocation.city || '',
+                state: userLocation.state || '',
+                country: userLocation.country || '',
+                ...(userLocation.area && { area: userLocation.area })
+            }
+
             const jobData: CreateJobData = {
                 caption: caption.trim(),
                 budget: budgetNum,
                 media: uploadedMedia,
-                location: userLocation,
+                location: cleanLocation,
             }
 
             // Create job in Firestore
@@ -206,8 +235,12 @@ export default function CreateJobPage() {
                 {/* Form */}
                 <form onSubmit={handleSubmit} className="space-y-6">
                     <div
-                        className="bg-white/80 dark:bg-[#1c1c1c]/80 backdrop-blur-xl p-6 rounded-2xl shadow-xl border"
-                        style={{ borderColor: isDark ? '#2a2a2a' : '#e5e7eb' }}
+                        className="bg-white/80 backdrop-blur-xl p-6 rounded-2xl shadow-xl border"
+                        style={{
+                            backgroundColor: isDark ? 'rgba(10, 10, 10, 0.9)' : 'rgba(255, 255, 255, 0.8)',
+                            borderColor: isDark ? '#2a2a2a' : '#e5e7eb',
+                            boxShadow: isDark ? '0 0 30px rgba(255, 255, 255, 0.1), 0 0 60px rgba(255, 255, 255, 0.05)' : undefined
+                        }}
                     >
                         {error && (
                             <div className="mb-4 p-3 bg-red-100 dark:bg-red-900/30 border border-red-300 dark:border-red-700 rounded-lg text-red-700 dark:text-red-300 text-sm">
@@ -229,7 +262,11 @@ export default function CreateJobPage() {
                                 placeholder="Describe the job you need help with..."
                                 rows={4}
                                 required
-                                className="w-full px-4 py-3 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-gray-900 dark:text-white resize-none"
+                                className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none resize-none"
+                                style={{
+                                    backgroundColor: isDark ? '#2a2a2a' : '#ffffff',
+                                    color: isDark ? '#ffffff' : '#111827'
+                                }}
                             />
                         </div>
 
@@ -251,7 +288,11 @@ export default function CreateJobPage() {
                                     required
                                     min="1"
                                     step="1"
-                                    className="w-full pl-8 pr-4 py-3 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-gray-900 dark:text-white"
+                                    className="w-full pl-8 pr-4 py-3 border border-gray-300 dark:border-gray-600 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
+                                    style={{
+                                        backgroundColor: isDark ? '#2a2a2a' : '#ffffff',
+                                        color: isDark ? '#ffffff' : '#111827'
+                                    }}
                                 />
                             </div>
                         </div>
@@ -316,13 +357,34 @@ export default function CreateJobPage() {
                             )}
                         </div>
 
-                        {/* Location Display */}
-                        {userLocation && (
-                            <div className="mb-6 p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg flex items-center gap-2">
-                                <MapPin className="w-5 h-5 text-blue-600 dark:text-blue-400" />
-                                <span className="text-sm" style={{ color: isDark ? '#93c5fd' : '#1e40af' }}>
-                                    {userLocation.city}, {userLocation.state}, {userLocation.country}
-                                </span>
+                        {/* Location Selector */}
+                        {savedAddresses.length > 0 && (
+                            <div className="mb-6">
+                                <label
+                                    className="block text-sm font-medium mb-2"
+                                    style={{ color: isDark ? '#ffffff' : '#111827' }}
+                                >
+                                    Job Location <span className="text-red-500">*</span>
+                                </label>
+                                <div className="relative">
+                                    <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+                                    <select
+                                        value={selectedAddressId}
+                                        onChange={(e) => handleAddressChange(e.target.value)}
+                                        className="w-full pl-10 pr-4 py-3 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-gray-900 dark:text-white appearance-none cursor-pointer"
+                                    >
+                                        {savedAddresses.map((addr) => (
+                                            <option key={addr.id} value={addr.id}>
+                                                {addr.label || addr.type} - {addr.location.city}, {addr.location.state}
+                                            </option>
+                                        ))}
+                                    </select>
+                                    <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none">
+                                        <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                                        </svg>
+                                    </div>
+                                </div>
                             </div>
                         )}
 

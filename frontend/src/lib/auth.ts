@@ -11,11 +11,18 @@ import {
   onAuthStateChanged,
   User
 } from 'firebase/auth'
-import { doc, setDoc, updateDoc, getDoc, collection, query, where, getDocs } from 'firebase/firestore'
+import { doc, setDoc, updateDoc, getDoc, collection, query, where, getDocs, onSnapshot, addDoc, orderBy, Timestamp } from 'firebase/firestore'
 import { auth, db } from './firebase'
 
-
 let recaptchaVerifier: RecaptchaVerifier | null = null
+
+// Helper function to ensure db is initialized
+const ensureDbInitialized = () => {
+  if (!db) {
+    throw new Error('Firestore is not initialized. Please ensure you are running this in a browser environment.')
+  }
+  return db
+}
 
 
 // Clear existing reCAPTCHA completely
@@ -521,6 +528,19 @@ export const getUserByPhoneNumber = async (phoneNumber: string) => {
 }
 
 
+// Message interface with media support
+export interface Message {
+  id: string
+  senderId: string
+  senderName: string
+  text?: string
+  mediaUrl?: string
+  mediaType?: 'image' | 'video' | 'audio'
+  fileName?: string
+  fileSize?: number
+  timestamp: number
+  read: boolean
+}
 // ========================================
 // ONBOARDING FUNCTIONS
 // ========================================
@@ -838,6 +858,7 @@ export interface Job {
   }
   status: 'open' | 'in-progress' | 'completed' | 'cancelled'
   applicants: string[]
+  category?: string // AI-generated category
   createdAt: number
   updatedAt: number
 }
@@ -852,6 +873,7 @@ export interface CreateJobData {
     city: string
     state: string
     country: string
+    area?: string
   }
 }
 
@@ -883,6 +905,18 @@ export const createJob = async (userId: string, jobData: CreateJobData): Promise
       cleanLocation.area = jobData.location.area
     }
 
+    // Categorize job using Gemini AI
+    let category = 'Other'
+    try {
+      const { categorizeJobWithAI } = await import('./gemini')
+      const result = await categorizeJobWithAI(jobData.caption)
+      if (result.success) {
+        category = result.category
+      }
+    } catch (aiError) {
+      console.warn('⚠️ AI categorization failed, using default category:', aiError)
+    }
+
     const job: Job = {
       id: jobId,
       userId,
@@ -894,12 +928,13 @@ export const createJob = async (userId: string, jobData: CreateJobData): Promise
       location: cleanLocation,
       status: 'open',
       applicants: [],
+      category, // AI-generated category
       createdAt: Date.now(),
       updatedAt: Date.now(),
     }
 
     await setDoc(doc(db, 'jobs', jobId), job)
-    console.log('✅ Job created successfully:', jobId)
+    console.log('✅ Job created successfully:', jobId, '| Category:', category)
 
     return jobId
   } catch (error: any) {
@@ -916,6 +951,11 @@ export const getJobs = async (filters?: {
 }): Promise<Job[]> => {
   try {
     console.log('📋 Fetching jobs with filters:', filters)
+
+    if (!db) {
+      console.error('❌ Firestore not initialized')
+      return []
+    }
 
     const jobsRef = collection(db, 'jobs')
     let q = query(jobsRef)
@@ -966,7 +1006,13 @@ export const getJobById = async (jobId: string): Promise<Job | null> => {
 }
 
 // Apply to a job
-export const applyToJob = async (jobId: string, userId: string): Promise<void> => {
+export const applyToJob = async (
+  jobId: string,
+  userId: string,
+  description: string,
+  budgetSatisfied: boolean,
+  counterOffer?: number
+): Promise<void> => {
   try {
     console.log('📝 User', userId, 'applying to job', jobId)
 
@@ -991,6 +1037,24 @@ export const applyToJob = async (jobId: string, userId: string): Promise<void> =
     await updateDoc(doc(db, 'jobs', jobId), {
       applicants: [...job.applicants, userId],
       updatedAt: Date.now(),
+    })
+
+    // Fetch user data to include in application
+    const userDoc = await getDoc(doc(db, 'users', userId))
+    const userData = userDoc.data()
+
+    // Create application document with details
+    await addDoc(collection(db, 'job_applications'), {
+      jobId,
+      userId: userId,
+      userName: userData?.name || 'Unknown',
+      userEmail: userData?.email || '',
+      userPhone: userData?.phoneNumber || '',
+      description,
+      budgetSatisfied,
+      counterOffer: counterOffer || null,
+      appliedAt: Date.now(),
+      status: 'pending'
     })
 
     console.log('✅ Application submitted successfully')
@@ -1029,3 +1093,401 @@ export const deleteJob = async (jobId: string): Promise<void> => {
   }
 }
 
+
+
+// ========================================
+// CHAT FUNCTIONS
+// ========================================
+
+
+export interface Conversation {
+  id: string
+  jobId: string
+  jobTitle: string
+  participants: string[]
+  participantDetails: {
+    [userId: string]: {
+      name: string
+      email: string
+    }
+  }
+  lastMessage: string
+  lastMessageTime: number
+  unreadCount: {
+    [userId: string]: number
+  }
+  createdAt: number
+  updatedAt: number
+}
+
+// Create or get conversation for a specific job
+export const createOrGetConversation = async (
+  jobId: string,
+  jobTitle: string,
+  user1Id: string,
+  user1Name: string,
+  user1Email: string,
+  user2Id: string,
+  user2Name: string,
+  user2Email: string
+): Promise<string> => {
+  try {
+    // Create conversation ID: jobId + sorted user IDs
+    const sortedUsers = [user1Id, user2Id].sort()
+    const conversationId = `${jobId}_${sortedUsers.join('_')}`
+
+    const conversationRef = doc(db, 'conversations', conversationId)
+    const conversationDoc = await getDoc(conversationRef)
+
+    if (!conversationDoc.exists()) {
+      // Create new conversation
+      const conversationData: Conversation = {
+        id: conversationId,
+        jobId,
+        jobTitle,
+        participants: [user1Id, user2Id],
+        participantDetails: {
+          [user1Id]: { name: user1Name, email: user1Email },
+          [user2Id]: { name: user2Name, email: user2Email }
+        },
+        lastMessage: '',
+        lastMessageTime: Date.now(),
+        unreadCount: {
+          [user1Id]: 0,
+          [user2Id]: 0
+        },
+        createdAt: Date.now(),
+        updatedAt: Date.now()
+      }
+
+      await setDoc(conversationRef, conversationData)
+      console.log(' Conversation created:', conversationId)
+    }
+
+    return conversationId
+  } catch (error: any) {
+    console.error(' Create Conversation Error:', error)
+    throw new Error(error.message || 'Failed to create conversation')
+  }
+}
+
+// Send message in a conversation
+export const sendMessage = async (
+  conversationId: string,
+  senderId: string,
+  senderName: string,
+  text: string
+): Promise<void> => {
+  try {
+    // Add message to subcollection
+    const messagesRef = collection(db, `conversations/${conversationId}/messages`)
+    await addDoc(messagesRef, {
+      senderId,
+      senderName,
+      text,
+      timestamp: Date.now(),
+      read: false
+    })
+
+    // Update conversation metadata
+    const conversationRef = doc(db, 'conversations', conversationId)
+    const conversationDoc = await getDoc(conversationRef)
+
+    if (conversationDoc.exists()) {
+      const conversation = conversationDoc.data() as Conversation
+      const receiverId = conversation.participants.find(id => id !== senderId)
+
+      if (receiverId) {
+        await updateDoc(conversationRef, {
+          lastMessage: text.substring(0, 100), // Preview
+          lastMessageTime: Date.now(),
+          updatedAt: Date.now(),
+          [`unreadCount.${receiverId}`]: (conversation.unreadCount[receiverId] || 0) + 1
+        })
+      }
+    }
+
+    console.log('✅ Message sent')
+  } catch (error: any) {
+    console.error(' Send Message Error:', error)
+    throw new Error(error.message || 'Failed to send message')
+  }
+}
+
+// Subscribe to user's conversations (real-time)
+export const subscribeToConversations = (
+  userId: string,
+  callback: (conversations: Conversation[]) => void
+): (() => void) => {
+  try {
+    const conversationsRef = collection(db, 'conversations')
+    const q = query(
+      conversationsRef,
+      where('participants', 'array-contains', userId),
+      orderBy('lastMessageTime', 'desc')
+    )
+
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const conversations = snapshot.docs.map(doc => ({
+        ...doc.data(),
+        id: doc.id
+      })) as Conversation[]
+      callback(conversations)
+    })
+
+    return unsubscribe
+  } catch (error: any) {
+    console.error(' Subscribe to Conversations Error:', error)
+    return () => { }
+  }
+}
+
+// Subscribe to messages in a conversation (real-time)
+export const subscribeToMessages = (
+  conversationId: string,
+  callback: (messages: Message[]) => void
+): (() => void) => {
+  try {
+    const messagesRef = collection(db, `conversations/${conversationId}/messages`)
+    const q = query(messagesRef, orderBy('timestamp', 'asc'))
+
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const messages = snapshot.docs.map(doc => ({
+        ...doc.data(),
+        id: doc.id
+      })) as Message[]
+      callback(messages)
+    })
+
+    return unsubscribe
+  } catch (error: any) {
+    console.error(' Subscribe to Messages Error:', error)
+    return () => { }
+  }
+}
+
+// Mark messages as read
+export const markMessagesAsRead = async (
+  conversationId: string,
+  userId: string
+): Promise<void> => {
+  try {
+    // Update conversation unread count
+    const conversationRef = doc(db, 'conversations', conversationId)
+    await updateDoc(conversationRef, {
+      [`unreadCount.${userId}`]: 0
+    })
+
+    // Mark all unread messages from other user as read
+    const messagesRef = collection(db, `conversations/${conversationId}/messages`)
+    const q = query(
+      messagesRef,
+      where('senderId', '!=', userId),
+      where('read', '==', false)
+    )
+
+    const snapshot = await getDocs(q)
+    const { writeBatch } = await import('firebase/firestore')
+    const batch = writeBatch(db)
+
+    snapshot.docs.forEach((messageDoc) => {
+      batch.update(messageDoc.ref, { read: true })
+    })
+
+    if (!snapshot.empty) {
+      await batch.commit()
+    }
+
+    console.log('✅ Messages marked as read')
+  } catch (error: any) {
+    console.error('❌ Mark Messages as Read Error:', error)
+  }
+}
+
+// Get total unread count for a user
+export const getUnreadCount = async (userId: string): Promise<number> => {
+  try {
+    const conversationsRef = collection(db, 'conversations')
+    const q = query(conversationsRef, where('participants', 'array-contains', userId))
+    const snapshot = await getDocs(q)
+
+    let totalUnread = 0
+    snapshot.docs.forEach(doc => {
+      const conversation = doc.data() as Conversation
+      totalUnread += conversation.unreadCount[userId] || 0
+    })
+
+    return totalUnread
+  } catch (error: any) {
+    console.error(' Get Unread Count Error:', error)
+    return 0
+  }
+}
+
+
+// Get job applications for a specific job
+export const getJobApplications = async (jobId: string): Promise<any[]> => {
+  try {
+    const applicationsRef = collection(db, 'job_applications')
+    const q = query(applicationsRef, where('jobId', '==', jobId), orderBy('appliedAt', 'desc'))
+    const snapshot = await getDocs(q)
+
+    return snapshot.docs.map(doc => ({
+      id: doc.id,
+      ...doc.data()
+    }))
+  } catch (error: any) {
+    console.error(' Get Job Applications Error:', error)
+    throw new Error(error.message || 'Failed to get job applications')
+  }
+}
+
+
+// Check if user has already applied to a job
+export const checkIfUserApplied = async (jobId: string, userId: string): Promise<boolean> => {
+  try {
+    const applicationsQuery = query(
+      collection(db, 'job_applications'),
+      where('jobId', '==', jobId),
+      where('userId', '==', userId)
+    )
+    const existingApplications = await getDocs(applicationsQuery)
+    return !existingApplications.empty
+  } catch (error: any) {
+    console.error(' Check Application Error:', error)
+    return false
+  }
+}
+
+// Get user's own application for a specific job
+export const getUserOwnApplication = async (jobId: string, userId: string): Promise<any | null> => {
+  try {
+    console.log('🔍 Query parameters:', {
+      collection: 'job_applications',
+      jobId,
+      userId,
+      queryFields: ['jobId', 'userId']
+    })
+
+    const applicationsQuery = query(
+      collection(db, 'job_applications'),
+      where('jobId', '==', jobId),
+      where('userId', '==', userId)
+    )
+    const snapshot = await getDocs(applicationsQuery)
+
+    console.log('📊 Query results:', {
+      found: snapshot.size,
+      empty: snapshot.empty
+    })
+
+    if (snapshot.empty) {
+      console.warn('⚠️ No application found with these criteria')
+      return null
+    }
+
+    const doc = snapshot.docs[0]
+    const data = {
+      id: doc.id,
+      ...doc.data()
+    }
+    console.log('✅ Found application:', data)
+    return data
+  } catch (error: any) {
+    console.error('❌ Get User Application Error:', error)
+    return null
+  }
+}
+
+
+// Upload media file to Firebase Storage
+export const uploadChatMedia = async (
+  conversationId: string,
+  file: File,
+  onProgress?: (progress: number) => void
+): Promise<string> => {
+  try {
+    const { ref, uploadBytesResumable, getDownloadURL } = await import('firebase/storage')
+    const { storage } = await import('./firebase')
+
+    // Create unique filename
+    const timestamp = Date.now()
+    const fileName = `${timestamp}_${file.name}`
+    const storageRef = ref(storage, `chat-media/${conversationId}/${fileName}`)
+
+    // Upload file
+    const uploadTask = uploadBytesResumable(storageRef, file)
+
+    return new Promise((resolve, reject) => {
+      uploadTask.on(
+        'state_changed',
+        (snapshot) => {
+          const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100
+          onProgress?.(progress)
+        },
+        (error) => {
+          console.error(' Upload Error:', error)
+          reject(error)
+        },
+        async () => {
+          const downloadURL = await getDownloadURL(uploadTask.snapshot.ref)
+          console.log(' File uploaded:', downloadURL)
+          resolve(downloadURL)
+        }
+      )
+    })
+  } catch (error: any) {
+    console.error(' Upload Media Error:', error)
+    throw new Error(error.message || 'Failed to upload media')
+  }
+}
+
+// Send media message
+export const sendMediaMessage = async (
+  conversationId: string,
+  senderId: string,
+  senderName: string,
+  mediaUrl: string,
+  mediaType: 'image' | 'video' | 'audio',
+  fileName: string,
+  fileSize: number
+): Promise<void> => {
+  try {
+    // Add message to subcollection
+    const messagesRef = collection(db, `conversations/${conversationId}/messages`)
+    await addDoc(messagesRef, {
+      senderId,
+      senderName,
+      mediaUrl,
+      mediaType,
+      fileName,
+      fileSize,
+      timestamp: Date.now(),
+      read: false
+    })
+
+    // Update conversation metadata
+    const conversationRef = doc(db, 'conversations', conversationId)
+    const conversationDoc = await getDoc(conversationRef)
+
+    if (conversationDoc.exists()) {
+      const conversation = conversationDoc.data() as Conversation
+      const receiverId = conversation.participants.find(id => id !== senderId)
+
+      if (receiverId) {
+        const mediaPreview = mediaType === 'image' ? ' Photo' : mediaType === 'video' ? ' Video' : ' Audio'
+        await updateDoc(conversationRef, {
+          lastMessage: mediaPreview,
+          lastMessageTime: Date.now(),
+          updatedAt: Date.now(),
+          [`unreadCount.${receiverId}`]: (conversation.unreadCount[receiverId] || 0) + 1
+        })
+      }
+    }
+
+    console.log(' Media message sent')
+  } catch (error: any) {
+    console.error(' Send Media Message Error:', error)
+    throw new Error(error.message || 'Failed to send media message')
+  }
+}
