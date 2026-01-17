@@ -17,6 +17,7 @@ export default function CreateJobPage() {
 
     const [caption, setCaption] = useState('')
     const [budget, setBudget] = useState('')
+    const [budgetNotSet, setBudgetNotSet] = useState(false)
     const [mediaFiles, setMediaFiles] = useState<File[]>([])
     const [mediaPreviews, setMediaPreviews] = useState<string[]>([])
     const [uploading, setUploading] = useState(false)
@@ -25,6 +26,7 @@ export default function CreateJobPage() {
     const [userLocation, setUserLocation] = useState<any>(null)
     const [savedAddresses, setSavedAddresses] = useState<any[]>([])
     const [selectedAddressId, setSelectedAddressId] = useState<string>('')
+    const [selectedAddress, setSelectedAddress] = useState<any>(null)
 
     useEffect(() => {
         setMounted(true)
@@ -46,9 +48,11 @@ export default function CreateJobPage() {
                     const defaultAddr = addresses.find((addr: any) => addr.isDefault)
                     if (defaultAddr) {
                         setSelectedAddressId(defaultAddr.id)
+                        setSelectedAddress(defaultAddr)
                         setUserLocation(defaultAddr.location)
                     } else if (addresses.length > 0) {
                         setSelectedAddressId(addresses[0].id)
+                        setSelectedAddress(addresses[0])
                         setUserLocation(addresses[0].location)
                     }
                 } catch (error) {
@@ -65,6 +69,7 @@ export default function CreateJobPage() {
         setSelectedAddressId(addressId)
         const selected = savedAddresses.find(addr => addr.id === addressId)
         if (selected) {
+            setSelectedAddress(selected)
             setUserLocation(selected.location)
         }
     }
@@ -123,10 +128,14 @@ export default function CreateJobPage() {
             return
         }
 
-        const budgetNum = parseFloat(budget)
-        if (!budget || isNaN(budgetNum) || budgetNum <= 0) {
-            setError('Please enter a valid budget')
-            return
+        // Budget validation - only required if budgetNotSet is false
+        let budgetNum: number | null = null
+        if (!budgetNotSet) {
+            budgetNum = parseFloat(budget)
+            if (!budget || isNaN(budgetNum) || budgetNum <= 0) {
+                setError('Please enter a valid budget')
+                return
+            }
         }
 
         if (!userLocation) {
@@ -168,12 +177,14 @@ export default function CreateJobPage() {
                 city: userLocation.city || '',
                 state: userLocation.state || '',
                 country: userLocation.country || '',
-                ...(userLocation.area && { area: userLocation.area })
+                ...(userLocation.area && { area: userLocation.area }),
+                ...(selectedAddress?.detailedAddress && { detailedAddress: `${selectedAddress.houseNumber}, ${selectedAddress.detailedAddress}` })
             }
 
             const jobData: CreateJobData = {
                 caption: caption.trim(),
                 budget: budgetNum,
+                budgetNotSet: budgetNotSet,
                 media: uploadedMedia,
                 location: cleanLocation,
             }
@@ -276,25 +287,52 @@ export default function CreateJobPage() {
                                 className="block text-sm font-medium mb-2"
                                 style={{ color: isDark ? '#ffffff' : '#111827' }}
                             >
-                                Budget (₹) <span className="text-red-500">*</span>
+                                Budget (₹) {!budgetNotSet && <span className="text-red-500">*</span>}
                             </label>
-                            <div className="relative">
-                                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 font-semibold">₹</span>
+
+                            {/* Checkbox for "Budget not set" */}
+                            <div className="mb-3 flex items-center gap-2">
                                 <input
-                                    type="number"
-                                    value={budget}
-                                    onChange={(e) => setBudget(e.target.value)}
-                                    placeholder="500"
-                                    required
-                                    min="1"
-                                    step="1"
-                                    className="w-full pl-8 pr-4 py-3 border border-gray-300 dark:border-gray-600 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
-                                    style={{
-                                        backgroundColor: isDark ? '#2a2a2a' : '#ffffff',
-                                        color: isDark ? '#ffffff' : '#111827'
+                                    type="checkbox"
+                                    id="budgetNotSet"
+                                    checked={budgetNotSet}
+                                    onChange={(e) => {
+                                        setBudgetNotSet(e.target.checked)
+                                        if (e.target.checked) {
+                                            setBudget('')
+                                        }
                                     }}
+                                    className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
                                 />
+                                <label
+                                    htmlFor="budgetNotSet"
+                                    className="text-sm cursor-pointer"
+                                    style={{ color: isDark ? '#9ca3af' : '#6b7280' }}
+                                >
+                                    I don't know the budget yet
+                                </label>
                             </div>
+
+                            {/* Budget input - only show if budget is set */}
+                            {!budgetNotSet && (
+                                <div className="relative">
+                                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 font-semibold">₹</span>
+                                    <input
+                                        type="number"
+                                        value={budget}
+                                        onChange={(e) => setBudget(e.target.value)}
+                                        placeholder="500"
+                                        required
+                                        min="1"
+                                        step="1"
+                                        className="w-full pl-8 pr-4 py-3 border border-gray-300 dark:border-gray-600 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
+                                        style={{
+                                            backgroundColor: isDark ? '#2a2a2a' : '#ffffff',
+                                            color: isDark ? '#ffffff' : '#111827'
+                                        }}
+                                    />
+                                </div>
+                            )}
                         </div>
 
                         {/* Media Upload */}
@@ -361,29 +399,71 @@ export default function CreateJobPage() {
                         {savedAddresses.length > 0 && (
                             <div className="mb-6">
                                 <label
-                                    className="block text-sm font-medium mb-2"
+                                    className="block text-sm font-medium mb-3"
                                     style={{ color: isDark ? '#ffffff' : '#111827' }}
                                 >
                                     Job Location <span className="text-red-500">*</span>
                                 </label>
-                                <div className="relative">
-                                    <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
-                                    <select
-                                        value={selectedAddressId}
-                                        onChange={(e) => handleAddressChange(e.target.value)}
-                                        className="w-full pl-10 pr-4 py-3 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-gray-900 dark:text-white appearance-none cursor-pointer"
-                                    >
-                                        {savedAddresses.map((addr) => (
-                                            <option key={addr.id} value={addr.id}>
-                                                {addr.label || addr.type} - {addr.location.city}, {addr.location.state}
-                                            </option>
-                                        ))}
-                                    </select>
-                                    <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none">
-                                        <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                                        </svg>
-                                    </div>
+                                <div className="space-y-3">
+                                    {savedAddresses.map((addr) => (
+                                        <div
+                                            key={addr.id}
+                                            onClick={() => handleAddressChange(addr.id)}
+                                            className={`p-4 rounded-xl border-2 cursor-pointer transition-all ${selectedAddressId === addr.id
+                                                ? 'border-blue-600 bg-blue-50 dark:bg-blue-900/20'
+                                                : 'border-gray-300 dark:border-gray-600 hover:border-blue-400 dark:hover:border-blue-500'
+                                                }`}
+                                            style={{
+                                                backgroundColor: selectedAddressId === addr.id
+                                                    ? (isDark ? 'rgba(37, 99, 235, 0.1)' : 'rgba(219, 234, 254, 1)')
+                                                    : (isDark ? '#2a2a2a' : '#ffffff')
+                                            }}
+                                        >
+                                            <div className="flex items-start gap-3">
+                                                <MapPin
+                                                    className={`w-5 h-5 mt-0.5 flex-shrink-0 ${selectedAddressId === addr.id
+                                                        ? 'text-blue-600 dark:text-blue-400'
+                                                        : 'text-gray-400'
+                                                        }`}
+                                                />
+                                                <div className="flex-1 min-w-0">
+                                                    {/* Nickname/Label */}
+                                                    <div className="flex items-center gap-2 mb-1">
+                                                        <span
+                                                            className="font-semibold text-base capitalize"
+                                                            style={{ color: isDark ? '#ffffff' : '#111827' }}
+                                                        >
+                                                            {addr.label || addr.type}
+                                                        </span>
+                                                        {addr.isDefault && (
+                                                            <span className="px-2 py-0.5 bg-blue-600 text-white text-xs font-bold rounded-full">
+                                                                DEFAULT
+                                                            </span>
+                                                        )}
+                                                    </div>
+
+                                                    {/* Full Manual Address */}
+                                                    <p
+                                                        className="text-sm font-medium"
+                                                        style={{ color: isDark ? '#e5e7eb' : '#374151' }}
+                                                    >
+                                                        {addr.houseNumber}, {addr.detailedAddress}
+                                                    </p>
+                                                </div>
+
+                                                {/* Selection Indicator */}
+                                                {selectedAddressId === addr.id && (
+                                                    <div className="flex-shrink-0">
+                                                        <div className="w-6 h-6 bg-blue-600 rounded-full flex items-center justify-center">
+                                                            <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                                                            </svg>
+                                                        </div>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </div>
+                                    ))}
                                 </div>
                             </div>
                         )}

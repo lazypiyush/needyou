@@ -162,20 +162,40 @@ export default function JobCard({ job, onApply, onDelete, userLocation }: JobCar
 
                 {/* Budget - HIGHLIGHTED */}
                 <div className="flex items-center gap-2 p-3 bg-gradient-to-r from-green-500/20 to-emerald-500/20 rounded-xl border-2 border-green-500/50">
-                    <span className="text-xl font-bold text-green-600 dark:text-green-400">
-                        ₹{job.budget.toLocaleString()}
-                    </span>
+                    {job.budgetNotSet || job.budget === null ? (
+                        <span className="text-sm font-semibold" style={{ color: isDark ? '#9ca3af' : '#6b7280' }}>
+                            Budget not set
+                        </span>
+                    ) : (
+                        <span className="text-xl font-bold text-green-600 dark:text-green-400">
+                            ₹{job.budget.toLocaleString()}
+                        </span>
+                    )}
                 </div>
 
                 {/* Location */}
-                <div className="flex items-center gap-2 text-sm" style={{ color: isDark ? '#9ca3af' : '#6b7280' }}>
-                    <MapPin className="w-4 h-4" />
-                    <span>
-                        {job.location.city}, {job.location.state}
-                        {distance !== null && (
-                            <span className="ml-2 text-blue-600 dark:text-blue-400 font-medium">
-                                • {distance < 1 ? '< 1 km' : `${distance.toFixed(1)} km`}
-                            </span>
+                <div className="flex items-start gap-2 text-sm" style={{ color: isDark ? '#9ca3af' : '#6b7280' }}>
+                    <MapPin className="w-4 h-4 mt-0.5 flex-shrink-0" />
+                    <span className="flex-1">
+                        {job.location.detailedAddress ? (
+                            <>
+                                {job.location.detailedAddress}
+                                {distance !== null && (
+                                    <span className="ml-2 text-blue-600 dark:text-blue-400 font-medium">
+                                        • {distance < 1 ? '< 1 km' : `${distance.toFixed(1)} km`}
+                                    </span>
+                                )}
+                            </>
+                        ) : (
+                            <>
+                                {job.location.area && `${job.location.area}, `}
+                                {job.location.city}, {job.location.state}
+                                {distance !== null && (
+                                    <span className="ml-2 text-blue-600 dark:text-blue-400 font-medium">
+                                        • {distance < 1 ? '< 1 km' : `${distance.toFixed(1)} km`}
+                                    </span>
+                                )}
+                            </>
                         )}
                     </span>
                 </div>

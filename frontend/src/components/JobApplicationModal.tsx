@@ -11,7 +11,8 @@ interface JobApplicationModalProps {
     job: {
         id: string
         caption: string
-        budget: number
+        budget: number | null
+        budgetNotSet?: boolean
     }
     onClose: () => void
     onSuccess: () => void
@@ -21,8 +22,10 @@ export default function JobApplicationModal({ job, onClose, onSuccess }: JobAppl
     const { user } = useAuth()
     const { theme, systemTheme } = useTheme()
     const [description, setDescription] = useState('')
-    const [budgetSatisfied, setBudgetSatisfied] = useState(true)
+    // For budget-less jobs, budgetSatisfied should always be false
+    const [budgetSatisfied, setBudgetSatisfied] = useState(!job.budgetNotSet && job.budget !== null)
     const [counterOffer, setCounterOffer] = useState('')
+    const [budgetReason, setBudgetReason] = useState('')
     const [submitting, setSubmitting] = useState(false)
     const [error, setError] = useState('')
     const [mounted, setMounted] = useState(false)
@@ -44,10 +47,17 @@ export default function JobApplicationModal({ job, onClose, onSuccess }: JobAppl
             return
         }
 
-        if (!budgetSatisfied) {
+        // For jobs without budget, counter-offer is required
+        if (!budgetSatisfied || job.budgetNotSet || job.budget === null) {
             const counterAmount = parseFloat(counterOffer)
             if (isNaN(counterAmount) || counterAmount <= 0) {
                 setError('Please enter a valid counter offer amount')
+                return
+            }
+
+            // For budget-less jobs, reason is always required
+            if ((job.budgetNotSet || job.budget === null) && !budgetReason.trim()) {
+                setError('Please provide a reason for your budget proposal')
                 return
             }
         }
@@ -65,7 +75,8 @@ export default function JobApplicationModal({ job, onClose, onSuccess }: JobAppl
                 user.uid,
                 description.trim(),
                 budgetSatisfied,
-                budgetSatisfied ? undefined : parseFloat(counterOffer)
+                budgetSatisfied ? undefined : parseFloat(counterOffer),
+                budgetReason || undefined
             )
             onSuccess()
             onClose()
@@ -112,14 +123,28 @@ export default function JobApplicationModal({ job, onClose, onSuccess }: JobAppl
                 {/* Form */}
                 <form onSubmit={handleSubmit} className="p-6 space-y-6">
                     {/* Budget Display */}
-                    <div className="p-4 bg-green-50 dark:bg-green-900/20 rounded-xl border-2 border-green-500/50">
-                        <p className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                            Offered Budget
-                        </p>
-                        <p className="text-2xl font-bold text-green-600 dark:text-green-400">
-                            ₹{job.budget.toLocaleString()}
-                        </p>
-                    </div>
+                    {!job.budgetNotSet && job.budget !== null ? (
+                        <div className="p-4 bg-green-50 dark:bg-green-900/20 rounded-xl border-2 border-green-500/50">
+                            <p className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                                Offered Budget
+                            </p>
+                            <p className="text-2xl font-bold text-green-600 dark:text-green-400">
+                                ₹{job.budget.toLocaleString()}
+                            </p>
+                        </div>
+                    ) : (
+                        <div className="p-4 bg-blue-50 dark:bg-blue-900/20 rounded-xl border-2 border-blue-500/50">
+                            <p className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                                Budget
+                            </p>
+                            <p className="text-lg font-semibold text-blue-600 dark:text-blue-400">
+                                Not set by job poster
+                            </p>
+                            <p className="text-xs mt-1 text-gray-600 dark:text-gray-400">
+                                Please propose your budget below
+                            </p>
+                        </div>
+                    )}
 
                     {/* Description Field */}
                     <div>
@@ -141,23 +166,26 @@ export default function JobApplicationModal({ job, onClose, onSuccess }: JobAppl
 
                     {/* Budget Satisfaction */}
                     <div className="space-y-3">
-                        <label className="flex items-start gap-3 cursor-pointer">
-                            <input
-                                type="checkbox"
-                                checked={budgetSatisfied}
-                                onChange={(e) => setBudgetSatisfied(e.target.checked)}
-                                className="mt-1 w-5 h-5 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
-                            />
-                            <span className="text-sm font-medium" style={{ color: isDark ? '#ffffff' : '#111827' }}>
-                                I'm satisfied with the offered budget (₹{job.budget.toLocaleString()})
-                            </span>
-                        </label>
+                        {/* Only show satisfaction checkbox if budget is set */}
+                        {!job.budgetNotSet && job.budget !== null && (
+                            <label className="flex items-start gap-3 cursor-pointer">
+                                <input
+                                    type="checkbox"
+                                    checked={budgetSatisfied}
+                                    onChange={(e) => setBudgetSatisfied(e.target.checked)}
+                                    className="mt-1 w-5 h-5 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                                />
+                                <span className="text-sm font-medium" style={{ color: isDark ? '#ffffff' : '#111827' }}>
+                                    I'm satisfied with the offered budget (₹{job.budget.toLocaleString()})
+                                </span>
+                            </label>
+                        )}
 
-                        {/* Counter Offer (shown when not satisfied) */}
-                        {!budgetSatisfied && (
-                            <div className="ml-8 mt-3">
+                        {/* Counter Offer (shown when not satisfied OR when budget not set) */}
+                        {(!budgetSatisfied || job.budgetNotSet || job.budget === null) && (
+                            <div className={job.budgetNotSet || job.budget === null ? "mt-3" : "ml-8 mt-3"}>
                                 <label className="block text-sm font-semibold mb-2" style={{ color: isDark ? '#ffffff' : '#111827' }}>
-                                    Your Counter Offer (₹)
+                                    {job.budgetNotSet || job.budget === null ? 'Your Proposed Budget (₹) *' : 'Your Counter Offer (₹)'}
                                 </label>
                                 <input
                                     type="number"
@@ -171,6 +199,39 @@ export default function JobApplicationModal({ job, onClose, onSuccess }: JobAppl
                                 <p className="text-xs mt-1 text-gray-600 dark:text-gray-400">
                                     Enter the amount you would like to be paid for this job
                                 </p>
+
+                                {/* Reason field - required for budget-less jobs */}
+                                {(job.budgetNotSet || job.budget === null) && (
+                                    <div className="mt-3">
+                                        <label className="block text-sm font-semibold mb-2" style={{ color: isDark ? '#ffffff' : '#111827' }}>
+                                            Reason <span className="text-red-500">*</span>
+                                        </label>
+                                        <textarea
+                                            value={budgetReason}
+                                            onChange={(e) => setBudgetReason(e.target.value)}
+                                            placeholder="Why are you proposing this budget?"
+                                            rows={2}
+                                            className="w-full px-4 py-3 bg-white dark:bg-gray-800 border-2 border-gray-300 dark:border-gray-600 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 resize-none"
+                                            required
+                                        />
+                                    </div>
+                                )}
+
+                                {/* Reason field with skip option - only for jobs with set budget (counter-offers) */}
+                                {!budgetSatisfied && job.budget !== null && !job.budgetNotSet && (
+                                    <div className="mt-3">
+                                        <label className="block text-sm font-semibold mb-2" style={{ color: isDark ? '#ffffff' : '#111827' }}>
+                                            Reason (Optional)
+                                        </label>
+                                        <textarea
+                                            value={budgetReason}
+                                            onChange={(e) => setBudgetReason(e.target.value)}
+                                            placeholder="Why are you offering this amount?"
+                                            rows={2}
+                                            className="w-full px-4 py-3 bg-white dark:bg-gray-800 border-2 border-gray-300 dark:border-gray-600 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 resize-none"
+                                        />
+                                    </div>
+                                )}
                             </div>
                         )}
                     </div>

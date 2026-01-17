@@ -846,7 +846,8 @@ export interface Job {
   userName: string
   userEmail: string
   caption: string
-  budget: number
+  budget: number | null
+  budgetNotSet?: boolean
   media: JobMedia[]
   location: {
     latitude: number
@@ -855,6 +856,7 @@ export interface Job {
     state: string
     country: string
     area?: string
+    detailedAddress?: string
   }
   status: 'open' | 'in-progress' | 'completed' | 'cancelled'
   applicants: string[]
@@ -865,7 +867,8 @@ export interface Job {
 
 export interface CreateJobData {
   caption: string
-  budget: number
+  budget: number | null
+  budgetNotSet?: boolean
   media: JobMedia[]
   location: {
     latitude: number
@@ -874,7 +877,31 @@ export interface CreateJobData {
     state: string
     country: string
     area?: string
+    detailedAddress?: string
   }
+}
+
+// Notification interface
+export interface Notification {
+  id: string
+  userId: string  // Recipient
+  type: 'new_application' | 'counter_offer_received' | 'applicant_counter_offer' | 'budget_accepted'
+  title: string
+  message: string
+  jobId: string
+  jobTitle: string
+  applicationId?: string
+  amount?: number
+  createdAt: number
+  read: boolean
+}
+
+// Negotiation offer interface
+export interface NegotiationOffer {
+  amount: number
+  offeredBy: 'poster' | 'applicant'
+  offeredAt: number
+  message?: string
 }
 
 // Create a new job
@@ -905,11 +932,34 @@ export const createJob = async (userId: string, jobData: CreateJobData): Promise
       cleanLocation.area = jobData.location.area
     }
 
-    // Categorize job using Gemini AI
+    // Only add detailedAddress if it's defined
+    if (jobData.location.detailedAddress) {
+      cleanLocation.detailedAddress = jobData.location.detailedAddress
+    }
+
+    // Fetch existing categories from database
+    let existingCategories: string[] = []
+    try {
+      const jobsSnapshot = await getDocs(collection(db, 'jobs'))
+      const categoriesSet = new Set<string>()
+      jobsSnapshot.forEach((doc) => {
+        const job = doc.data() as Job
+        // Exclude 'Other' - we don't want AI to think it's a valid category choice
+        if (job.category && job.category !== 'Other') {
+          categoriesSet.add(job.category)
+        }
+      })
+      existingCategories = Array.from(categoriesSet)
+      console.log('📊 Found existing categories:', existingCategories)
+    } catch (error) {
+      console.warn('⚠️ Could not fetch existing categories:', error)
+    }
+
+    // Categorize job using Gemini AI with existing categories
     let category = 'Other'
     try {
       const { categorizeJobWithAI } = await import('./gemini')
-      const result = await categorizeJobWithAI(jobData.caption)
+      const result = await categorizeJobWithAI(jobData.caption, existingCategories)
       if (result.success) {
         category = result.category
       }
@@ -924,6 +974,7 @@ export const createJob = async (userId: string, jobData: CreateJobData): Promise
       userEmail: userData.email || '',
       caption: jobData.caption,
       budget: jobData.budget,
+      budgetNotSet: jobData.budgetNotSet || false,
       media: jobData.media || [], // Ensure media is always an array
       location: cleanLocation,
       status: 'open',
@@ -1011,7 +1062,8 @@ export const applyToJob = async (
   userId: string,
   description: string,
   budgetSatisfied: boolean,
-  counterOffer?: number
+  counterOffer?: number,
+  message?: string
 ): Promise<void> => {
   try {
     console.log('📝 User', userId, 'applying to job', jobId)
@@ -1044,7 +1096,7 @@ export const applyToJob = async (
     const userData = userDoc.data()
 
     // Create application document with details
-    await addDoc(collection(db, 'job_applications'), {
+    const applicationData: any = {
       jobId,
       userId: userId,
       userName: userData?.name || 'Unknown',
@@ -1055,7 +1107,38 @@ export const applyToJob = async (
       counterOffer: counterOffer || null,
       appliedAt: Date.now(),
       status: 'pending'
-    })
+    }
+
+    // Add message if provided
+    if (message) {
+      applicationData.budgetProposalReason = message
+    }
+
+    const applicationRef = await addDoc(collection(db, 'job_applications'), applicationData)
+
+    // Create notification for job poster
+    try {
+      const { createNotification } = await import('./notifications')
+      const notificationMessage = budgetSatisfied
+        ? `${userData?.name || 'Someone'} applied to your job "${job.caption}"`
+        : `${userData?.name || 'Someone'} applied with counter-offer of ₹${counterOffer?.toLocaleString()} for "${job.caption}"`
+
+      await createNotification({
+        userId: job.userId, // Job poster
+        type: 'new_application',
+        title: 'New Application',
+        message: notificationMessage,
+        jobId,
+        jobTitle: job.caption,
+        applicationId: applicationRef.id,
+        amount: counterOffer || job.budget || 0,
+        createdAt: Date.now(),
+        read: false
+      })
+    } catch (notifError) {
+      console.error('Failed to create notification:', notifError)
+      // Don't fail the application if notification fails
+    }
 
     console.log('✅ Application submitted successfully')
   } catch (error: any) {

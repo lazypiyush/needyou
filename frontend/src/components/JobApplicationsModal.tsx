@@ -6,11 +6,13 @@ import { X, User, Mail, Phone, Clock, ChevronDown, ChevronUp, CheckCircle, XCirc
 import { getJobApplications } from '@/lib/auth'
 import { useTheme } from 'next-themes'
 import ChatModal from './ChatModal'
+import { renegotiateBudget } from '@/lib/renegotiation'
+import { useState as useReactState } from 'react'
 
 interface JobApplicationsModalProps {
     jobId: string
     jobTitle: string
-    jobBudget: number
+    jobBudget: number | null
     onClose: () => void
 }
 
@@ -21,6 +23,12 @@ export default function JobApplicationsModal({ jobId, jobTitle, jobBudget, onClo
     const [mounted, setMounted] = useState(false)
     const [expandedId, setExpandedId] = useState<string | null>(null)
     const [chatWith, setChatWith] = useState<{ userId: string; userName: string; userEmail: string; userPhone?: string } | null>(null)
+
+    // Renegotiation state
+    const [negotiatingId, setNegotiatingId] = useState<string | null>(null)
+    const [newOffer, setNewOffer] = useState<string>('')
+    const [negotiationReason, setNegotiationReason] = useState<string>('')
+    const [negotiating, setNegotiating] = useState(false)
 
     useEffect(() => {
         setMounted(true)
@@ -58,6 +66,80 @@ export default function JobApplicationsModal({ jobId, jobTitle, jobBudget, onClo
 
     const toggleExpand = (id: string) => {
         setExpandedId(expandedId === id ? null : id)
+    }
+
+    const handleAcceptCounterOffer = async (app: any) => {
+        try {
+            setNegotiating(true)
+
+            // Import updateDoc and doc from firebase
+            const { doc, updateDoc } = await import('firebase/firestore')
+            const { db } = await import('@/lib/firebase')
+            const { createNotification } = await import('@/lib/notifications')
+
+            // Update application to accepted status
+            const applicationRef = doc(db, 'job_applications', app.id)
+            await updateDoc(applicationRef, {
+                negotiationStatus: 'accepted',
+                budgetSatisfied: true,
+                currentOffer: app.counterOffer
+            })
+
+            // Create notification for applicant
+            await createNotification({
+                userId: app.userId,
+                type: 'budget_accepted',
+                title: 'Offer Accepted!',
+                message: `Job poster accepted your offer of ₹${app.counterOffer.toLocaleString()} for "${jobTitle}"`,
+                jobId,
+                jobTitle,
+                applicationId: app.id,
+                amount: app.counterOffer,
+                createdAt: Date.now(),
+                read: false
+            })
+
+            // Refresh applications
+            const apps = await getJobApplications(jobId)
+            setApplications(apps)
+            alert('Counter-offer accepted!')
+        } catch (error) {
+            console.error('Error accepting counter-offer:', error)
+            alert('Failed to accept counter-offer')
+        } finally {
+            setNegotiating(false)
+        }
+    }
+
+    const handleSendRenegotiation = async (app: any) => {
+        const offerAmount = parseFloat(newOffer)
+        if (isNaN(offerAmount) || offerAmount <= 0) {
+            alert('Please enter a valid amount')
+            return
+        }
+
+        try {
+            setNegotiating(true)
+            await renegotiateBudget(
+                app.id,
+                jobId,
+                jobTitle,
+                offerAmount,
+                negotiationReason || undefined
+            )
+            // Refresh applications
+            const apps = await getJobApplications(jobId)
+            setApplications(apps)
+            setNegotiatingId(null)
+            setNewOffer('')
+            setNegotiationReason('')
+            alert('Counter-offer sent!')
+        } catch (error) {
+            console.error('Error sending renegotiation:', error)
+            alert('Failed to send counter-offer')
+        } finally {
+            setNegotiating(false)
+        }
     }
 
     if (!mounted) return null
@@ -156,7 +238,7 @@ export default function JobApplicationsModal({ jobId, jobTitle, jobBudget, onClo
                                                             <div className="flex items-center gap-2">
                                                                 <Phone className="w-4 h-4" style={{ color: isDark ? '#6b7280' : '#9ca3af' }} />
                                                                 <span className="text-sm" style={{ color: isDark ? '#9ca3af' : '#6b7280' }}>
-                                                                    {app.userPhone}
+                                                                    {app.userPhone.startsWith('+91') ? `+91 ${app.userPhone.slice(3)}` : app.userPhone}
                                                                 </span>
                                                                 <button
                                                                     onClick={(e) => {
@@ -217,14 +299,31 @@ export default function JobApplicationsModal({ jobId, jobTitle, jobBudget, onClo
                                                         Budget
                                                     </h4>
                                                     <div className="space-y-2">
+                                                        {/* Original Job Budget */}
                                                         <div className="flex items-center gap-2">
                                                             <span className="text-sm" style={{ color: isDark ? '#9ca3af' : '#6b7280' }}>
-                                                                Job Budget:{' '}
+                                                                {app.budgetSatisfied || app.negotiationStatus === 'accepted'
+                                                                    ? 'Initial Budget:'
+                                                                    : 'Job Budget:'}{' '}
                                                                 <span className="font-bold" style={{ color: isDark ? '#ffffff' : '#111827' }}>
-                                                                    ₹{jobBudget?.toLocaleString() || 'N/A'}
+                                                                    {jobBudget ? `₹${jobBudget.toLocaleString()}` : 'Not set'}
                                                                 </span>
                                                             </span>
                                                         </div>
+
+                                                        {/* Final Agreed Budget - Only show if negotiation completed */}
+                                                        {(app.budgetSatisfied || app.negotiationStatus === 'accepted') &&
+                                                            app.currentOffer && app.currentOffer !== jobBudget && (
+                                                                <div className="flex items-center gap-2 pt-2 border-t" style={{ borderColor: isDark ? '#3a3a3a' : '#e5e7eb' }}>
+                                                                    <span className="text-sm font-semibold" style={{ color: isDark ? '#ffffff' : '#111827' }}>
+                                                                        Final Agreed Budget:{' '}
+                                                                        <span className="text-lg font-bold text-blue-600 dark:text-blue-400">
+                                                                            ₹{app.currentOffer.toLocaleString()}
+                                                                        </span>
+                                                                    </span>
+                                                                </div>
+                                                            )}
+
                                                         <div className="flex items-center gap-2">
                                                             {app.budgetSatisfied ? (
                                                                 <>
@@ -237,14 +336,156 @@ export default function JobApplicationsModal({ jobId, jobTitle, jobBudget, onClo
                                                                 <>
                                                                     <XCircle className="w-5 h-5 text-orange-600" />
                                                                     <span className="text-sm" style={{ color: isDark ? '#9ca3af' : '#6b7280' }}>
-                                                                        Counter Offer:{' '}
+                                                                        {app.negotiationHistory && app.negotiationHistory.length > 0
+                                                                            ? 'Current Offer:'
+                                                                            : 'Counter Offer:'}{' '}
                                                                         <span className="font-bold text-orange-600 dark:text-orange-400">
-                                                                            ₹{app.counterOffer?.toLocaleString() || 'N/A'}
+                                                                            {(app.currentOffer || app.counterOffer)
+                                                                                ? `₹${(app.currentOffer || app.counterOffer).toLocaleString()}`
+                                                                                : 'Not provided'}
                                                                         </span>
                                                                     </span>
                                                                 </>
                                                             )}
                                                         </div>
+
+                                                        {/* Budget Proposal Reason - Show if applicant provided one */}
+                                                        {app.budgetProposalReason && (
+                                                            <div className="mt-3 p-3 rounded-lg" style={{ backgroundColor: isDark ? '#2a2a2a' : '#f3f4f6' }}>
+                                                                <p className="text-xs font-semibold mb-1" style={{ color: isDark ? '#9ca3af' : '#6b7280' }}>
+                                                                    Budget Proposal Reason:
+                                                                </p>
+                                                                <p className="text-sm" style={{ color: isDark ? '#ffffff' : '#111827' }}>
+                                                                    {app.budgetProposalReason}
+                                                                </p>
+                                                            </div>
+                                                        )}
+
+                                                        {/* Renegotiation Actions - Only show if applicant made the last offer and not accepted */}
+                                                        {!app.budgetSatisfied && app.counterOffer &&
+                                                            (!app.offerBy || app.offerBy === 'applicant') &&
+                                                            app.negotiationStatus !== 'accepted' && (
+                                                                <div className="mt-4 space-y-3">
+                                                                    {negotiatingId === app.id ? (
+                                                                        // Renegotiation Input
+                                                                        <div className="space-y-2">
+                                                                            <label className="text-sm font-medium" style={{ color: isDark ? '#ffffff' : '#111827' }}>
+                                                                                Your Counter-Offer
+                                                                            </label>
+                                                                            <div className="flex gap-2">
+                                                                                <div className="relative flex-1">
+                                                                                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm" style={{ color: isDark ? '#9ca3af' : '#6b7280' }}>
+                                                                                        ₹
+                                                                                    </span>
+                                                                                    <input
+                                                                                        type="number"
+                                                                                        value={newOffer}
+                                                                                        onChange={(e) => setNewOffer(e.target.value)}
+                                                                                        placeholder="Enter amount"
+                                                                                        className="w-full pl-8 pr-4 py-2 rounded-lg border"
+                                                                                        style={{
+                                                                                            backgroundColor: isDark ? '#1a1a1a' : '#ffffff',
+                                                                                            borderColor: isDark ? '#3a3a3a' : '#e5e7eb',
+                                                                                            color: isDark ? '#ffffff' : '#111827'
+                                                                                        }}
+                                                                                    />
+                                                                                </div>
+                                                                            </div>
+
+                                                                            {/* Reason field */}
+                                                                            <div className="mt-3">
+                                                                                <label className="text-sm font-medium" style={{ color: isDark ? '#ffffff' : '#111827' }}>
+                                                                                    Reason (Optional)
+                                                                                </label>
+                                                                                <textarea
+                                                                                    value={negotiationReason}
+                                                                                    onChange={(e) => setNegotiationReason(e.target.value)}
+                                                                                    placeholder="Why are you offering this amount?"
+                                                                                    rows={2}
+                                                                                    className="w-full px-3 py-2 mt-1 rounded-lg border resize-none"
+                                                                                    style={{
+                                                                                        backgroundColor: isDark ? '#1a1a1a' : '#ffffff',
+                                                                                        borderColor: isDark ? '#3a3a3a' : '#e5e7eb',
+                                                                                        color: isDark ? '#ffffff' : '#111827'
+                                                                                    }}
+                                                                                />
+                                                                            </div>
+
+                                                                            <div className="flex gap-2 mt-3">
+                                                                                <button
+                                                                                    onClick={() => handleSendRenegotiation(app)}
+                                                                                    disabled={negotiating}
+                                                                                    className="px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 text-white rounded-lg font-medium transition-colors"
+                                                                                >
+                                                                                    {negotiating ? 'Sending...' : 'Send'}
+                                                                                </button>
+                                                                                <button
+                                                                                    onClick={() => {
+                                                                                        setNegotiatingId(null)
+                                                                                        setNewOffer('')
+                                                                                        setNegotiationReason('')
+                                                                                    }}
+                                                                                    className="px-4 py-2 rounded-lg font-medium transition-colors"
+                                                                                    style={{
+                                                                                        backgroundColor: isDark ? '#2a2a2a' : '#f3f4f6',
+                                                                                        color: isDark ? '#ffffff' : '#111827'
+                                                                                    }}
+                                                                                >
+                                                                                    Cancel
+                                                                                </button>
+                                                                            </div>
+                                                                        </div>
+                                                                    ) : (
+                                                                        // Action Buttons
+                                                                        <div className="flex gap-2">
+                                                                            <button
+                                                                                onClick={() => handleAcceptCounterOffer(app)}
+                                                                                disabled={negotiating}
+                                                                                className="flex-1 px-4 py-2 bg-green-600 hover:bg-green-700 disabled:bg-gray-400 text-white rounded-lg font-medium transition-colors"
+                                                                            >
+                                                                                {negotiating ? 'Processing...' : `Accept ₹${app.counterOffer.toLocaleString()}`}
+                                                                            </button>
+                                                                            <button
+                                                                                onClick={() => setNegotiatingId(app.id)}
+                                                                                disabled={negotiating}
+                                                                                className="flex-1 px-4 py-2 bg-orange-600 hover:bg-orange-700 disabled:bg-gray-400 text-white rounded-lg font-medium transition-colors"
+                                                                            >
+                                                                                Renegotiate
+                                                                            </button>
+                                                                        </div>
+                                                                    )}
+                                                                </div>
+                                                            )}
+
+                                                        {/* Negotiation History */}
+                                                        {app.negotiationHistory && app.negotiationHistory.length > 0 && (
+                                                            <div className="mt-4 pt-4 border-t" style={{ borderColor: isDark ? '#3a3a3a' : '#e5e7eb' }}>
+                                                                <h5 className="text-sm font-semibold mb-3" style={{ color: isDark ? '#ffffff' : '#111827' }}>
+                                                                    Negotiation History
+                                                                </h5>
+                                                                <div className="space-y-2">
+                                                                    {app.negotiationHistory.map((offer: any, index: number) => (
+                                                                        <div
+                                                                            key={index}
+                                                                            className="flex items-center gap-3 text-sm"
+                                                                        >
+                                                                            <div className={`w-2 h-2 rounded-full ${offer.offeredBy === 'poster' ? 'bg-blue-600' : 'bg-orange-600'}`}></div>
+                                                                            <span style={{ color: isDark ? '#9ca3af' : '#6b7280' }}>
+                                                                                {offer.offeredBy === 'poster' ? 'You' : 'Applicant'} offered
+                                                                            </span>
+                                                                            <span className="font-bold" style={{ color: isDark ? '#ffffff' : '#111827' }}>
+                                                                                ₹{offer.amount.toLocaleString()}
+                                                                            </span>
+                                                                            {offer.message && (
+                                                                                <span className="text-xs italic" style={{ color: isDark ? '#6b7280' : '#9ca3af' }}>
+                                                                                    - {offer.message}
+                                                                                </span>
+                                                                            )}
+                                                                        </div>
+                                                                    ))}
+                                                                </div>
+                                                            </div>
+                                                        )}
                                                     </div>
                                                 </div>
 
@@ -269,7 +510,8 @@ export default function JobApplicationsModal({ jobId, jobTitle, jobBudget, onClo
                                                     </div>
                                                 )}
                                             </div>
-                                        )}
+                                        )
+                                        }
                                     </div>
                                 )
                             })}
@@ -277,7 +519,7 @@ export default function JobApplicationsModal({ jobId, jobTitle, jobBudget, onClo
                     )}
                 </div>
             </div>
-        </div>
+        </div >
     )
 
     return (

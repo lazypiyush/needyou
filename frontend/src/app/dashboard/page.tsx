@@ -165,8 +165,6 @@ export default function DashboardPage() {
                                 result = filterJobsByDistance(result, userLat, userLon, 2)
                             } else if (distanceFilter === '5km') {
                                 result = filterJobsByDistance(result, userLat, userLon, 5)
-                            } else if (distanceFilter === 'city') {
-                                result = filterJobsByCity(result, userLocation.city)
                             } else if (distanceFilter === 'custom' && customDistance) {
                                 const distance = parseFloat(customDistance)
                                 if (!isNaN(distance) && distance > 0) {
@@ -361,32 +359,76 @@ export default function DashboardPage() {
 
                             {/* Category Filter Buttons */}
                             {categories.length > 0 && (
-                                <div className="mb-4 overflow-x-auto scrollbar-hide">
-                                    <div className="flex gap-2 pb-2">
-                                        {/* All Button */}
-                                        <button
-                                            onClick={() => setSelectedCategory('All')}
-                                            className={`px-4 py-2 rounded-full font-medium whitespace-nowrap transition-all ${selectedCategory === 'All'
-                                                    ? 'bg-blue-600 text-white shadow-lg'
-                                                    : 'bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700'
-                                                }`}
-                                        >
-                                            All
-                                        </button>
-
-                                        {/* Dynamic Category Buttons */}
-                                        {categories.map((category) => (
+                                <div className="mb-4">
+                                    <div
+                                        className="overflow-x-auto px-4"
+                                        style={{
+                                            scrollbarWidth: 'none', /* Firefox */
+                                            msOverflowStyle: 'none', /* IE and Edge */
+                                            marginLeft: '-1rem',
+                                            marginRight: '-1rem',
+                                            width: 'calc(100% + 2rem)',
+                                        }}
+                                        onScroll={(e) => {
+                                            const target = e.currentTarget
+                                            const scrollPercentage = (target.scrollLeft / (target.scrollWidth - target.clientWidth)) * 100
+                                            const indicator = document.getElementById('category-scroll-indicator')
+                                            if (indicator) {
+                                                indicator.style.width = `${scrollPercentage}%`
+                                            }
+                                        }}
+                                    >
+                                        <style jsx>{`
+                                            div::-webkit-scrollbar {
+                                                display: none;
+                                            }
+                                        `}</style>
+                                        <div className="flex gap-2 pb-2">
+                                            {/* All Button */}
                                             <button
-                                                key={category}
-                                                onClick={() => setSelectedCategory(category)}
-                                                className={`px-4 py-2 rounded-full font-medium whitespace-nowrap transition-all ${selectedCategory === category
-                                                        ? 'bg-blue-600 text-white shadow-lg'
-                                                        : 'bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700'
-                                                    }`}
+                                                onClick={() => setSelectedCategory('All')}
+                                                className="px-4 py-2 rounded-full font-medium whitespace-nowrap transition-all"
+                                                style={
+                                                    selectedCategory === 'All'
+                                                        ? { backgroundColor: '#1E5EFF', color: '#ffffff', boxShadow: '0 4px 6px rgba(0, 0, 0, 0.3)' }
+                                                        : { backgroundColor: '#ffffff', color: '#000000', boxShadow: '0 2px 4px rgba(0, 0, 0, 0.2)' }
+                                                }
                                             >
-                                                {category}
+                                                All
                                             </button>
-                                        ))}
+
+                                            {/* Dynamic Category Buttons */}
+                                            {categories.map((category) => (
+                                                <button
+                                                    key={category}
+                                                    onClick={() => setSelectedCategory(category)}
+                                                    className="px-4 py-2 rounded-full font-medium whitespace-nowrap transition-all"
+                                                    style={
+                                                        selectedCategory === category
+                                                            ? { backgroundColor: '#1E5EFF', color: '#ffffff', boxShadow: '0 4px 6px rgba(0, 0, 0, 0.3)' }
+                                                            : { backgroundColor: '#ffffff', color: '#000000', boxShadow: '0 2px 4px rgba(0, 0, 0, 0.2)' }
+                                                    }
+                                                >
+                                                    {category}
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </div>
+
+                                    {/* Scroll Indicator */}
+                                    <div
+                                        className="h-1 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden"
+                                        style={{
+                                            marginLeft: '-1rem',
+                                            marginRight: '-1rem',
+                                            width: 'calc(100% + 2rem)',
+                                        }}
+                                    >
+                                        <div
+                                            id="category-scroll-indicator"
+                                            className="h-full bg-gradient-to-r from-blue-500 to-blue-600 rounded-full transition-all duration-150"
+                                            style={{ width: '0%' }}
+                                        />
                                     </div>
                                 </div>
                             )}
@@ -411,29 +453,55 @@ export default function DashboardPage() {
                                         Distance Filters
                                     </h3>
 
+                                    {/* Info about default radius */}
+                                    <div className="p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-200 dark:border-blue-800">
+                                        <p className="text-sm text-blue-800 dark:text-blue-300">
+                                            ℹ️ By default, jobs within <strong>50km</strong> of your location are shown. Use filters below to narrow down.
+                                        </p>
+                                    </div>
+
                                     <div className="flex flex-wrap gap-3">
                                         <select
                                             value={distanceFilter}
                                             onChange={(e) => setDistanceFilter(e.target.value)}
                                             className="px-4 py-2.5 bg-white dark:bg-gray-800 border-2 border-gray-300 dark:border-gray-600 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 dark:focus:border-blue-400 outline-none text-gray-900 dark:text-white font-medium"
                                         >
-                                            <option value="all">All Locations</option>
+                                            <option value="all">All Locations (50km)</option>
                                             <option value="2km">Within 2 km</option>
                                             <option value="5km">Within 5 km</option>
-                                            <option value="city">Entire City</option>
                                             <option value="custom">Custom Distance</option>
                                         </select>
 
                                         {distanceFilter === 'custom' && (
-                                            <input
-                                                type="number"
-                                                value={customDistance}
-                                                onChange={(e) => setCustomDistance(e.target.value)}
-                                                placeholder="Enter distance in km"
-                                                min="1"
-                                                step="0.5"
-                                                className="px-4 py-2.5 bg-white dark:bg-gray-800 border-2 border-gray-300 dark:border-gray-600 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 dark:focus:border-blue-400 outline-none text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 w-48 font-medium"
-                                            />
+                                            <div className="flex flex-col gap-2 w-full">
+                                                <div className="flex gap-2">
+                                                    <input
+                                                        type="number"
+                                                        value={customDistance}
+                                                        onChange={(e) => setCustomDistance(e.target.value)}
+                                                        placeholder="Enter distance in km"
+                                                        min="1"
+                                                        max="50"
+                                                        step="0.5"
+                                                        className="flex-1 px-4 py-2.5 bg-white dark:bg-gray-800 border-2 border-gray-300 dark:border-gray-600 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 dark:focus:border-blue-400 outline-none text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 font-medium"
+                                                    />
+                                                    <button
+                                                        onClick={() => {
+                                                            // Force re-filter by triggering the effect
+                                                            setDistanceFilter('custom')
+                                                        }}
+                                                        disabled={!customDistance || parseFloat(customDistance) <= 0 || parseFloat(customDistance) > 50}
+                                                        className="px-6 py-2.5 bg-blue-600 text-white font-semibold rounded-xl hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-blue-600"
+                                                    >
+                                                        Apply
+                                                    </button>
+                                                </div>
+                                                {customDistance && parseFloat(customDistance) > 50 && (
+                                                    <p className="text-sm text-red-600 dark:text-red-400">
+                                                        ⚠️ Maximum distance is 50km
+                                                    </p>
+                                                )}
+                                            </div>
                                         )}
 
                                         {(searchQuery || distanceFilter !== 'all') && (

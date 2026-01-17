@@ -1,9 +1,10 @@
 'use client'
 
-import { Home, Search, Briefcase, MessageSquare, Bell, User } from 'lucide-react'
+import { Home, Search, Briefcase, MessageSquare, User } from 'lucide-react'
 import { useTheme } from 'next-themes'
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
+import NotificationBell from '../NotificationBell'
 
 export default function Navbar() {
   const { theme, setTheme } = useTheme()
@@ -27,7 +28,7 @@ export default function Navbar() {
                 </div>
                 <span className="font-bold text-xl hidden lg:block">NeedYou</span>
               </Link>
-              
+
               <div className="relative hidden lg:block">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
                 <input
@@ -43,9 +44,9 @@ export default function Navbar() {
               <NavItem icon={<Home />} label="Home" href="/" />
               <NavItem icon={<Briefcase />} label="Jobs" href="/jobs" />
               <NavItem icon={<MessageSquare />} label="Messages" href="/messages" badge={3} />
-              <NavItem icon={<Bell />} label="Notifications" href="/notifications" badge={5} />
+              <NotificationBell />
               <NavItem icon={<User />} label="Profile" href="/profile" />
-              
+
               {/* Theme Toggle */}
               <button
                 onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
@@ -64,7 +65,6 @@ export default function Navbar() {
           <NavItem icon={<Home />} label="Home" href="/" mobile />
           <NavItem icon={<Briefcase />} label="Jobs" href="/jobs" mobile />
           <NavItem icon={<MessageSquare />} label="Messages" href="/messages" badge={3} mobile />
-          <NavItem icon={<Bell />} label="Notifications" href="/notifications" badge={5} mobile />
           <NavItem icon={<User />} label="Me" href="/profile" mobile />
         </div>
       </nav>
