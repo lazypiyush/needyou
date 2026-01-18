@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { adminAuth } from '@/lib/firebaseAdmin'
 
 export async function POST(request: NextRequest) {
     try {
@@ -11,6 +10,10 @@ export async function POST(request: NextRequest) {
                 { status: 400 }
             )
         }
+
+        // Dynamic import and lazy initialization
+        const { getAdminAuth } = await import('@/lib/firebaseAdmin')
+        const adminAuth = getAdminAuth()
 
         // Generate email verification link using Firebase Admin
         const actionCodeSettings = {

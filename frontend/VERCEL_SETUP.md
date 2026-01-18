@@ -26,7 +26,7 @@ FIREBASE_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\nYOUR_PRIVATE_KEY_HERE\n-----E
 ### 3. Add Resend API Key
 
 ```env
-RESEND_API_KEY=re_9uM6CyYj_38ohb1jK3rSvncy196GL47hV
+RESEND_API_KEY=your_resend_api_key_here
 ```
 
 ### 4. Existing Environment Variables
