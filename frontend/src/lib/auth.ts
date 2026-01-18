@@ -226,9 +226,48 @@ export const signUpWithEmail = async (
     await updateProfile(user, { displayName: name })
     console.log('✅ Profile updated')
 
-    // Send verification email
-    await sendEmailVerification(user)
-    console.log('✅ Verification email sent')
+    // Generate Firebase verification link and send via Resend
+    try {
+      // Step 1: Generate Firebase verification link using Admin SDK
+      const linkResponse = await fetch('/api/generate-verification-link', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: user.email,
+          userName: name
+        })
+      })
+
+      if (!linkResponse.ok) {
+        throw new Error('Failed to generate verification link')
+      }
+
+      const { verificationLink } = await linkResponse.json()
+
+      // Step 2: Send the Firebase link via Resend
+      const emailResponse = await fetch('/api/send-verification-email', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: user.email,
+          verificationLink,
+          userName: name
+        })
+      })
+
+      if (!emailResponse.ok) {
+        throw new Error('Resend failed')
+      }
+
+      console.log('✅ Verification email sent via Resend with Firebase link')
+    } catch (emailError) {
+      console.error('⚠️ Resend failed, using Firebase fallback:', emailError)
+      // Fallback to Firebase's default email
+      await sendEmailVerification(user, {
+        url: `${window.location.origin}/signup`,
+        handleCodeInApp: false
+      })
+    }
 
     // Create user document in Firestore
     await setDoc(doc(db, 'users', user.uid), {
@@ -385,12 +424,33 @@ export const signInWithEmail = async (email: string, password: string) => {
 }
 
 
-// Reset Password - Send password reset email
+// Reset Password - Send password reset email via Resend
 export const resetPassword = async (email: string) => {
   try {
     console.log('📧 Sending password reset email to:', email)
-    await sendPasswordResetEmail(auth, email)
-    console.log('✅ Password reset email sent')
+
+    // Try Resend API first
+    try {
+      const response = await fetch('/api/send-password-reset', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: email,
+          resetLink: `${window.location.origin}/reset-password?email=${encodeURIComponent(email)}`,
+          userName: email.split('@')[0] // Use email prefix as name fallback
+        })
+      })
+
+      if (!response.ok) {
+        console.error('⚠️ Resend API error, falling back to Firebase')
+        await sendPasswordResetEmail(auth, email)
+      } else {
+        console.log('✅ Password reset email sent via Resend')
+      }
+    } catch (resendError) {
+      console.error('⚠️ Resend failed, using Firebase fallback:', resendError)
+      await sendPasswordResetEmail(auth, email)
+    }
   } catch (error: any) {
     console.error('❌ Password Reset Error:', error)
 
@@ -422,7 +482,10 @@ export const resendVerificationEmail = async (email: string, password: string) =
     }
 
     if (!user.emailVerified) {
-      await sendEmailVerification(user)
+      await sendEmailVerification(user, {
+        url: `${window.location.origin}/signup`,
+        handleCodeInApp: false
+      })
       console.log('✅ Verification email sent')
     } else {
       console.log('ℹ️ Email already verified')
@@ -538,6 +601,7 @@ export interface Message {
   mediaType?: 'image' | 'video' | 'audio'
   fileName?: string
   fileSize?: number
+  caption?: string
   timestamp: number
   read: boolean
 }
@@ -1483,44 +1547,59 @@ export const getUserOwnApplication = async (jobId: string, userId: string): Prom
 }
 
 
-// Upload media file to Firebase Storage
+// Upload media file to Cloudinary (instead of Firebase Storage)
 export const uploadChatMedia = async (
   conversationId: string,
   file: File,
   onProgress?: (progress: number) => void
 ): Promise<string> => {
   try {
-    const { ref, uploadBytesResumable, getDownloadURL } = await import('firebase/storage')
-    const { storage } = await import('./firebase')
+    const cloudName = process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME
+    const uploadPreset = process.env.NEXT_PUBLIC_CLOUDINARY_UPLOAD_PRESET
 
-    // Create unique filename
-    const timestamp = Date.now()
-    const fileName = `${timestamp}_${file.name}`
-    const storageRef = ref(storage, `chat-media/${conversationId}/${fileName}`)
+    if (!cloudName || !uploadPreset) {
+      throw new Error('Cloudinary configuration missing')
+    }
 
-    // Upload file
-    const uploadTask = uploadBytesResumable(storageRef, file)
+    const formData = new FormData()
+    formData.append('file', file)
+    formData.append('upload_preset', uploadPreset)
+    formData.append('folder', `needyou/chat/${conversationId}`)
 
+    // Use XMLHttpRequest for progress tracking
     return new Promise((resolve, reject) => {
-      uploadTask.on(
-        'state_changed',
-        (snapshot) => {
-          const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100
+      const xhr = new XMLHttpRequest()
+
+      // Track upload progress
+      xhr.upload.addEventListener('progress', (e) => {
+        if (e.lengthComputable) {
+          const progress = (e.loaded / e.total) * 100
           onProgress?.(progress)
-        },
-        (error) => {
-          console.error(' Upload Error:', error)
-          reject(error)
-        },
-        async () => {
-          const downloadURL = await getDownloadURL(uploadTask.snapshot.ref)
-          console.log(' File uploaded:', downloadURL)
-          resolve(downloadURL)
         }
-      )
+      })
+
+      // Handle completion
+      xhr.addEventListener('load', () => {
+        if (xhr.status === 200) {
+          const response = JSON.parse(xhr.responseText)
+          console.log('✅ File uploaded to Cloudinary:', response.secure_url)
+          resolve(response.secure_url)
+        } else {
+          reject(new Error('Upload failed'))
+        }
+      })
+
+      // Handle errors
+      xhr.addEventListener('error', () => {
+        reject(new Error('Upload failed'))
+      })
+
+      // Send request
+      xhr.open('POST', `https://api.cloudinary.com/v1_1/${cloudName}/auto/upload`)
+      xhr.send(formData)
     })
   } catch (error: any) {
-    console.error(' Upload Media Error:', error)
+    console.error('❌ Upload Media Error:', error)
     throw new Error(error.message || 'Failed to upload media')
   }
 }
@@ -1533,12 +1612,13 @@ export const sendMediaMessage = async (
   mediaUrl: string,
   mediaType: 'image' | 'video' | 'audio',
   fileName: string,
-  fileSize: number
+  fileSize: number,
+  caption?: string
 ): Promise<void> => {
   try {
     // Add message to subcollection
     const messagesRef = collection(db, `conversations/${conversationId}/messages`)
-    await addDoc(messagesRef, {
+    const messageData: any = {
       senderId,
       senderName,
       mediaUrl,
@@ -1547,7 +1627,14 @@ export const sendMediaMessage = async (
       fileSize,
       timestamp: Date.now(),
       read: false
-    })
+    }
+
+    // Add caption if provided
+    if (caption) {
+      messageData.caption = caption
+    }
+
+    await addDoc(messagesRef, messageData)
 
     // Update conversation metadata
     const conversationRef = doc(db, 'conversations', conversationId)
@@ -1558,7 +1645,7 @@ export const sendMediaMessage = async (
       const receiverId = conversation.participants.find(id => id !== senderId)
 
       if (receiverId) {
-        const mediaPreview = mediaType === 'image' ? ' Photo' : mediaType === 'video' ? ' Video' : ' Audio'
+        const mediaPreview = mediaType === 'image' ? '📷 Photo' : mediaType === 'video' ? '🎥 Video' : '🎵 Audio'
         await updateDoc(conversationRef, {
           lastMessage: mediaPreview,
           lastMessageTime: Date.now(),
@@ -1568,9 +1655,9 @@ export const sendMediaMessage = async (
       }
     }
 
-    console.log(' Media message sent')
+    console.log('✅ Media message sent')
   } catch (error: any) {
-    console.error(' Send Media Message Error:', error)
+    console.error('❌ Send Media Message Error:', error)
     throw new Error(error.message || 'Failed to send media message')
   }
 }

@@ -176,9 +176,20 @@ export default function ChatModal({
         try {
             for (let i = 0; i < mediaItems.length; i++) {
                 const item = mediaItems[i]
-                const fileName = `${item.type}-${Date.now()}-${i}.${item.file.name.split('.').pop()}`
 
-                const mediaUrl = await uploadChatMedia(conversationId, item.file, (progress) => {
+                // Use annotated image if available, otherwise use original
+                let fileToUpload = item.file
+                if (item.annotations && item.type === 'image') {
+                    // Convert dataURL to blob
+                    const response = await fetch(item.annotations)
+                    const blob = await response.blob()
+                    const fileName = item.file.name
+                    fileToUpload = new File([blob], fileName, { type: 'image/png' })
+                }
+
+                const fileName = `${item.type}-${Date.now()}-${i}.${fileToUpload.name.split('.').pop()}`
+
+                const mediaUrl = await uploadChatMedia(conversationId, fileToUpload, (progress) => {
                     setUploadProgress(((i + progress / 100) / mediaItems.length) * 100)
                 })
 
@@ -189,7 +200,8 @@ export default function ChatModal({
                     mediaUrl,
                     item.type,
                     fileName,
-                    item.file.size
+                    fileToUpload.size,
+                    item.caption // Pass the caption
                 )
                 URL.revokeObjectURL(item.url) // Clean up object URL
             }
@@ -471,19 +483,26 @@ export default function ChatModal({
 
                                         {/* Media Content */}
                                         {message.mediaUrl && message.mediaType === 'image' && (
-                                            <div
-                                                className="relative w-full cursor-pointer hover:opacity-90 transition-opacity"
-                                                onClick={() => message.mediaUrl && setSelectedImage(message.mediaUrl)}
-                                            >
-                                                <Image
-                                                    src={message.mediaUrl}
-                                                    alt={message.fileName || 'Image'}
-                                                    width={300}
-                                                    height={300}
-                                                    className="w-full h-auto object-cover"
-                                                    loading="lazy"
-                                                />
-                                            </div>
+                                            <>
+                                                <div
+                                                    className="relative w-full cursor-pointer hover:opacity-90 transition-opacity"
+                                                    onClick={() => message.mediaUrl && setSelectedImage(message.mediaUrl)}
+                                                >
+                                                    <Image
+                                                        src={message.mediaUrl}
+                                                        alt={message.fileName || 'Image'}
+                                                        width={300}
+                                                        height={300}
+                                                        className="w-full h-auto max-h-96 object-cover rounded-lg"
+                                                        loading="lazy"
+                                                    />
+                                                </div>
+                                                {message.caption && (
+                                                    <p className="text-sm px-4 py-2 break-words whitespace-pre-wrap">
+                                                        {message.caption}
+                                                    </p>
+                                                )}
+                                            </>
                                         )}
 
                                         {message.mediaUrl && message.mediaType === 'video' && (() => {
@@ -515,24 +534,31 @@ export default function ChatModal({
                                             })
 
                                             return (
-                                                <div
-                                                    className="relative cursor-pointer group"
-                                                    onClick={() => setSelectedVideo(videoSrc)}
-                                                >
-                                                    <video
-                                                        src={videoSrc}
-                                                        className="w-full max-h-64 rounded-lg"
-                                                        preload="metadata"
-                                                        playsInline
-                                                    />
-                                                    <div className="absolute inset-0 flex items-center justify-center bg-black/20 group-hover:bg-black/30 transition-colors rounded-lg">
-                                                        <div className="w-16 h-16 bg-white/90 rounded-full flex items-center justify-center">
-                                                            <svg className="w-8 h-8 text-gray-800 ml-1" fill="currentColor" viewBox="0 0 24 24">
-                                                                <path d="M8 5v14l11-7z" />
-                                                            </svg>
+                                                <>
+                                                    <div
+                                                        className="relative cursor-pointer group"
+                                                        onClick={() => setSelectedVideo(videoSrc)}
+                                                    >
+                                                        <video
+                                                            src={videoSrc}
+                                                            className="w-full max-h-64 rounded-lg"
+                                                            preload="metadata"
+                                                            playsInline
+                                                        />
+                                                        <div className="absolute inset-0 flex items-center justify-center bg-black/20 group-hover:bg-black/30 transition-colors rounded-lg">
+                                                            <div className="w-16 h-16 bg-white/90 rounded-full flex items-center justify-center">
+                                                                <svg className="w-8 h-8 text-gray-800 ml-1" fill="currentColor" viewBox="0 0 24 24">
+                                                                    <path d="M8 5v14l11-7z" />
+                                                                </svg>
+                                                            </div>
                                                         </div>
                                                     </div>
-                                                </div>
+                                                    {message.caption && (
+                                                        <p className="text-sm px-4 py-2 break-words whitespace-pre-wrap">
+                                                            {message.caption}
+                                                        </p>
+                                                    )}
+                                                </>
                                             )
                                         })()}
 

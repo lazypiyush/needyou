@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { useTheme } from 'next-themes'
-import { MapPin, User, Clock, Image as ImageIcon, Video, Trash2, Users } from 'lucide-react'
+import { MapPin, User, Clock, Image as ImageIcon, Video, Trash2, Users, ChevronDown } from 'lucide-react'
 import { Job, applyToJob, deleteJob, checkIfUserApplied } from '@/lib/auth'
 import { useAuth } from '@/context/AuthContext'
 import Image from 'next/image'
@@ -28,6 +28,7 @@ export default function JobCard({ job, onApply, onDelete, userLocation }: JobCar
     const [showApplicationModal, setShowApplicationModal] = useState(false)
     const [showMyApplication, setShowMyApplication] = useState(false)
     const [distance, setDistance] = useState<number | null>(null)
+    const [captionExpanded, setCaptionExpanded] = useState(false)
 
     // Check database for application status on mount and when job changes
     useEffect(() => {
@@ -152,13 +153,28 @@ export default function JobCard({ job, onApply, onDelete, userLocation }: JobCar
 
             {/* Content Section */}
             <div className="p-4 space-y-3">
-                {/* Caption */}
-                <p
-                    className="text-base font-medium line-clamp-2"
-                    style={{ color: isDark ? '#ffffff' : '#111827' }}
-                >
-                    {job.caption}
-                </p>
+                {/* Caption with Expand/Collapse */}
+                <div className="relative">
+                    <p
+                        className={`text-base font-medium transition-all duration-300 ${captionExpanded ? '' : 'line-clamp-2'}`}
+                        style={{ color: isDark ? '#ffffff' : '#111827' }}
+                    >
+                        {job.caption}
+                    </p>
+                    {/* Show expand button only if caption is long enough to be truncated */}
+                    {job.caption.length > 100 && (
+                        <button
+                            onClick={() => setCaptionExpanded(!captionExpanded)}
+                            className="mt-1 flex items-center gap-1 text-sm font-medium text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 transition-colors"
+                            aria-label={captionExpanded ? 'Collapse caption' : 'Expand caption'}
+                        >
+                            <span>{captionExpanded ? 'Show less' : 'Show more'}</span>
+                            <ChevronDown
+                                className={`w-4 h-4 transition-transform duration-300 ${captionExpanded ? 'rotate-180' : ''}`}
+                            />
+                        </button>
+                    )}
+                </div>
 
                 {/* Budget - HIGHLIGHTED */}
                 <div className="flex items-center gap-2 p-3 bg-gradient-to-r from-green-500/20 to-emerald-500/20 rounded-xl border-2 border-green-500/50">

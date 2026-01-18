@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react'
 import { createPortal } from 'react-dom'
-import { X, Send, Trash2, Edit3, ChevronLeft, ChevronRight, Undo } from 'lucide-react'
+import { X, Send, Trash2, Edit3, ChevronLeft, ChevronRight, Undo, Eraser, Pen } from 'lucide-react'
 import Image from 'next/image'
 import { useTheme } from 'next-themes'
 
@@ -11,7 +11,8 @@ export interface MediaItem {
     type: 'image' | 'video'
     url: string
     caption?: string
-    annotations?: string // base64 canvas data
+    annotations?: string // merged image with drawings
+    canvasOnly?: string // just the canvas drawings layer
 }
 
 interface MediaPreviewModalProps {
@@ -27,6 +28,8 @@ export default function MediaPreviewModal({ media: initialMedia, onClose, onSend
     const [isDrawing, setIsDrawing] = useState(false)
     const [drawingMode, setDrawingMode] = useState(false)
     const [selectedColor, setSelectedColor] = useState('#FF0000')
+    const [brushSize, setBrushSize] = useState(5)
+    const [isEraser, setIsEraser] = useState(false)
     const [mounted, setMounted] = useState(false)
     const [sending, setSending] = useState(false)
 
@@ -63,19 +66,22 @@ export default function MediaPreviewModal({ media: initialMedia, onClose, onSend
             canvas.width = img.naturalWidth
             canvas.height = img.naturalHeight
 
-            // Restore previous annotations if any
-            if (media[currentIndex].annotations) {
-                const ctx = canvas.getContext('2d')
-                if (ctx) {
-                    const image = new window.Image()
-                    image.onload = () => {
-                        ctx.drawImage(image, 0, 0)
+            const ctx = canvas.getContext('2d')
+            if (ctx) {
+                // Restore previous canvas-only drawings if they exist
+                if (media[currentIndex].canvasOnly) {
+                    const canvasImg = new window.Image()
+                    canvasImg.onload = () => {
+                        ctx.drawImage(canvasImg, 0, 0)
                     }
-                    image.src = media[currentIndex].annotations!
+                    canvasImg.src = media[currentIndex].canvasOnly
+                } else {
+                    // No previous drawings, start with clear canvas
+                    ctx.clearRect(0, 0, canvas.width, canvas.height)
                 }
             }
         }
-    }, [drawingMode, currentIndex, media])
+    }, [drawingMode, currentIndex])
 
     const getCanvasCoordinates = (e: React.MouseEvent | React.TouchEvent) => {
         const canvas = canvasRef.current
@@ -128,8 +134,16 @@ export default function MediaPreviewModal({ media: initialMedia, onClose, onSend
         const ctx = canvas?.getContext('2d')
         if (!ctx) return
 
-        ctx.strokeStyle = selectedColor
-        ctx.lineWidth = 5
+        if (isEraser) {
+            ctx.globalCompositeOperation = 'destination-out'
+            ctx.globalAlpha = 1.0
+            ctx.strokeStyle = 'rgba(0,0,0,1)'
+        } else {
+            ctx.globalCompositeOperation = 'source-over'
+            ctx.globalAlpha = 1.0
+            ctx.strokeStyle = selectedColor
+        }
+        ctx.lineWidth = brushSize
         ctx.lineCap = 'round'
         ctx.lineJoin = 'round'
 
@@ -145,10 +159,30 @@ export default function MediaPreviewModal({ media: initialMedia, onClose, onSend
         setIsMouseDown(false)
         setLastPos(null)
 
-        // Save annotations
-        if (canvasRef.current && drawingMode) {
+        // Save both canvas-only and merged annotations
+        if (canvasRef.current && imageRef.current && drawingMode) {
             const updatedMedia = [...media]
-            updatedMedia[currentIndex].annotations = canvasRef.current.toDataURL()
+
+            // Save canvas-only drawings
+            updatedMedia[currentIndex].canvasOnly = canvasRef.current.toDataURL()
+
+            // Create merged image (original + drawings)
+            const tempCanvas = document.createElement('canvas')
+            const img = imageRef.current
+            tempCanvas.width = img.naturalWidth
+            tempCanvas.height = img.naturalHeight
+            const tempCtx = tempCanvas.getContext('2d')
+
+            if (tempCtx) {
+                // Draw the original image first
+                tempCtx.drawImage(img, 0, 0)
+                // Then draw the canvas annotations on top
+                tempCtx.drawImage(canvasRef.current, 0, 0)
+
+                // Save the merged result
+                updatedMedia[currentIndex].annotations = tempCanvas.toDataURL()
+            }
+
             setMedia(updatedMedia)
         }
     }
@@ -242,15 +276,19 @@ export default function MediaPreviewModal({ media: initialMedia, onClose, onSend
                     <div className="relative max-w-full max-h-full">
                         <img
                             ref={imageRef}
-                            src={currentMedia.url}
+                            src={drawingMode ? currentMedia.url : (currentMedia.annotations || currentMedia.url)}
                             alt="Preview"
                             className="max-w-full max-h-[70vh] object-contain"
                         />
                         {drawingMode && (
                             <canvas
                                 ref={canvasRef}
-                                className="absolute top-0 left-0 w-full h-full cursor-crosshair"
-                                style={{ touchAction: 'none' }}
+                                className="absolute top-0 left-0 cursor-crosshair"
+                                style={{
+                                    touchAction: 'none',
+                                    width: imageRef.current?.offsetWidth + 'px',
+                                    height: imageRef.current?.offsetHeight + 'px'
+                                }}
                                 onMouseDown={startDrawing}
                                 onMouseMove={draw}
                                 onMouseUp={stopDrawing}
@@ -304,24 +342,84 @@ export default function MediaPreviewModal({ media: initialMedia, onClose, onSend
 
             {/* Drawing Tools */}
             {drawingMode && currentMedia.type === 'image' && (
-                <div className="p-4 bg-black/50 flex items-center justify-center gap-4">
-                    <div className="flex gap-2 overflow-x-auto">
-                        {colors.map((color) => (
-                            <button
-                                key={color}
-                                onClick={() => setSelectedColor(color)}
-                                className={`w-10 h-10 rounded-full border-2 ${selectedColor === color ? 'border-white scale-110' : 'border-transparent'
-                                    }`}
-                                style={{ backgroundColor: color }}
-                            />
-                        ))}
+                <div className="p-4 bg-black/50">
+                    {/* Color Palette */}
+                    <div className="flex items-center justify-center gap-4">
+                        <div className="flex gap-2 overflow-x-auto scrollbar-hide">
+                            <style jsx>{`
+                                .scrollbar-hide::-webkit-scrollbar {
+                                    display: none;
+                                }
+                                .scrollbar-hide {
+                                    -ms-overflow-style: none;
+                                    scrollbar-width: none;
+                                }
+                            `}</style>
+                            {colors.map((color) => (
+                                <button
+                                    key={color}
+                                    onClick={() => {
+                                        setSelectedColor(color)
+                                        setIsEraser(false)
+                                    }}
+                                    className={`w-10 h-10 rounded-full border-2 transition-transform ${selectedColor === color && !isEraser ? 'border-white scale-110' : 'border-transparent'
+                                        }`}
+                                    style={{ backgroundColor: color }}
+                                />
+                            ))}
+                        </div>
+                        <button
+                            onClick={() => {
+                                setIsEraser(false)
+                                if (isEraser) {
+                                    setBrushSize(5) // Reset to normal brush size
+                                }
+                            }}
+                            className={`p-2 rounded-full transition-colors ${!isEraser ? 'bg-blue-500 text-white' : 'bg-white/20 hover:bg-white/30 text-white'
+                                }`}
+                            title="Pen/Brush"
+                        >
+                            <Pen className="w-5 h-5" />
+                        </button>
+                        <button
+                            onClick={() => {
+                                setIsEraser(!isEraser)
+                            }}
+                            className={`p-2 rounded-full transition-colors ${isEraser ? 'bg-white text-black' : 'bg-white/20 hover:bg-white/30 text-white'
+                                }`}
+                            title="Eraser"
+                        >
+                            <Eraser className="w-5 h-5" />
+                        </button>
+                        <button
+                            onClick={handleUndo}
+                            className="p-2 bg-white/20 hover:bg-white/30 rounded-full transition-colors"
+                            title="Undo"
+                        >
+                            <Undo className="w-5 h-5 text-white" />
+                        </button>
                     </div>
-                    <button
-                        onClick={handleUndo}
-                        className="p-2 bg-white/20 hover:bg-white/30 rounded-full transition-colors"
-                    >
-                        <Undo className="w-5 h-5 text-white" />
-                    </button>
+
+                    {/* Brush Size Slider */}
+                    <div className="flex items-center gap-3 px-4">
+                        <span className="text-white text-sm whitespace-nowrap">
+                            {isEraser ? 'Eraser' : 'Brush'} Size:
+                        </span>
+                        <input
+                            type="range"
+                            min="2"
+                            max="30"
+                            value={brushSize}
+                            onChange={(e) => setBrushSize(parseInt(e.target.value))}
+                            className="flex-1 h-2 bg-white/20 rounded-lg appearance-none cursor-pointer"
+                            style={{
+                                accentColor: isEraser ? '#ffffff' : selectedColor
+                            }}
+                        />
+                        <span className="text-white text-sm font-medium w-8 text-center">
+                            {brushSize}
+                        </span>
+                    </div>
                 </div>
             )}
 
@@ -337,30 +435,62 @@ export default function MediaPreviewModal({ media: initialMedia, onClose, onSend
                 )}
                 {drawingMode && (
                     <button
-                        onClick={() => setDrawingMode(false)}
+                        onClick={() => {
+                            // Save both canvas-only and merged annotations before exiting
+                            if (canvasRef.current && imageRef.current) {
+                                const updatedMedia = [...media]
+
+                                // Save canvas-only drawings
+                                updatedMedia[currentIndex].canvasOnly = canvasRef.current.toDataURL()
+
+                                // Create merged image (original + drawings)
+                                const tempCanvas = document.createElement('canvas')
+                                const img = imageRef.current
+                                tempCanvas.width = img.naturalWidth
+                                tempCanvas.height = img.naturalHeight
+                                const tempCtx = tempCanvas.getContext('2d')
+
+                                if (tempCtx) {
+                                    // Draw the original image first
+                                    tempCtx.drawImage(img, 0, 0)
+                                    // Then draw the canvas annotations on top
+                                    tempCtx.drawImage(canvasRef.current, 0, 0)
+
+                                    // Save the merged result
+                                    updatedMedia[currentIndex].annotations = tempCanvas.toDataURL()
+                                }
+
+                                setMedia(updatedMedia)
+                            }
+                            setDrawingMode(false)
+                        }}
                         className="px-4 py-2 bg-white/20 hover:bg-white/30 rounded-full text-white text-sm transition-colors"
                     >
                         Done
                     </button>
                 )}
-                <input
-                    type="text"
-                    placeholder="Add a caption..."
-                    value={currentMedia.caption || ''}
-                    onChange={(e) => {
-                        const updatedMedia = [...media]
-                        updatedMedia[currentIndex].caption = e.target.value
-                        setMedia(updatedMedia)
-                    }}
-                    className="flex-1 px-4 py-2 bg-white/10 text-white placeholder-white/50 rounded-full outline-none focus:bg-white/20"
-                />
-                <button
-                    onClick={handleSend}
-                    disabled={sending}
-                    className="p-3 bg-green-600 hover:bg-green-700 disabled:bg-gray-600 rounded-full transition-colors"
-                >
-                    <Send className="w-5 h-5 text-white" />
-                </button>
+                {!drawingMode && (
+                    <>
+                        <input
+                            type="text"
+                            placeholder="Add a caption..."
+                            value={currentMedia.caption || ''}
+                            onChange={(e) => {
+                                const updatedMedia = [...media]
+                                updatedMedia[currentIndex].caption = e.target.value
+                                setMedia(updatedMedia)
+                            }}
+                            className="flex-1 px-4 py-2 bg-white/10 text-white placeholder-white/50 rounded-full outline-none focus:bg-white/20"
+                        />
+                        <button
+                            onClick={handleSend}
+                            disabled={sending}
+                            className="p-3 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 rounded-full transition-colors"
+                        >
+                            <Send className="w-5 h-5 text-white" />
+                        </button>
+                    </>
+                )}
             </div>
         </div>
     )

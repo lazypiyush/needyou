@@ -33,12 +33,18 @@ export const renegotiateBudget = async (
 
         // If this is the first negotiation, add the initial applicant's counter-offer to history
         if (negotiationHistory.length === 0 && application.counterOffer) {
-            negotiationHistory.push({
+            const initialOffer: NegotiationOffer = {
                 amount: application.counterOffer,
                 offeredBy: 'applicant',
-                offeredAt: application.appliedAt || Date.now(),
-                message: 'Initial counter-offer'
-            })
+                offeredAt: application.appliedAt || Date.now()
+            }
+
+            // Add the actual reason if provided by the applicant
+            if (application.budgetProposalReason) {
+                initialOffer.message = application.budgetProposalReason
+            }
+
+            negotiationHistory.push(initialOffer)
         }
 
         // Add new offer to history

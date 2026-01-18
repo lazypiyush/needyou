@@ -3,7 +3,7 @@
 import { useState, useEffect, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { motion } from 'framer-motion'
-import { Mail, Lock, User, Phone, ArrowRight, Loader2, CheckCircle, Eye, EyeOff, RefreshCw, AlertCircle } from 'lucide-react'
+import { Mail, Lock, User, Phone, ArrowRight, Loader2, CheckCircle, Eye, EyeOff, RefreshCw, AlertCircle, Check, X } from 'lucide-react'
 import {
   signUpWithEmail,
   sendOTP,
@@ -17,6 +17,7 @@ import {
   signOutUser,
   checkPhoneNumberExists
 } from '@/lib/auth'
+import { validatePassword, getPasswordStrength, getPasswordStrengthColor } from '@/lib/passwordValidation'
 import { signOut } from 'firebase/auth'
 import { auth } from '@/lib/firebase'
 import { ConfirmationResult } from 'firebase/auth'
@@ -44,6 +45,10 @@ function SignUpPageContent() {
   const [confirmationResult, setConfirmationResult] = useState<ConfirmationResult | null>(null)
   const [tempUserId, setTempUserId] = useState('')
   const [resendCooldown, setResendCooldown] = useState(0)
+  const [passwordValidation, setPasswordValidation] = useState(validatePassword(''))
+  const [otpExpiresAt, setOtpExpiresAt] = useState<number | null>(null)
+  const [otpTimeRemaining, setOtpTimeRemaining] = useState(0)
+  const [resendOtpCooldown, setResendOtpCooldown] = useState(0)
 
   const router = useRouter()
   const searchParams = useSearchParams()
@@ -81,7 +86,7 @@ function SignUpPageContent() {
           if (status.profileComplete) {
             // Both email and phone verified - redirect to dashboard
             console.log('✅ Profile complete, redirecting to dashboard')
-            router.push('/dashboard')
+            router.replace('/dashboard')
           } else if (status.emailVerified && !status.phoneVerified) {
             // Email verified but phone not - go to phone step
             console.log('📱 Resuming phone verification')
@@ -132,6 +137,30 @@ function SignUpPageContent() {
       return () => clearTimeout(timer)
     }
   }, [resendCooldown])
+
+  // Handle OTP expiration countdown
+  useEffect(() => {
+    if (otpExpiresAt && step === 'verify-phone') {
+      const interval = setInterval(() => {
+        const remaining = Math.max(0, Math.ceil((otpExpiresAt - Date.now()) / 1000))
+        setOtpTimeRemaining(remaining)
+        if (remaining === 0) {
+          setError('⏱️ OTP expired. Please request a new one.')
+        }
+      }, 1000)
+      return () => clearInterval(interval)
+    }
+  }, [otpExpiresAt, step])
+
+  // Handle resend OTP cooldown
+  useEffect(() => {
+    if (resendOtpCooldown > 0) {
+      const timer = setTimeout(() => {
+        setResendOtpCooldown(resendOtpCooldown - 1)
+      }, 1000)
+      return () => clearTimeout(timer)
+    }
+  }, [resendOtpCooldown])
 
   // Step 1: Create email account
   const handleEmailSignup = async (e: React.FormEvent) => {
@@ -292,9 +321,49 @@ function SignUpPageContent() {
       const result = await sendOTP(formattedPhone)
       setConfirmationResult(result)
       setSuccess('✅ OTP sent to your mobile! Check your SMS.')
+
+      // Set OTP expiration (5 minutes)
+      setOtpExpiresAt(Date.now() + (5 * 60 * 1000))
+      setResendOtpCooldown(30) // 30 second cooldown before resend
+
       setStep('verify-phone')
     } catch (err: any) {
       setError(err.message || 'Failed to send OTP')
+      clearRecaptcha()
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  // Resend OTP function
+  const handleResendOTP = async () => {
+    if (resendOtpCooldown > 0) {
+      setError(`⏱️ Please wait ${resendOtpCooldown} seconds before requesting another OTP.`)
+      return
+    }
+
+    setError('')
+    setSuccess('')
+    setLoading(true)
+
+    try {
+      const formattedPhone = phoneNumber.startsWith('+91') ? phoneNumber : `+91${phoneNumber}`
+
+      // Clear any existing recaptcha
+      clearRecaptcha()
+      await new Promise(resolve => setTimeout(resolve, 300))
+
+      console.log('🔄 Resending OTP...')
+      const result = await sendOTP(formattedPhone)
+      setConfirmationResult(result)
+      setSuccess('✅ OTP resent successfully! Check your SMS.')
+
+      // Reset expiration timer
+      setOtpExpiresAt(Date.now() + (5 * 60 * 1000))
+      setResendOtpCooldown(30)
+      setOtp('') // Clear previous OTP input
+    } catch (err: any) {
+      setError(err.message || 'Failed to resend OTP')
       clearRecaptcha()
     } finally {
       setLoading(false)
@@ -481,10 +550,14 @@ function SignUpPageContent() {
                       type={showPassword ? 'text' : 'password'}
                       required
                       value={password}
-                      onChange={(e) => setPassword(e.target.value)}
+                      onChange={(e) => {
+                        const newPassword = e.target.value
+                        setPassword(newPassword)
+                        setPasswordValidation(validatePassword(newPassword))
+                      }}
                       className="w-full pl-10 pr-12 py-3 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-gray-900 dark:text-white"
                       placeholder="••••••••"
-                      minLength={6}
+                      minLength={8}
                     />
                     <button
                       type="button"
@@ -494,9 +567,66 @@ function SignUpPageContent() {
                       {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
                     </button>
                   </div>
-                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                    Minimum 6 characters
-                  </p>
+
+                  {/* Password Strength Indicator */}
+                  {password && (
+                    <div className="mt-2">
+                      <div className="flex items-center gap-2 mb-2">
+                        <div className="flex-1 h-1.5 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
+                          <div
+                            className="h-full transition-all duration-300"
+                            style={{
+                              width: `${(Object.values(passwordValidation.errors).filter(e => !e).length / 4) * 100}%`,
+                              backgroundColor: getPasswordStrengthColor(getPasswordStrength(password))
+                            }}
+                          />
+                        </div>
+                        <span className="text-xs font-medium" style={{ color: getPasswordStrengthColor(getPasswordStrength(password)) }}>
+                          {getPasswordStrength(password).charAt(0).toUpperCase() + getPasswordStrength(password).slice(1)}
+                        </span>
+                      </div>
+
+                      {/* Requirements Checklist */}
+                      <div className="space-y-1">
+                        <div className="flex items-center gap-2 text-xs">
+                          {passwordValidation.errors.length ?
+                            <X className="w-3 h-3 text-red-500" /> :
+                            <Check className="w-3 h-3 text-green-500" />
+                          }
+                          <span className={passwordValidation.errors.length ? 'text-gray-500 dark:text-gray-400' : 'text-green-600 dark:text-green-400'}>
+                            At least 8 characters
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-2 text-xs">
+                          {passwordValidation.errors.uppercase ?
+                            <X className="w-3 h-3 text-red-500" /> :
+                            <Check className="w-3 h-3 text-green-500" />
+                          }
+                          <span className={passwordValidation.errors.uppercase ? 'text-gray-500 dark:text-gray-400' : 'text-green-600 dark:text-green-400'}>
+                            One uppercase letter
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-2 text-xs">
+                          {passwordValidation.errors.lowercase ?
+                            <X className="w-3 h-3 text-red-500" /> :
+                            <Check className="w-3 h-3 text-green-500" />
+                          }
+                          <span className={passwordValidation.errors.lowercase ? 'text-gray-500 dark:text-gray-400' : 'text-green-600 dark:text-green-400'}>
+                            One lowercase letter
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-2 text-xs">
+                          {passwordValidation.errors.number ?
+                            <X className="w-3 h-3 text-red-500" /> :
+                            <Check className="w-3 h-3 text-green-500" />
+                          }
+                          <span className={passwordValidation.errors.number ? 'text-gray-500 dark:text-gray-400' : 'text-green-600 dark:text-green-400'}>
+                            One number
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 <div>
@@ -673,14 +803,26 @@ function SignUpPageContent() {
                     maxLength={6}
                     autoFocus
                   />
-                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-1 text-center">
-                    📱 OTP sent to +91{phoneNumber} via SMS
-                  </p>
+                  <div className="flex items-center justify-between mt-2">
+                    <p className="text-xs text-gray-500 dark:text-gray-400">
+                      📱 OTP sent to +91{phoneNumber}
+                    </p>
+                    {otpTimeRemaining > 0 && (
+                      <p className={`text-xs font-medium ${otpTimeRemaining < 60 ? 'text-red-600 dark:text-red-400' : 'text-gray-600 dark:text-gray-400'}`}>
+                        ⏱️ {Math.floor(otpTimeRemaining / 60)}:{(otpTimeRemaining % 60).toString().padStart(2, '0')}
+                      </p>
+                    )}
+                  </div>
+                  {otpTimeRemaining === 0 && (
+                    <p className="text-xs text-red-600 dark:text-red-400 mt-1 text-center">
+                      ⚠️ OTP expired. Please request a new one.
+                    </p>
+                  )}
                 </div>
 
                 <button
                   type="submit"
-                  disabled={loading || otp.length !== 6}
+                  disabled={loading || otp.length !== 6 || otpTimeRemaining === 0}
                   className="w-full py-3 bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-bold rounded-xl hover:shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                 >
                   {loading ? (
@@ -696,19 +838,32 @@ function SignUpPageContent() {
                   )}
                 </button>
 
-                <button
-                  type="button"
-                  onClick={() => {
-                    setStep('phone')
-                    setOtp('')
-                    setConfirmationResult(null)
-                    setPhoneNumber('')
-                    clearRecaptcha()
-                  }}
-                  className="w-full text-sm text-blue-600 dark:text-blue-400 hover:underline"
-                >
-                  Change Number / Resend OTP
-                </button>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setStep('phone')
+                      setOtp('')
+                      setConfirmationResult(null)
+                      setPhoneNumber('')
+                      setOtpExpiresAt(null)
+                      clearRecaptcha()
+                    }}
+                    className="flex-1 text-sm text-gray-600 dark:text-gray-400 hover:underline"
+                  >
+                    Change Number
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleResendOTP}
+                    disabled={loading || resendOtpCooldown > 0}
+                    className="flex-1 text-sm text-blue-600 dark:text-blue-400 hover:underline disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {resendOtpCooldown > 0
+                      ? `Resend in ${resendOtpCooldown}s`
+                      : '🔄 Resend OTP'}
+                  </button>
+                </div>
               </form>
             )}
 

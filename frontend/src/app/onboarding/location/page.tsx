@@ -300,7 +300,7 @@ function LocationContent() {
                 console.log('✅ Address saved! Redirecting to dashboard...')
             }
 
-            router.push('/dashboard')
+            router.replace('/dashboard')
 
         } catch (err: any) {
             console.error('❌ Save error:', err)

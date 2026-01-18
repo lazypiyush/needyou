@@ -4,7 +4,7 @@ import { Providers } from '@/components/Providers'
 import './globals.css'
 
 export const metadata: Metadata = {
-  title: 'NeedYou - Connect, Help, Grow',
+  title: 'NeedYou',
   description: 'A platform to connect people who need help with those who can provide it',
   icons: {
     icon: '/logo.jpg',

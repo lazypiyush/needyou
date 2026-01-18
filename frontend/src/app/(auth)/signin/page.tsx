@@ -46,12 +46,36 @@ export default function SignInPage() {
   const [resetError, setResetError] = useState('')
   const [resetSuccess, setResetSuccess] = useState(false)
 
+  // Rate limiting states
+  const [failedAttempts, setFailedAttempts] = useState(0)
+  const [lockoutUntil, setLockoutUntil] = useState<number | null>(null)
+  const [lockoutTimeRemaining, setLockoutTimeRemaining] = useState(0)
+
   const router = useRouter()
   const { user, loading: authLoading } = useAuth()
   const { theme } = useTheme()
 
   useEffect(() => {
     setMounted(true)
+
+    // Load rate limiting data from localStorage
+    const storedAttempts = localStorage.getItem('signin_failed_attempts')
+    const storedLockout = localStorage.getItem('signin_lockout_until')
+
+    if (storedAttempts) {
+      setFailedAttempts(parseInt(storedAttempts))
+    }
+
+    if (storedLockout) {
+      const lockoutTime = parseInt(storedLockout)
+      if (lockoutTime > Date.now()) {
+        setLockoutUntil(lockoutTime)
+      } else {
+        // Lockout expired, clear it
+        localStorage.removeItem('signin_lockout_until')
+        localStorage.removeItem('signin_failed_attempts')
+      }
+    }
 
     // Cleanup on unmount
     return () => {
@@ -65,6 +89,26 @@ export default function SignInPage() {
     }
   }, [authMethod])
 
+  // Lockout countdown timer
+  useEffect(() => {
+    if (lockoutUntil) {
+      const interval = setInterval(() => {
+        const remaining = Math.max(0, Math.ceil((lockoutUntil - Date.now()) / 1000))
+        setLockoutTimeRemaining(remaining)
+
+        if (remaining === 0) {
+          // Lockout expired
+          setLockoutUntil(null)
+          setFailedAttempts(0)
+          localStorage.removeItem('signin_lockout_until')
+          localStorage.removeItem('signin_failed_attempts')
+          setError('')
+        }
+      }, 1000)
+      return () => clearInterval(interval)
+    }
+  }, [lockoutUntil])
+
   // Check if user is already logged in with complete profile
   useEffect(() => {
     if (user && !authLoading) {
@@ -74,7 +118,7 @@ export default function SignInPage() {
         // Only redirect if profile is complete
         if (status?.profileComplete && status?.emailVerified && status?.phoneVerified) {
           console.log('✅ Profile complete, redirecting to dashboard')
-          router.push('/dashboard')
+          router.replace('/dashboard')
         } else {
           console.log('⚠️ Profile incomplete, staying on signin page')
         }
@@ -88,6 +132,19 @@ export default function SignInPage() {
     e.preventDefault()
     setError('')
     setSuccess('')
+
+    // Check if user is locked out
+    if (lockoutUntil && Date.now() < lockoutUntil) {
+      const minutes = Math.floor(lockoutTimeRemaining / 60)
+      const seconds = lockoutTimeRemaining % 60
+      setError(
+        `🔒 Too many failed sign-in attempts.\n\n` +
+        `⏱️ Try again in ${minutes}:${seconds.toString().padStart(2, '0')}\n\n` +
+        `💡 Forgot your password? Click "Forgot Password" below to reset it.`
+      )
+      return
+    }
+
     setLoading(true)
 
     try {
@@ -173,11 +230,36 @@ export default function SignInPage() {
 
       // Step 6: All verified and onboarded - proceed to dashboard
       console.log('✅ Authentication complete! Redirecting to dashboard...')
-      router.push('/dashboard')
+
+      // Clear rate limiting on successful sign-in
+      setFailedAttempts(0)
+      setLockoutUntil(null)
+      localStorage.removeItem('signin_failed_attempts')
+      localStorage.removeItem('signin_lockout_until')
+
+      router.replace('/dashboard')
 
     } catch (err: any) {
       console.error('❌ Sign in error:', err)
-      setError('❌ ' + (err.message || 'Failed to sign in'))
+
+      // Increment failed attempts
+      const newAttempts = failedAttempts + 1
+      setFailedAttempts(newAttempts)
+      localStorage.setItem('signin_failed_attempts', newAttempts.toString())
+
+      // Check if we should lock out
+      if (newAttempts >= 5) {
+        const lockoutTime = Date.now() + (5 * 60 * 1000) // 5 minutes
+        setLockoutUntil(lockoutTime)
+        localStorage.setItem('signin_lockout_until', lockoutTime.toString())
+        setError(
+          `🔒 Too many failed sign-in attempts.\n\n` +
+          `⏱️ Your account is locked for 5 minutes.\n\n` +
+          `💡 Forgot your password? Click "Forgot Password" below to reset it and unlock your account.`
+        )
+      } else {
+        setError(`❌ ${err.message || 'Failed to sign in'}\n\n⚠️ ${5 - newAttempts} attempts remaining before lockout.`)
+      }
     } finally {
       setLoading(false)
     }
@@ -285,7 +367,7 @@ export default function SignInPage() {
       setSuccess('✅ Login successful! Redirecting...')
 
       setTimeout(() => {
-        router.push('/dashboard')
+        router.replace('/dashboard')
       }, 1000)
 
     } catch (err: any) {
@@ -304,6 +386,13 @@ export default function SignInPage() {
     try {
       await resetPassword(resetEmail)
       setResetSuccess(true)
+
+      // Clear rate limiting when password reset is sent
+      setFailedAttempts(0)
+      setLockoutUntil(null)
+      localStorage.removeItem('signin_failed_attempts')
+      localStorage.removeItem('signin_lockout_until')
+      setError('') // Clear any lockout error message
     } catch (err: any) {
       setResetError(err.message || 'Failed to send reset email')
     } finally {
