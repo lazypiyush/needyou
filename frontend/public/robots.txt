@@ -1,0 +1,11 @@
+User-agent: *
+Allow: /
+Disallow: /api/
+Disallow: /dashboard/
+Disallow: /onboarding/
+
+# Sitemap
+Sitemap: https://need-you.xyz/sitemap.xml
+
+# Crawl-delay
+Crawl-delay: 1

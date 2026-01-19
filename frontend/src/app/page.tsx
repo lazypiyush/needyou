@@ -6,6 +6,7 @@ import { useTheme } from 'next-themes'
 import { useEffect, useState } from 'react'
 import Image from 'next/image'
 import Link from 'next/link'
+import StructuredData from '@/components/StructuredData'
 
 export default function Home() {
   const { theme, setTheme } = useTheme()
@@ -14,10 +15,13 @@ export default function Home() {
   useEffect(() => setMounted(true), [])
 
   return (
-    <div className="min-h-screen w-full overflow-x-hidden transition-colors duration-500" 
+    <div className="min-h-screen w-full overflow-x-hidden transition-colors duration-500"
       style={{
         background: 'linear-gradient(to bottom right, rgb(var(--gradient-from)), rgb(var(--gradient-via)), rgb(var(--gradient-to)))'
       }}>
+
+      {/* SEO Structured Data */}
+      <StructuredData />
 
       {/* Theme Toggle - Top Right */}
       <div className="fixed top-6 right-6 z-50">
@@ -53,28 +57,28 @@ export default function Home() {
             className="inline-block mb-8"
           >
             <div className="relative">
-              <div 
+              <div
                 className="w-28 h-28 rounded-3xl flex items-center justify-center overflow-hidden"
                 style={{
-                  boxShadow: mounted && theme === 'dark' 
-                    ? '0 0 20px rgba(255, 255, 255, 0.15), 0 0 40px rgba(255, 255, 255, 0.1), 0 20px 50px -12px rgba(0, 0, 0, 0.25)' 
+                  boxShadow: mounted && theme === 'dark'
+                    ? '0 0 20px rgba(255, 255, 255, 0.15), 0 0 40px rgba(255, 255, 255, 0.1), 0 20px 50px -12px rgba(0, 0, 0, 0.25)'
                     : '0 25px 50px -12px rgba(0, 0, 0, 0.25)'
                 }}
               >
-                <Image 
-                  src="/logo.jpg" 
-                  alt="NeedYou Logo" 
+                <Image
+                  src="/logo.jpg"
+                  alt="NeedYou Logo"
                   width={112}
                   height={112}
                   className="w-full h-full object-cover"
                 />
               </div>
               <motion.div
-                animate={{ 
+                animate={{
                   scale: [1, 1.2, 1],
                   rotate: [0, 180, 360]
                 }}
-                transition={{ 
+                transition={{
                   duration: 3,
                   repeat: Infinity,
                   ease: "easeInOut"
@@ -93,7 +97,7 @@ export default function Home() {
             transition={{ delay: 0.2 }}
             className="text-5xl sm:text-6xl md:text-7xl font-black mb-6 leading-tight"
           >
-            <span 
+            <span
               className="bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 bg-clip-text text-transparent"
               style={{
                 filter: mounted && theme === 'dark'
@@ -127,7 +131,7 @@ export default function Home() {
               color: mounted && theme === 'dark' ? '#ffffff' : '#4b5563'
             }}
           >
-            Connect with skilled people nearby for household tasks, or offer your services 
+            Connect with skilled people nearby for household tasks, or offer your services
             and earn money. Safe, verified, and easy to use.
           </motion.p>
 
@@ -156,7 +160,7 @@ export default function Home() {
                 />
               </motion.button>
             </Link>
-            
+
             <Link href="/signin">
               <motion.button
                 whileHover={{ scale: 1.05 }}
@@ -198,7 +202,7 @@ export default function Home() {
                 <p className="leading-relaxed">
                   {feature.desc}
                 </p>
-                
+
                 {/* Hover gradient border effect */}
                 <div className={`absolute inset-0 rounded-3xl bg-gradient-to-br ${feature.color} opacity-0 group-hover:opacity-20 blur-xl transition-opacity duration-500`} />
               </motion.div>
