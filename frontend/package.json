@@ -11,6 +11,7 @@
     "deploy:firebase": "npm run build:firebase && firebase deploy --only hosting"
   },
   "dependencies": {
+    "@google/generative-ai": "^0.24.1",
     "@hookform/resolvers": "^5.2.2",
     "@opentelemetry/api": "^1.9.0",
     "@vis.gl/react-google-maps": "^1.7.1",

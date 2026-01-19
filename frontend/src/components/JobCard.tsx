@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { useTheme } from 'next-themes'
-import { MapPin, User, Clock, Image as ImageIcon, Video, Trash2, Users, ChevronDown } from 'lucide-react'
+import { MapPin, User, Clock, Image as ImageIcon, Video, Trash2, Users, ChevronDown, Languages } from 'lucide-react'
 import { Job, applyToJob, deleteJob, checkIfUserApplied } from '@/lib/auth'
 import { useAuth } from '@/context/AuthContext'
 import Image from 'next/image'
@@ -29,6 +29,15 @@ export default function JobCard({ job, onApply, onDelete, userLocation }: JobCar
     const [showMyApplication, setShowMyApplication] = useState(false)
     const [distance, setDistance] = useState<number | null>(null)
     const [captionExpanded, setCaptionExpanded] = useState(false)
+
+    // Translation states
+    const [isTranslated, setIsTranslated] = useState(false)
+    const [translatedCaption, setTranslatedCaption] = useState('')
+    const [isTranslating, setIsTranslating] = useState(false)
+    const [isDetectingLanguage, setIsDetectingLanguage] = useState(false)
+    const [detectedLanguage, setDetectedLanguage] = useState('')
+    const [showLanguageDropdown, setShowLanguageDropdown] = useState(false)
+    const [selectedLanguage, setSelectedLanguage] = useState('')
 
     // Check database for application status on mount and when job changes
     useEffect(() => {
@@ -85,6 +94,82 @@ export default function JobCard({ job, onApply, onDelete, userLocation }: JobCar
         const days = Math.floor(hours / 24)
         return `${days}d ago`
     }
+
+    // Available languages for translation
+    const languages = [
+        'English', 'Hindi', 'Marathi', 'Gujarati', 'Tamil', 'Telugu', 'Kannada',
+        'Malayalam', 'Bengali', 'Punjabi', 'Urdu', 'Spanish', 'French', 'German',
+        'Chinese', 'Japanese', 'Korean', 'Arabic', 'Portuguese', 'Russian', 'Italian'
+    ]
+
+    // Detect language when user clicks Translate button
+    const handleDetectLanguage = async () => {
+        setIsDetectingLanguage(true)
+
+        try {
+            const response = await fetch('/api/translate/detect', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ text: job.caption })
+            })
+
+            if (!response.ok) {
+                throw new Error('Language detection failed')
+            }
+
+            const data = await response.json()
+            setDetectedLanguage(data.detectedLanguage)
+            setShowLanguageDropdown(true)
+        } catch (error) {
+            console.error('Language detection error:', error)
+            alert('Failed to detect language. Please try again.')
+        } finally {
+            setIsDetectingLanguage(false)
+        }
+    }
+
+    const handleTranslate = async (targetLanguage: string) => {
+        setIsTranslating(true)
+        setSelectedLanguage(targetLanguage)
+
+        try {
+            const response = await fetch('/api/translate', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    text: job.caption,
+                    targetLanguage
+                })
+            })
+
+            if (!response.ok) {
+                throw new Error('Translation failed')
+            }
+
+            const data = await response.json()
+            setTranslatedCaption(data.translatedText)
+            setIsTranslated(true)
+            setShowLanguageDropdown(false)
+        } catch (error) {
+            console.error('Translation error:', error)
+            alert('Failed to translate. Please try again.')
+        } finally {
+            setIsTranslating(false)
+        }
+    }
+
+    const handleShowOriginal = () => {
+        setIsTranslated(false)
+        setTranslatedCaption('')
+        setShowLanguageDropdown(false)
+        setSelectedLanguage('')
+        setDetectedLanguage('')
+    }
+
+    // Filter out detected language from available languages
+    const availableLanguages = detectedLanguage
+        ? languages.filter(lang => lang.toLowerCase() !== detectedLanguage.toLowerCase())
+        : languages
 
     return (
         <div
@@ -159,10 +244,10 @@ export default function JobCard({ job, onApply, onDelete, userLocation }: JobCar
                         className={`text-base font-medium transition-all duration-300 ${captionExpanded ? '' : 'line-clamp-2'}`}
                         style={{ color: isDark ? '#ffffff' : '#111827' }}
                     >
-                        {job.caption}
+                        {isTranslated ? translatedCaption : job.caption}
                     </p>
                     {/* Show expand button only if caption is long enough to be truncated */}
-                    {job.caption.length > 100 && (
+                    {(isTranslated ? translatedCaption.length : job.caption.length) > 100 && (
                         <button
                             onClick={() => setCaptionExpanded(!captionExpanded)}
                             className="mt-1 flex items-center gap-1 text-sm font-medium text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 transition-colors"
@@ -174,6 +259,84 @@ export default function JobCard({ job, onApply, onDelete, userLocation }: JobCar
                             />
                         </button>
                     )}
+
+                    {/* Translation Controls */}
+                    <div className="mt-2 space-y-2">
+                        {!isTranslated ? (
+                            <>
+                                <button
+                                    onClick={handleDetectLanguage}
+                                    disabled={isTranslating || isDetectingLanguage}
+                                    className="flex items-center gap-2 text-sm font-medium text-purple-600 dark:text-purple-400 hover:text-purple-700 dark:hover:text-purple-300 transition-colors disabled:opacity-50"
+                                >
+                                    <Languages className="w-4 h-4" />
+                                    <span>{isDetectingLanguage ? 'Detecting language...' : 'Translate'}</span>
+                                </button>
+
+                                {/* Language Dropdown */}
+                                {showLanguageDropdown && (
+                                    <div className="p-3 rounded-lg border" style={{
+                                        backgroundColor: isDark ? '#2a2a2a' : '#f9fafb',
+                                        borderColor: isDark ? '#3a3a3a' : '#e5e7eb'
+                                    }}>
+                                        {/* Show detected language */}
+                                        {detectedLanguage && (
+                                            <div className="mb-3 p-2 rounded-lg" style={{
+                                                backgroundColor: isDark ? '#1a1a1a' : '#ffffff',
+                                                border: `1px solid ${isDark ? '#4a4a4a' : '#e5e7eb'}`
+                                            }}>
+                                                <p className="text-xs font-semibold mb-1" style={{ color: isDark ? '#9ca3af' : '#6b7280' }}>
+                                                    Detected Language:
+                                                </p>
+                                                <p className="text-sm font-bold" style={{ color: isDark ? '#ffffff' : '#111827' }}>
+                                                    {detectedLanguage}
+                                                </p>
+                                            </div>
+                                        )}
+
+                                        <p className="text-xs font-semibold mb-2" style={{ color: isDark ? '#9ca3af' : '#6b7280' }}>
+                                            Select target language:
+                                        </p>
+                                        <div className="grid grid-cols-2 gap-2 max-h-48 overflow-y-auto">
+                                            {availableLanguages.map((lang) => (
+                                                <button
+                                                    key={lang}
+                                                    onClick={() => handleTranslate(lang)}
+                                                    disabled={isTranslating}
+                                                    className="px-3 py-2 text-sm font-medium rounded-lg transition-all hover:scale-105 disabled:opacity-50"
+                                                    style={{
+                                                        backgroundColor: isDark ? '#3a3a3a' : '#ffffff',
+                                                        color: isDark ? '#ffffff' : '#111827',
+                                                        border: `1px solid ${isDark ? '#4a4a4a' : '#e5e7eb'}`
+                                                    }}
+                                                >
+                                                    {isTranslating && selectedLanguage === lang ? 'Translating...' : lang}
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
+                            </>
+                        ) : (
+                            <div className="flex items-center gap-3">
+                                <button
+                                    onClick={handleShowOriginal}
+                                    className="flex items-center gap-2 text-sm font-medium text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 transition-colors"
+                                >
+                                    <Languages className="w-4 h-4" />
+                                    <span>Show Original</span>
+                                </button>
+                                {detectedLanguage && selectedLanguage && (
+                                    <span className="text-xs px-2 py-1 rounded-full" style={{
+                                        backgroundColor: isDark ? '#2a2a2a' : '#f3f4f6',
+                                        color: isDark ? '#9ca3af' : '#6b7280'
+                                    }}>
+                                        {detectedLanguage} → {selectedLanguage}
+                                    </span>
+                                )}
+                            </div>
+                        )}
+                    </div>
                 </div>
 
                 {/* Budget - HIGHLIGHTED */}
