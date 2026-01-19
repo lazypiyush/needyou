@@ -424,32 +424,49 @@ export const signInWithEmail = async (email: string, password: string) => {
 }
 
 
-// Reset Password - Send password reset email via Resend
+// Reset Password - Send password reset email via Resend with Firebase link
 export const resetPassword = async (email: string) => {
   try {
     console.log('📧 Sending password reset email to:', email)
 
-    // Try Resend API first
+    // Generate Firebase password reset link and send via Resend
     try {
-      const response = await fetch('/api/send-password-reset', {
+      // Step 1: Generate Firebase password reset link using Admin SDK
+      const linkResponse = await fetch('/api/generate-password-reset-link', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email })
+      })
+
+      if (!linkResponse.ok) {
+        throw new Error('Failed to generate password reset link')
+      }
+
+      const { resetLink } = await linkResponse.json()
+
+      // Step 2: Send the Firebase link via Resend
+      const emailResponse = await fetch('/api/send-password-reset', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           email: email,
-          resetLink: `${window.location.origin}/reset-password?email=${encodeURIComponent(email)}`,
-          userName: email.split('@')[0] // Use email prefix as name fallback
+          resetLink: resetLink,
+          userName: email.split('@')[0]
         })
       })
 
-      if (!response.ok) {
-        console.error('⚠️ Resend API error, falling back to Firebase')
-        await sendPasswordResetEmail(auth, email)
-      } else {
-        console.log('✅ Password reset email sent via Resend')
+      if (!emailResponse.ok) {
+        throw new Error('Resend failed')
       }
-    } catch (resendError) {
-      console.error('⚠️ Resend failed, using Firebase fallback:', resendError)
-      await sendPasswordResetEmail(auth, email)
+
+      console.log('✅ Password reset email sent via Resend with Firebase link')
+    } catch (emailError) {
+      console.error('⚠️ Resend failed, using Firebase fallback:', emailError)
+      // Fallback to Firebase's default email
+      await sendPasswordResetEmail(auth, email, {
+        url: `${window.location.origin}/signin`,
+        handleCodeInApp: false
+      })
     }
   } catch (error: any) {
     console.error('❌ Password Reset Error:', error)
