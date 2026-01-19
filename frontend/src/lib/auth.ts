@@ -499,11 +499,36 @@ export const resendVerificationEmail = async (email: string, password: string) =
     }
 
     if (!user.emailVerified) {
-      await sendEmailVerification(user, {
-        url: `${window.location.origin}/signup`,
-        handleCodeInApp: false
+      // Generate Firebase verification link using Admin SDK
+      const linkResponse = await fetch('/api/generate-verification-link', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: user.email })
       })
-      console.log('✅ Verification email sent')
+
+      if (!linkResponse.ok) {
+        throw new Error('Failed to generate verification link')
+      }
+
+      const { verificationLink } = await linkResponse.json()
+
+      // Send email using Resend API
+      const emailResponse = await fetch('/api/send-verification-email', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: user.email,
+          verificationLink,
+          userName: user.displayName || email.split('@')[0]
+        })
+      })
+
+      if (!emailResponse.ok) {
+        const errorData = await emailResponse.json()
+        throw new Error(errorData.error || 'Failed to send verification email')
+      }
+
+      console.log('✅ Verification email sent via Resend')
     } else {
       console.log('ℹ️ Email already verified')
     }
