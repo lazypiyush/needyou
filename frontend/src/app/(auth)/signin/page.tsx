@@ -165,7 +165,7 @@ export default function SignInPage() {
           await resendVerificationEmail(email, password)
 
           console.log('✅ Verification email sent successfully!')
-          setSuccess('📧 Verification email sent! Please check your inbox and verify your email before signing in.\n\nOnce verified, come back and sign in again.')
+          setSuccess('📧 Verification email sent! Please check your inbox and verify your email before signing in.\n\n⏱️ Email may take up to 2 minutes to arrive. Check your spam folder if you don\'t see it.\n\nOnce verified, come back and sign in again.')
         } catch (emailErr: any) {
           console.error('❌ Failed to send verification email:', emailErr)
           console.error('Error message:', emailErr.message)
@@ -795,8 +795,12 @@ export default function SignInPage() {
                   <p className="text-blue-600 dark:text-blue-400 font-semibold mb-4">
                     {resetEmail}
                   </p>
-                  <p className="text-xs text-gray-500 dark:text-gray-400 mb-6">
+                  <p className="text-xs text-gray-500 dark:text-gray-400 mb-2">
                     Click the link in the email to reset your password. The link will expire in 1 hour.
+                  </p>
+                  <p className="text-xs text-orange-600 dark:text-orange-400 flex items-center justify-center gap-1">
+                    <AlertCircle className="w-4 h-4" />
+                    Email may take up to 2 minutes to arrive. Check your spam folder.
                   </p>
                   <button
                     onClick={() => {

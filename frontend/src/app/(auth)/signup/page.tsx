@@ -183,7 +183,7 @@ function SignUpPageContent() {
       // Keep user signed in for email verification (don't sign out)
       // This allows resend email to work properly
 
-      setSuccess('✅ Account created! Verification email sent.')
+      setSuccess('✅ Account created! Verification email sent.\n\n⏱️ Email may take up to 2 minutes to arrive. Please be patient and check your spam folder.')
       setStep('verify-email')
     } catch (err: any) {
       // Check if email already exists
@@ -278,7 +278,7 @@ function SignUpPageContent() {
 
     try {
       await resendVerificationEmail(email, password)
-      setSuccess('✅ Verification email sent again! Check your inbox.')
+      setSuccess('📧 Verification email sent! Please check your inbox and verify your email before signing in.\n\n⏱️ Email may take up to 2 minutes to arrive. Check your spam folder if you don\'t see it.\n\nOnce verified, come back and sign in again.')
       // Set 60-second cooldown
       setResendCooldown(60)
     } catch (err: any) {
@@ -695,7 +695,7 @@ function SignUpPageContent() {
                   </p>
                   <p className="text-xs text-orange-600 dark:text-orange-400 flex items-center justify-center gap-1">
                     <AlertCircle className="w-4 h-4" />
-                    Can't find it? Check your spam/junk folder
+                    Email may take up to 2 minutes to arrive. Check your spam/junk folder.
                   </p>
                 </div>
 
