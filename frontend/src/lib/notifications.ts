@@ -1,4 +1,4 @@
-import { collection, addDoc, query, where, orderBy, getDocs, doc, updateDoc } from 'firebase/firestore'
+import { collection, addDoc, query, where, orderBy, getDocs, doc, updateDoc, onSnapshot } from 'firebase/firestore'
 import { db } from './firebase'
 import { Notification } from './auth'
 
@@ -49,6 +49,36 @@ export const getUserNotifications = async (
     } catch (error: any) {
         console.error('❌ Get Notifications Error:', error)
         return []
+    }
+}
+
+// Real-time listener for user notifications
+export const subscribeToNotifications = (
+    userId: string,
+    callback: (notifications: Notification[]) => void
+) => {
+    try {
+        const dbInstance = ensureDbInitialized()
+        const notificationsRef = collection(dbInstance, 'notifications')
+        const q = query(
+            notificationsRef,
+            where('userId', '==', userId),
+            orderBy('createdAt', 'desc')
+        )
+
+        // Set up real-time listener
+        const unsubscribe = onSnapshot(q, (snapshot) => {
+            const notifications = snapshot.docs.map(doc => ({
+                id: doc.id,
+                ...doc.data()
+            } as Notification))
+            callback(notifications)
+        })
+
+        return unsubscribe
+    } catch (error: any) {
+        console.error('❌ Subscribe to Notifications Error:', error)
+        return () => { } // Return empty unsubscribe function
     }
 }
 

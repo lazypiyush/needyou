@@ -2,14 +2,16 @@
 
 import { useState, useEffect } from 'react'
 import { useAuth } from '@/context/AuthContext'
-import { getUserNotifications, markNotificationAsRead } from '@/lib/notifications'
+import { subscribeToNotifications, markNotificationAsRead, markAllNotificationsAsRead } from '@/lib/notifications'
 import { Notification } from '@/lib/auth'
-import { Bell, CheckCircle } from 'lucide-react'
+import { Bell, CheckCircle, Check } from 'lucide-react'
 import { useTheme } from 'next-themes'
+import { useRouter } from 'next/navigation'
 
 export default function NotificationsPage() {
     const { user } = useAuth()
     const { theme, systemTheme } = useTheme()
+    const router = useRouter()
     const [notifications, setNotifications] = useState<Notification[]>([])
     const [loading, setLoading] = useState(true)
     const [mounted, setMounted] = useState(false)
@@ -21,28 +23,36 @@ export default function NotificationsPage() {
     const currentTheme = theme === 'system' ? systemTheme : theme
     const isDark = currentTheme === 'dark'
 
+    // Real-time notifications listener
     useEffect(() => {
-        console.log('User state changed:', user?.uid)
-        if (user?.uid) {
-            console.log('Calling fetchNotifications...')
-            fetchNotifications()
-        }
-    }, [user])
-
-    const fetchNotifications = async () => {
         if (!user?.uid) return
+
         setLoading(true)
-        try {
-            console.log('Fetching notifications for user:', user.uid)
-            const notifs = await getUserNotifications(user.uid)
-            console.log('Fetched notifications:', notifs)
+
+        // Subscribe to real-time updates
+        const unsubscribe = subscribeToNotifications(user.uid, (notifs) => {
             setNotifications(notifs)
-        } catch (error) {
-            console.error('Error fetching notifications:', error)
-        } finally {
             setLoading(false)
+        })
+
+        // Cleanup subscription on unmount
+        return () => unsubscribe()
+    }, [user?.uid])
+
+    // Mark all unread notifications as read when page is viewed
+    useEffect(() => {
+        if (!user?.uid || notifications.length === 0) return
+
+        const unreadNotifications = notifications.filter(n => !n.read)
+        if (unreadNotifications.length > 0) {
+            // Mark all as read after a short delay (so user sees the unread state first)
+            const timer = setTimeout(() => {
+                markAllNotificationsAsRead(user.uid)
+            }, 1000)
+
+            return () => clearTimeout(timer)
         }
-    }
+    }, [user?.uid, notifications])
 
     const handleNotificationClick = async (notification: Notification) => {
         if (!notification.read) {
@@ -68,12 +78,35 @@ export default function NotificationsPage() {
 
     if (!mounted) return null
 
+    const unreadCount = notifications.filter(n => !n.read).length
+
+    const handleMarkAllRead = async () => {
+        if (!user?.uid) return
+        await markAllNotificationsAsRead(user.uid)
+    }
+
     return (
         <div className="min-h-screen" style={{ backgroundColor: isDark ? '#0a0a0a' : '#f9fafb' }}>
             <div className="max-w-4xl mx-auto p-6">
-                <h1 className="text-3xl font-bold mb-6" style={{ color: isDark ? '#ffffff' : '#111827' }}>
-                    Notifications
-                </h1>
+                <div className="flex items-center justify-between mb-6">
+                    <h1 className="text-3xl font-bold" style={{ color: isDark ? '#ffffff' : '#111827' }}>
+                        Notifications
+                        {unreadCount > 0 && (
+                            <span className="ml-3 text-sm font-normal px-3 py-1 bg-blue-600 text-white rounded-full">
+                                {unreadCount} new
+                            </span>
+                        )}
+                    </h1>
+                    {unreadCount > 0 && (
+                        <button
+                            onClick={handleMarkAllRead}
+                            className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors font-medium"
+                        >
+                            <Check className="w-4 h-4" />
+                            Mark all as read
+                        </button>
+                    )}
+                </div>
 
                 {loading ? (
                     <div className="flex items-center justify-center py-12">

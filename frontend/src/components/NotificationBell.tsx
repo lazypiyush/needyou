@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react'
 import { Bell } from 'lucide-react'
-import { getUserNotifications, markNotificationAsRead, markAllNotificationsAsRead } from '@/lib/notifications'
+import { getUserNotifications, markNotificationAsRead, markAllNotificationsAsRead, subscribeToNotifications } from '@/lib/notifications'
 import { useAuth } from '@/context/AuthContext'
 import { Notification } from '@/lib/auth'
 import { useTheme } from 'next-themes'
@@ -22,25 +22,21 @@ export default function NotificationBell({ onNotificationClick }: NotificationBe
     const currentTheme = theme === 'system' ? systemTheme : theme
     const isDark = currentTheme === 'dark'
 
-    // Fetch notifications
+    // Real-time notifications listener
     useEffect(() => {
-        if (user?.uid) {
-            fetchNotifications()
-        }
-    }, [user?.uid])
-
-    const fetchNotifications = async () => {
         if (!user?.uid) return
+
         setLoading(true)
-        try {
-            const notifs = await getUserNotifications(user.uid)
+
+        // Subscribe to real-time updates
+        const unsubscribe = subscribeToNotifications(user.uid, (notifs) => {
             setNotifications(notifs)
-        } catch (error) {
-            console.error('Error fetching notifications:', error)
-        } finally {
             setLoading(false)
-        }
-    }
+        })
+
+        // Cleanup subscription on unmount
+        return () => unsubscribe()
+    }, [user?.uid])
 
     // Close dropdown when clicking outside
     useEffect(() => {
