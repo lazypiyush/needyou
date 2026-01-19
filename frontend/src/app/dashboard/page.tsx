@@ -3,15 +3,16 @@
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/context/AuthContext'
-import { Loader2, MapPin, Search, Filter, Home, Plus, Bell, User, Briefcase, Edit, Trash2 } from 'lucide-react'
+import { Loader2, MapPin, Search, Filter, Home, Plus, Bell, User, Briefcase, Edit, Trash2, Check, CheckCircle } from 'lucide-react'
 import ThemeToggle from '@/components/ThemeToggle'
 import { useTheme } from 'next-themes'
-import { getJobs, Job } from '@/lib/auth'
+import { getJobs, Job, Notification } from '@/lib/auth'
 import JobCard from '@/components/JobCard'
 import { filterJobsByDistance, filterJobsByCity, addDistanceToJobs } from '@/lib/distance'
 import { db } from '@/lib/firebase'
 import { doc, getDoc } from 'firebase/firestore'
 import { getUniqueCategories } from '@/lib/gemini'
+import { subscribeToNotifications, markNotificationAsRead, markAllNotificationsAsRead } from '@/lib/notifications'
 
 export default function DashboardPage() {
     const router = useRouter()
@@ -33,10 +34,28 @@ export default function DashboardPage() {
     const [filteredJobs, setFilteredJobs] = useState<Job[]>([])
     const [selectedCategory, setSelectedCategory] = useState<string>('All')
     const [categories, setCategories] = useState<string[]>([])
+    const [unreadNotifications, setUnreadNotifications] = useState(0)
+    const [allNotifications, setAllNotifications] = useState<Notification[]>([])
+    const [displayedJobsCount, setDisplayedJobsCount] = useState(12) // Show 12 jobs initially
+    const [displayedMyJobsCount, setDisplayedMyJobsCount] = useState(12) // Show 12 my jobs initially
+    const [notificationJobId, setNotificationJobId] = useState<string | null>(null) // Track job from notification
 
     useEffect(() => {
         setMounted(true)
     }, [])
+
+    // Subscribe to notifications for unread count
+    useEffect(() => {
+        if (!user?.uid) return
+
+        const unsubscribe = subscribeToNotifications(user.uid, (notifications) => {
+            setAllNotifications(notifications)
+            const unreadCount = notifications.filter(n => !n.read).length
+            setUnreadNotifications(unreadCount)
+        })
+
+        return () => unsubscribe()
+    }, [user?.uid])
 
     const currentTheme = theme === 'system' ? systemTheme : theme
     const isDark = currentTheme === 'dark'
@@ -199,6 +218,11 @@ export default function DashboardPage() {
             router.push('/dashboard/create-job')
         }
     }, [activeTab, router])
+
+    // Reset pagination when filters change
+    useEffect(() => {
+        setDisplayedJobsCount(12)
+    }, [searchQuery, distanceFilter, selectedCategory, filteredJobs.length])
 
     const handleSetDefaultAddress = async (addressId: string) => {
         if (!user) return
@@ -544,23 +568,37 @@ export default function DashboardPage() {
                                     )}
                                 </div>
                             ) : (
-                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 max-w-md md:max-w-none mx-auto">
-                                    {filteredJobs.map((job) => (
-                                        <JobCard
-                                            key={job.id}
-                                            job={job}
-                                            userLocation={userLocation?.latitude && userLocation?.longitude ? { latitude: userLocation.latitude, longitude: userLocation.longitude } : null}
-                                            onApply={() => {
-                                                // Refresh jobs after applying
-                                                fetchJobs()
-                                            }}
-                                            onDelete={() => {
-                                                // Refresh jobs after deletion
-                                                fetchJobs()
-                                            }}
-                                        />
-                                    ))}
-                                </div>
+                                <>
+                                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 max-w-md md:max-w-none mx-auto">
+                                        {filteredJobs.slice(0, displayedJobsCount).map((job) => (
+                                            <JobCard
+                                                key={job.id}
+                                                job={job}
+                                                userLocation={userLocation?.latitude && userLocation?.longitude ? { latitude: userLocation.latitude, longitude: userLocation.longitude } : null}
+                                                onApply={() => {
+                                                    // Refresh jobs after applying
+                                                    fetchJobs()
+                                                }}
+                                                onDelete={() => {
+                                                    // Refresh jobs after deletion
+                                                    fetchJobs()
+                                                }}
+                                            />
+                                        ))}
+                                    </div>
+
+                                    {/* Load More Button */}
+                                    {filteredJobs.length > displayedJobsCount && (
+                                        <div className="flex justify-center mt-8">
+                                            <button
+                                                onClick={() => setDisplayedJobsCount(prev => prev + 12)}
+                                                className="px-6 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-bold rounded-xl hover:shadow-lg transition-all"
+                                            >
+                                                Load More ({filteredJobs.length - displayedJobsCount} remaining)
+                                            </button>
+                                        </div>
+                                    )}
+                                </>
                             )}
                         </div>
                     )}
@@ -585,18 +623,35 @@ export default function DashboardPage() {
                                     </button>
                                 </div>
                             ) : (
-                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                                    {jobs.filter(j => j.userId === user?.uid).map((job) => (
-                                        <JobCard
-                                            key={job.id}
-                                            job={job}
-                                            onDelete={() => {
-                                                // Refresh jobs after deleting
-                                                fetchJobs()
-                                            }}
-                                        />
-                                    ))}
-                                </div>
+                                <>
+                                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                                        {jobs.filter(j => j.userId === user?.uid).slice(0, displayedMyJobsCount).map((job) => (
+                                            <JobCard
+                                                key={job.id}
+                                                job={job}
+                                                highlightJobId={notificationJobId}
+                                                onDelete={() => {
+                                                    // Refresh jobs after deleting
+                                                    fetchJobs()
+                                                    // Clear notification job ID after viewing
+                                                    setNotificationJobId(null)
+                                                }}
+                                            />
+                                        ))}
+                                    </div>
+
+                                    {/* Load More Button for My Jobs */}
+                                    {jobs.filter(j => j.userId === user?.uid).length > displayedMyJobsCount && (
+                                        <div className="flex justify-center mt-8">
+                                            <button
+                                                onClick={() => setDisplayedMyJobsCount(prev => prev + 12)}
+                                                className="px-6 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-bold rounded-xl hover:shadow-lg transition-all"
+                                            >
+                                                Load More ({jobs.filter(j => j.userId === user?.uid).length - displayedMyJobsCount} remaining)
+                                            </button>
+                                        </div>
+                                    )}
+                                </>
                             )}
                         </div>
                     )}
@@ -605,14 +660,116 @@ export default function DashboardPage() {
                             <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
                         </div>
                     )}
+
                     {activeTab === 'notifications' && (
                         <div>
-                            <h1 className="text-2xl font-bold mb-4" style={{ color: mounted && isDark ? '#ffffff' : '#111827' }}>
-                                Notifications
-                            </h1>
-                            <p style={{ color: mounted && isDark ? '#dbd7d7ff' : '#6b7280' }}>
-                                Your notifications will appear here
-                            </p>
+                            <div className="flex items-center justify-between mb-6">
+                                <h1 className="text-2xl font-bold" style={{ color: mounted && isDark ? '#ffffff' : '#111827' }}>
+                                    Notifications
+                                    {unreadNotifications > 0 && (
+                                        <span className="ml-3 text-sm font-normal px-3 py-1 bg-blue-600 text-white rounded-full">
+                                            {unreadNotifications} new
+                                        </span>
+                                    )}
+                                </h1>
+                                {unreadNotifications > 0 && (
+                                    <button
+                                        onClick={async () => {
+                                            if (user?.uid) await markAllNotificationsAsRead(user.uid)
+                                        }}
+                                        className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors font-medium"
+                                    >
+                                        <Check className="w-4 h-4" />
+                                        Mark all as read
+                                    </button>
+                                )}
+                            </div>
+
+                            {allNotifications.length === 0 ? (
+                                <div className="text-center py-12">
+                                    <Bell className="w-16 h-16 mx-auto mb-4" style={{ color: isDark ? '#4b5563' : '#d1d5db' }} />
+                                    <p className="text-lg" style={{ color: isDark ? '#9ca3af' : '#6b7280' }}>
+                                        No notifications yet
+                                    </p>
+                                </div>
+                            ) : (
+                                <div className="space-y-3">
+                                    {allNotifications.map(notification => {
+                                        const handleNotificationClick = async () => {
+                                            // Mark as read
+                                            if (!notification.read) {
+                                                await markNotificationAsRead(notification.id)
+                                            }
+
+                                            // Store the job ID for auto-opening applications
+                                            setNotificationJobId(notification.jobId)
+
+                                            // Navigate based on notification type
+                                            if (notification.type === 'new_application' ||
+                                                notification.type === 'applicant_counter_offer' ||
+                                                notification.type === 'budget_accepted') {
+                                                // Job poster notifications - go to My Jobs tab
+                                                setActiveTab('jobs')
+                                            } else if (notification.type === 'counter_offer_received') {
+                                                // Applicant received counter-offer - go to Home to find the job
+                                                setActiveTab('home')
+                                            }
+                                        }
+
+                                        return (
+                                            <button
+                                                key={notification.id}
+                                                onClick={handleNotificationClick}
+                                                className="w-full text-left p-4 rounded-xl border transition-all hover:shadow-md"
+                                                style={{
+                                                    backgroundColor: notification.read
+                                                        ? (isDark ? '#1a1a1a' : '#ffffff')
+                                                        : (isDark ? 'rgba(59, 130, 246, 0.1)' : 'rgba(219, 234, 254, 0.5)'),
+                                                    borderColor: isDark ? '#2a2a2a' : '#e5e7eb'
+                                                }}
+                                            >
+                                                <div className="flex items-start gap-4">
+                                                    {!notification.read && (
+                                                        <div className="w-2 h-2 bg-blue-600 rounded-full mt-2 flex-shrink-0"></div>
+                                                    )}
+                                                    <div className="flex-1 min-w-0">
+                                                        <div className="flex items-center justify-between mb-1">
+                                                            <h3 className="font-semibold" style={{ color: isDark ? '#ffffff' : '#111827' }}>
+                                                                {notification.title}
+                                                            </h3>
+                                                            <span className="text-sm" style={{ color: isDark ? '#6b7280' : '#9ca3af' }}>
+                                                                {(() => {
+                                                                    const now = Date.now()
+                                                                    const diff = now - notification.createdAt
+                                                                    const minutes = Math.floor(diff / 60000)
+                                                                    const hours = Math.floor(diff / 3600000)
+                                                                    const days = Math.floor(diff / 86400000)
+                                                                    if (minutes < 60) return `${minutes}m ago`
+                                                                    if (hours < 24) return `${hours}h ago`
+                                                                    return `${days}d ago`
+                                                                })()}
+                                                            </span>
+                                                        </div>
+                                                        <p className="text-sm mb-2" style={{ color: isDark ? '#9ca3af' : '#6b7280' }}>
+                                                            {notification.message}
+                                                        </p>
+                                                        {notification.amount && (
+                                                            <div className="flex items-center gap-2 text-sm">
+                                                                <span className="font-bold text-green-600 dark:text-green-400">
+                                                                    ₹{notification.amount.toLocaleString()}
+                                                                </span>
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                    {notification.read && (
+                                                        <CheckCircle className="w-5 h-5 text-gray-400 flex-shrink-0" />
+                                                    )}
+                                                </div>
+                                            </button>
+                                        )
+                                    })}
+                                </div>
+                            )}
                         </div>
                     )}
 
@@ -681,8 +838,10 @@ export default function DashboardPage() {
                         >
                             <Bell className="w-6 h-6 mb-1" />
                             <span className="text-xs font-medium">Alerts</span>
-                            {/* Notification Badge */}
-                            <span className="absolute top-1 right-2 w-2 h-2 bg-red-500 rounded-full"></span>
+                            {/* Notification Badge - Only show if unread */}
+                            {unreadNotifications > 0 && (
+                                <span className="absolute top-1 right-2 w-2 h-2 bg-red-500 rounded-full"></span>
+                            )}
                         </button>
 
                         {/* Profile */}
@@ -759,7 +918,10 @@ export default function DashboardPage() {
                         >
                             <Bell className="w-5 h-5" />
                             <span className="font-medium">Notifications</span>
-                            <span className="absolute right-4 w-2 h-2 bg-red-500 rounded-full"></span>
+                            {/* Notification Badge - Only show if unread */}
+                            {unreadNotifications > 0 && (
+                                <span className="absolute right-4 w-2 h-2 bg-red-500 rounded-full"></span>
+                            )}
                         </button>
 
                         <button

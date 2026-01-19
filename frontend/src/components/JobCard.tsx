@@ -16,9 +16,10 @@ interface JobCardProps {
     onApply?: () => void
     onDelete?: () => void
     userLocation?: { latitude: number; longitude: number } | null
+    highlightJobId?: string | null
 }
 
-export default function JobCard({ job, onApply, onDelete, userLocation }: JobCardProps) {
+export default function JobCard({ job, onApply, onDelete, userLocation, highlightJobId }: JobCardProps) {
     const { user } = useAuth()
     const { theme, systemTheme } = useTheme()
     const [applied, setApplied] = useState(job.applicants.includes(user?.uid || ''))
@@ -69,6 +70,13 @@ export default function JobCard({ job, onApply, onDelete, userLocation }: JobCar
     const isDark = currentTheme === 'dark'
 
     const isOwnJob = user?.uid === job.userId
+
+    // Auto-open applications modal when highlighted from notification
+    useEffect(() => {
+        if (highlightJobId === job.id && isOwnJob) {
+            setShowApplications(true)
+        }
+    }, [highlightJobId, job.id, isOwnJob])
 
     const handleDelete = async () => {
         if (!confirm('Are you sure you want to delete this job?')) return
@@ -171,15 +179,20 @@ export default function JobCard({ job, onApply, onDelete, userLocation }: JobCar
         ? languages.filter(lang => lang.toLowerCase() !== detectedLanguage.toLowerCase())
         : languages
 
+    const isHighlighted = highlightJobId === job.id
+
     return (
         <div
-            className="rounded-2xl overflow-hidden transition-all duration-300 border md:hover:scale-[1.02]"
+            className={`rounded-2xl overflow-hidden transition-all duration-300 border md:hover:scale-[1.02] ${isHighlighted ? 'ring-4 ring-blue-500 animate-pulse' : ''
+                }`}
             style={{
                 backgroundColor: isDark ? '#1a1a1a' : '#ffffff',
-                borderColor: isDark ? '#2a2a2a' : '#e5e7eb',
-                boxShadow: isDark
-                    ? '0 10px 15px -3px rgba(255, 255, 255, 0.1), 0 4px 6px -4px rgba(255, 255, 255, 0.1)'
-                    : '0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -4px rgba(0, 0, 0, 0.1)',
+                borderColor: isHighlighted ? '#3b82f6' : (isDark ? '#2a2a2a' : '#e5e7eb'),
+                boxShadow: isHighlighted
+                    ? '0 20px 25px -5px rgba(59, 130, 246, 0.5), 0 8px 10px -6px rgba(59, 130, 246, 0.5)'
+                    : (isDark
+                        ? '0 10px 15px -3px rgba(255, 255, 255, 0.1), 0 4px 6px -4px rgba(255, 255, 255, 0.1)'
+                        : '0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -4px rgba(0, 0, 0, 0.1)'),
             }}
             onMouseEnter={(e) => {
                 // Only apply hover effects on devices with hover capability

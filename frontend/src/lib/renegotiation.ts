@@ -123,12 +123,24 @@ export const respondToRenegotiation = async (
                 budgetSatisfied: true
             })
 
+            // Fetch applicant's name for notification
+            let applicantName = 'Applicant'
+            try {
+                const userDoc = await getDoc(doc(dbInstance, 'users', application.userId))
+                if (userDoc.exists()) {
+                    const userData = userDoc.data()
+                    applicantName = userData.name || 'Applicant'
+                }
+            } catch (error) {
+                console.warn('Could not fetch applicant name:', error)
+            }
+
             // Create notification for job poster
             await createNotification({
                 userId: jobPosterId,
                 type: 'budget_accepted',
                 title: 'Offer Accepted!',
-                message: `Applicant accepted your offer of ₹${application.currentOffer.toLocaleString()} for "${jobTitle}"`,
+                message: `${applicantName} accepted your offer of ₹${application.currentOffer.toLocaleString()} for "${jobTitle}"`,
                 jobId,
                 jobTitle,
                 applicationId,
@@ -162,12 +174,24 @@ export const respondToRenegotiation = async (
                 budgetSatisfied: false
             })
 
+            // Fetch applicant's name for notification
+            let applicantName = 'Applicant'
+            try {
+                const userDoc = await getDoc(doc(dbInstance, 'users', application.userId))
+                if (userDoc.exists()) {
+                    const userData = userDoc.data()
+                    applicantName = userData.name || 'Applicant'
+                }
+            } catch (error) {
+                console.warn('Could not fetch applicant name:', error)
+            }
+
             // Create notification for job poster
             await createNotification({
                 userId: jobPosterId,
                 type: 'applicant_counter_offer',
                 title: 'New Counter-Offer',
-                message: `Applicant offered ₹${counterOffer.toLocaleString()} for "${jobTitle}"`,
+                message: `${applicantName} offered ₹${counterOffer.toLocaleString()} for "${jobTitle}"`,
                 jobId,
                 jobTitle,
                 applicationId,

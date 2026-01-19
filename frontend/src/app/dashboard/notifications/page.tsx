@@ -45,14 +45,10 @@ export default function NotificationsPage() {
 
         const unreadNotifications = notifications.filter(n => !n.read)
         if (unreadNotifications.length > 0) {
-            // Mark all as read after a short delay (so user sees the unread state first)
-            const timer = setTimeout(() => {
-                markAllNotificationsAsRead(user.uid)
-            }, 1000)
-
-            return () => clearTimeout(timer)
+            // Mark all as read immediately when page loads
+            markAllNotificationsAsRead(user.uid)
         }
-    }, [user?.uid, notifications])
+    }, [user?.uid, notifications.length]) // Only depend on length to avoid infinite loop
 
     const handleNotificationClick = async (notification: Notification) => {
         if (!notification.read) {
