@@ -1596,11 +1596,43 @@ export const uploadChatMedia = async (
   onProgress?: (progress: number) => void
 ): Promise<string> => {
   try {
+    console.log('📤 Starting upload:', {
+      fileName: file.name,
+      fileSize: file.size,
+      fileSizeMB: (file.size / (1024 * 1024)).toFixed(2) + ' MB',
+      fileType: file.type
+    })
+
     const cloudName = process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME
     const uploadPreset = process.env.NEXT_PUBLIC_CLOUDINARY_UPLOAD_PRESET
 
     if (!cloudName || !uploadPreset) {
+      console.error('❌ Missing Cloudinary config:', { cloudName: !!cloudName, uploadPreset: !!uploadPreset })
       throw new Error('Cloudinary configuration missing')
+    }
+
+    // Check file size - Cloudinary free tier has 10MB limit for images
+    const maxSize = 10 * 1024 * 1024 // 10MB
+    if (file.size > maxSize) {
+      console.warn('⚠️ File too large, attempting compression...')
+
+      // If it's an image, try to compress it
+      if (file.type.startsWith('image/')) {
+        try {
+          const compressedFile = await compressImage(file, 0.7) // 70% quality
+          console.log('✅ Compressed:', {
+            originalSize: (file.size / (1024 * 1024)).toFixed(2) + ' MB',
+            compressedSize: (compressedFile.size / (1024 * 1024)).toFixed(2) + ' MB',
+            reduction: (((file.size - compressedFile.size) / file.size) * 100).toFixed(1) + '%'
+          })
+          file = compressedFile
+        } catch (compressionError) {
+          console.error('❌ Compression failed:', compressionError)
+          throw new Error('File too large and compression failed. Please use a smaller image.')
+        }
+      } else {
+        throw new Error(`File too large (${(file.size / (1024 * 1024)).toFixed(2)}MB). Maximum size is 10MB.`)
+      }
     }
 
     const formData = new FormData()
@@ -1616,6 +1648,7 @@ export const uploadChatMedia = async (
       xhr.upload.addEventListener('progress', (e) => {
         if (e.lengthComputable) {
           const progress = (e.loaded / e.total) * 100
+          console.log(`📊 Upload progress: ${progress.toFixed(1)}%`)
           onProgress?.(progress)
         }
       })
@@ -1623,20 +1656,50 @@ export const uploadChatMedia = async (
       // Handle completion
       xhr.addEventListener('load', () => {
         if (xhr.status === 200) {
-          const response = JSON.parse(xhr.responseText)
-          console.log('✅ File uploaded to Cloudinary:', response.secure_url)
-          resolve(response.secure_url)
+          try {
+            const response = JSON.parse(xhr.responseText)
+            console.log('✅ File uploaded to Cloudinary:', {
+              url: response.secure_url,
+              publicId: response.public_id,
+              size: response.bytes
+            })
+            resolve(response.secure_url)
+          } catch (parseError) {
+            console.error('❌ Failed to parse response:', xhr.responseText)
+            reject(new Error('Invalid response from server'))
+          }
         } else {
-          reject(new Error('Upload failed'))
+          console.error('❌ Upload failed with status:', xhr.status, xhr.statusText)
+          console.error('Response:', xhr.responseText)
+          try {
+            const errorResponse = JSON.parse(xhr.responseText)
+            reject(new Error(errorResponse.error?.message || `Upload failed: ${xhr.statusText}`))
+          } catch {
+            reject(new Error(`Upload failed: ${xhr.statusText}`))
+          }
         }
       })
 
       // Handle errors
       xhr.addEventListener('error', () => {
-        reject(new Error('Upload failed'))
+        console.error('❌ Network error during upload')
+        reject(new Error('Network error. Please check your connection and try again.'))
+      })
+
+      xhr.addEventListener('abort', () => {
+        console.error('❌ Upload aborted')
+        reject(new Error('Upload cancelled'))
+      })
+
+      // Handle timeout
+      xhr.timeout = 60000 // 60 seconds
+      xhr.addEventListener('timeout', () => {
+        console.error('❌ Upload timeout')
+        reject(new Error('Upload timeout. Please try again with a smaller file.'))
       })
 
       // Send request
+      console.log('🚀 Sending request to Cloudinary...')
       xhr.open('POST', `https://api.cloudinary.com/v1_1/${cloudName}/auto/upload`)
       xhr.send(formData)
     })
@@ -1644,6 +1707,64 @@ export const uploadChatMedia = async (
     console.error('❌ Upload Media Error:', error)
     throw new Error(error.message || 'Failed to upload media')
   }
+}
+
+// Helper function to compress images
+const compressImage = async (file: File, quality: number = 0.7): Promise<File> => {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = (e) => {
+      const img = new Image()
+      img.onload = () => {
+        const canvas = document.createElement('canvas')
+        let width = img.width
+        let height = img.height
+
+        // Resize if too large (max 2048px on longest side)
+        const maxDimension = 2048
+        if (width > maxDimension || height > maxDimension) {
+          if (width > height) {
+            height = (height / width) * maxDimension
+            width = maxDimension
+          } else {
+            width = (width / height) * maxDimension
+            height = maxDimension
+          }
+        }
+
+        canvas.width = width
+        canvas.height = height
+
+        const ctx = canvas.getContext('2d')
+        if (!ctx) {
+          reject(new Error('Failed to get canvas context'))
+          return
+        }
+
+        ctx.drawImage(img, 0, 0, width, height)
+
+        canvas.toBlob(
+          (blob) => {
+            if (!blob) {
+              reject(new Error('Failed to compress image'))
+              return
+            }
+            const compressedFile = new File([blob], file.name, {
+              type: 'image/jpeg',
+              lastModified: Date.now()
+            })
+            resolve(compressedFile)
+          },
+          'image/jpeg',
+          quality
+        )
+      }
+      img.onerror = () => reject(new Error('Failed to load image'))
+      img.src = e.target?.result as string
+    }
+    reader.onerror = () => reject(new Error('Failed to read file'))
+    reader.readAsDataURL(file)
+  })
 }
 
 // Send media message

@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react'
 import { createPortal } from 'react-dom'
-import { X, Send, Paperclip, Mic, Square, Loader2, Play, Trash2, Check, Phone } from 'lucide-react'
+import { X, Send, Paperclip, Mic, Square, Loader2, Play, Trash2, Check, Phone, Camera, Image as ImageIcon, Video } from 'lucide-react'
 import { useTheme } from 'next-themes'
 import { useAuth } from '@/context/AuthContext'
 import { Message, subscribeToMessages, sendMessage, markMessagesAsRead, createOrGetConversation, sendMediaMessage, uploadChatMedia } from '@/lib/auth'
@@ -51,6 +51,7 @@ export default function ChatModal({
     const [selectedMedia, setSelectedMedia] = useState<MediaItem[]>([])
     const [showMediaPreview, setShowMediaPreview] = useState(false)
     const [selectedVideo, setSelectedVideo] = useState<string | null>(null)
+    const [showAttachmentMenu, setShowAttachmentMenu] = useState(false)
     const messagesEndRef = useRef<HTMLDivElement>(null)
     const fileInputRef = useRef<HTMLInputElement>(null)
     const mediaRecorderRef = useRef<MediaRecorder | null>(null)
@@ -120,6 +121,21 @@ export default function ChatModal({
         }
     }, [newMessage])
 
+    // Close attachment menu when clicking outside
+    useEffect(() => {
+        const handleClickOutside = (event: MouseEvent) => {
+            const target = event.target as HTMLElement
+            if (showAttachmentMenu && !target.closest('.relative')) {
+                setShowAttachmentMenu(false)
+            }
+        }
+
+        if (showAttachmentMenu) {
+            document.addEventListener('mousedown', handleClickOutside)
+            return () => document.removeEventListener('mousedown', handleClickOutside)
+        }
+    }, [showAttachmentMenu])
+
 
     const handleSend = async () => {
         if (!newMessage.trim() || !conversationId || !user || sending) return
@@ -166,6 +182,19 @@ export default function ChatModal({
         e.target.value = ''
     }
 
+    // Helper function to convert data URL to blob (more reliable than fetch on mobile)
+    const dataURLtoBlob = (dataURL: string): Blob => {
+        const parts = dataURL.split(',')
+        const mime = parts[0].match(/:(.*?);/)?.[1] || 'image/png'
+        const bstr = atob(parts[1])
+        let n = bstr.length
+        const u8arr = new Uint8Array(n)
+        while (n--) {
+            u8arr[n] = bstr.charCodeAt(n)
+        }
+        return new Blob([u8arr], { type: mime })
+    }
+
     const handleSendMedia = async (mediaItems: MediaItem[]) => {
         if (!conversationId || !user) return
 
@@ -180,11 +209,21 @@ export default function ChatModal({
                 // Use annotated image if available, otherwise use original
                 let fileToUpload = item.file
                 if (item.annotations && item.type === 'image') {
-                    // Convert dataURL to blob
-                    const response = await fetch(item.annotations)
-                    const blob = await response.blob()
-                    const fileName = item.file.name
-                    fileToUpload = new File([blob], fileName, { type: 'image/png' })
+                    try {
+                        // Convert dataURL to blob using custom function (more reliable on mobile)
+                        const blob = dataURLtoBlob(item.annotations)
+                        const fileName = item.file.name
+                        fileToUpload = new File([blob], fileName, { type: 'image/png' })
+                        console.log('Converted annotated image:', {
+                            originalSize: item.file.size,
+                            newSize: blob.size,
+                            fileName
+                        })
+                    } catch (conversionError) {
+                        console.error('Error converting annotated image, using original:', conversionError)
+                        // Fall back to original file if conversion fails
+                        fileToUpload = item.file
+                    }
                 }
 
                 const fileName = `${item.type}-${Date.now()}-${i}.${fileToUpload.name.split('.').pop()}`
@@ -748,6 +787,7 @@ export default function ChatModal({
                     style={{ borderColor: isDark ? '#2a2a2a' : '#e5e7eb' }}
                 >
                     <div className="flex gap-2 items-end">
+                        {/* Gallery input - no capture attribute */}
                         <input
                             ref={fileInputRef}
                             type="file"
@@ -756,14 +796,71 @@ export default function ChatModal({
                             onChange={handleFileSelect}
                             className="hidden"
                         />
-                        <button
-                            onClick={() => fileInputRef.current?.click()}
-                            disabled={uploading || isRecording || recordedAudio !== null}
-                            className="p-2.5 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed rounded-full transition-colors flex-shrink-0"
-                            title="Attach media"
-                        >
-                            <Paperclip className="w-5 h-5" style={{ color: isDark ? '#9ca3af' : '#6b7280' }} />
-                        </button>
+                        {/* Camera input - with capture attribute */}
+                        <input
+                            id="camera-input"
+                            type="file"
+                            accept="image/*"
+                            capture="environment"
+                            onChange={handleFileSelect}
+                            className="hidden"
+                        />
+                        {/* Video input - with capture attribute */}
+                        <input
+                            id="video-input"
+                            type="file"
+                            accept="video/*"
+                            capture="environment"
+                            onChange={handleFileSelect}
+                            className="hidden"
+                        />
+                        <div className="relative">
+                            <button
+                                onClick={() => setShowAttachmentMenu(!showAttachmentMenu)}
+                                disabled={uploading || isRecording || recordedAudio !== null}
+                                className="p-2.5 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed rounded-full transition-colors flex-shrink-0"
+                                title="Attach media"
+                            >
+                                <Paperclip className="w-5 h-5" style={{ color: isDark ? '#9ca3af' : '#6b7280' }} />
+                            </button>
+                            {showAttachmentMenu && (
+                                <div
+                                    className="absolute bottom-full mb-2 left-0 bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 overflow-hidden z-50"
+                                    style={{ minWidth: '160px' }}
+                                >
+                                    <button
+                                        onClick={() => {
+                                            document.getElementById('camera-input')?.click()
+                                            setShowAttachmentMenu(false)
+                                        }}
+                                        className="w-full px-4 py-3 flex items-center gap-3 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors text-left"
+                                    >
+                                        <Camera className="w-5 h-5" style={{ color: isDark ? '#9ca3af' : '#6b7280' }} />
+                                        <span className="text-sm font-medium" style={{ color: isDark ? '#ffffff' : '#111827' }}>Camera</span>
+                                    </button>
+                                    <button
+                                        onClick={() => {
+                                            fileInputRef.current?.click()
+                                            setShowAttachmentMenu(false)
+                                        }}
+                                        className="w-full px-4 py-3 flex items-center gap-3 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors text-left"
+                                    >
+                                        <ImageIcon className="w-5 h-5" style={{ color: isDark ? '#9ca3af' : '#6b7280' }} />
+                                        <span className="text-sm font-medium" style={{ color: isDark ? '#ffffff' : '#111827' }}>Gallery</span>
+                                    </button>
+                                    <button
+                                        onClick={() => {
+                                            document.getElementById('video-input')?.click()
+                                            setShowAttachmentMenu(false)
+                                        }}
+                                        className="w-full px-4 py-3 flex items-center gap-3 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors text-left"
+                                    >
+                                        <Video className="w-5 h-5" style={{ color: isDark ? '#9ca3af' : '#6b7280' }} />
+                                        <span className="text-sm font-medium" style={{ color: isDark ? '#ffffff' : '#111827' }}>Video</span>
+                                    </button>
+                                </div>
+                            )}
+                        </div>
                         <textarea
                             ref={textareaRef}
                             value={newMessage}

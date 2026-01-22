@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react'
 import { createPortal } from 'react-dom'
-import { X, Send, Trash2, Edit3, ChevronLeft, ChevronRight, Undo, Eraser, Pen } from 'lucide-react'
+import { X, Send, Trash2, Edit3, ChevronLeft, ChevronRight, Undo, Eraser, Pen, Loader2 } from 'lucide-react'
 import Image from 'next/image'
 import { useTheme } from 'next-themes'
 
@@ -32,6 +32,7 @@ export default function MediaPreviewModal({ media: initialMedia, onClose, onSend
     const [isEraser, setIsEraser] = useState(false)
     const [mounted, setMounted] = useState(false)
     const [sending, setSending] = useState(false)
+    const [processingDone, setProcessingDone] = useState(false)
 
     const canvasRef = useRef<HTMLCanvasElement>(null)
     const imageRef = useRef<HTMLImageElement>(null)
@@ -118,7 +119,7 @@ export default function MediaPreviewModal({ media: initialMedia, onClose, onSend
             // Save current state for undo
             const canvas = canvasRef.current
             if (canvas) {
-                setDrawingHistory([...drawingHistory, canvas.toDataURL()])
+                setDrawingHistory([...drawingHistory, canvas.toDataURL('image/png', 0.85)])
             }
         }
     }
@@ -164,7 +165,7 @@ export default function MediaPreviewModal({ media: initialMedia, onClose, onSend
             const updatedMedia = [...media]
 
             // Save canvas-only drawings
-            updatedMedia[currentIndex].canvasOnly = canvasRef.current.toDataURL()
+            updatedMedia[currentIndex].canvasOnly = canvasRef.current.toDataURL('image/png', 0.85)
 
             // Create merged image (original + drawings)
             const tempCanvas = document.createElement('canvas')
@@ -180,7 +181,7 @@ export default function MediaPreviewModal({ media: initialMedia, onClose, onSend
                 tempCtx.drawImage(canvasRef.current, 0, 0)
 
                 // Save the merged result
-                updatedMedia[currentIndex].annotations = tempCanvas.toDataURL()
+                updatedMedia[currentIndex].annotations = tempCanvas.toDataURL('image/png', 0.85)
             }
 
             setMedia(updatedMedia)
@@ -435,37 +436,49 @@ export default function MediaPreviewModal({ media: initialMedia, onClose, onSend
                 )}
                 {drawingMode && (
                     <button
-                        onClick={() => {
-                            // Save both canvas-only and merged annotations before exiting
-                            if (canvasRef.current && imageRef.current) {
-                                const updatedMedia = [...media]
+                        onClick={async () => {
+                            if (processingDone) return // Prevent double-click
+                            setProcessingDone(true)
 
-                                // Save canvas-only drawings
-                                updatedMedia[currentIndex].canvasOnly = canvasRef.current.toDataURL()
+                            try {
+                                // Save both canvas-only and merged annotations before exiting
+                                if (canvasRef.current && imageRef.current) {
+                                    const updatedMedia = [...media]
 
-                                // Create merged image (original + drawings)
-                                const tempCanvas = document.createElement('canvas')
-                                const img = imageRef.current
-                                tempCanvas.width = img.naturalWidth
-                                tempCanvas.height = img.naturalHeight
-                                const tempCtx = tempCanvas.getContext('2d')
+                                    // Save canvas-only drawings
+                                    updatedMedia[currentIndex].canvasOnly = canvasRef.current.toDataURL('image/png', 0.85)
 
-                                if (tempCtx) {
-                                    // Draw the original image first
-                                    tempCtx.drawImage(img, 0, 0)
-                                    // Then draw the canvas annotations on top
-                                    tempCtx.drawImage(canvasRef.current, 0, 0)
+                                    // Create merged image (original + drawings)
+                                    const tempCanvas = document.createElement('canvas')
+                                    const img = imageRef.current
+                                    tempCanvas.width = img.naturalWidth
+                                    tempCanvas.height = img.naturalHeight
+                                    const tempCtx = tempCanvas.getContext('2d')
 
-                                    // Save the merged result
-                                    updatedMedia[currentIndex].annotations = tempCanvas.toDataURL()
+                                    if (tempCtx) {
+                                        // Draw the original image first
+                                        tempCtx.drawImage(img, 0, 0)
+                                        // Then draw the canvas annotations on top
+                                        tempCtx.drawImage(canvasRef.current, 0, 0)
+
+                                        // Save the merged result
+                                        updatedMedia[currentIndex].annotations = tempCanvas.toDataURL('image/png', 0.85)
+                                    }
+
+                                    setMedia(updatedMedia)
                                 }
 
-                                setMedia(updatedMedia)
+                                // Small delay to ensure state updates
+                                await new Promise(resolve => setTimeout(resolve, 100))
+                                setDrawingMode(false)
+                            } finally {
+                                setProcessingDone(false)
                             }
-                            setDrawingMode(false)
                         }}
-                        className="px-4 py-2 bg-white/20 hover:bg-white/30 rounded-full text-white text-sm transition-colors"
+                        disabled={processingDone}
+                        className="px-4 py-2 bg-white/20 hover:bg-white/30 disabled:opacity-50 disabled:cursor-not-allowed rounded-full text-white text-sm transition-colors flex items-center gap-2"
                     >
+                        {processingDone && <Loader2 className="w-4 h-4 animate-spin" />}
                         Done
                     </button>
                 )}
@@ -485,9 +498,13 @@ export default function MediaPreviewModal({ media: initialMedia, onClose, onSend
                         <button
                             onClick={handleSend}
                             disabled={sending}
-                            className="p-3 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 rounded-full transition-colors"
+                            className="p-3 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 disabled:cursor-not-allowed rounded-full transition-colors flex items-center justify-center"
                         >
-                            <Send className="w-5 h-5 text-white" />
+                            {sending ? (
+                                <Loader2 className="w-5 h-5 text-white animate-spin" />
+                            ) : (
+                                <Send className="w-5 h-5 text-white" />
+                            )}
                         </button>
                     </>
                 )}
