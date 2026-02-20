@@ -94,6 +94,9 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en" suppressHydrationWarning>
+      <head>
+        <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+      </head>
       <body className="bg-white dark:bg-[#181818] text-gray-900 dark:text-white transition-colors duration-300">
         <Providers>
           <AuthProvider>

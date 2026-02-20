@@ -8,10 +8,9 @@ const config: CapacitorConfig = {
   // ✅ Load your live Vercel app inside the native shell
   // Replace this URL with your actual Vercel deployment URL
   server: {
-    url: 'https://need-you.xyz',
+    url: 'https://need-you.xyz/signin',
     cleartext: false,
     androidScheme: 'https',
-    // Keep ALL navigation inside the WebView — prevents Chrome from opening
     allowNavigation: [
       'need-you.xyz',
       '*.need-you.xyz',
@@ -27,6 +26,11 @@ const config: CapacitorConfig = {
       launchShowDuration: 2000,
       backgroundColor: '#0f172a',
       showSpinner: false,
+    },
+    StatusBar: {
+      style: 'DARK',
+      backgroundColor: '#0f172a',
+      overlaysWebView: false,
     },
   },
 

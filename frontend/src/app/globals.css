@@ -37,6 +37,9 @@ body {
   -moz-osx-font-smoothing: grayscale;
   min-height: 100vh;
   transition: background-color 0.3s ease, color 0.3s ease;
+  /* Push content below Android/iOS status bar */
+  padding-top: env(safe-area-inset-top);
+  padding-top: constant(safe-area-inset-top); /* iOS < 11.2 */
 }
 
 html.dark body {

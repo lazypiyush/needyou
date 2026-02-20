@@ -2,33 +2,34 @@
 
 import { useEffect } from 'react';
 import { useAuth } from '@/context/AuthContext';
-import { initPushNotifications } from '@/lib/push-notifications';
+import { initPushNotifications, saveFcmToken } from '@/lib/push-notifications';
 
 export default function PushNotificationInit() {
     const { user } = useAuth();
 
+    // Register with FCM once on app load
     useEffect(() => {
-        // Fix status bar overlap + init push notifications
-        async function init() {
+        async function setup() {
             try {
-                const { Capacitor } = await import('@capacitor/core');
-                if (!Capacitor.isNativePlatform()) return;
-
-                // ✅ Fix status bar so content doesn't go behind it
+                // Apply StatusBar fix at native level
                 const { StatusBar, Style } = await import('@capacitor/status-bar');
                 await StatusBar.setOverlaysWebView({ overlay: false });
                 await StatusBar.setStyle({ style: Style.Dark });
                 await StatusBar.setBackgroundColor({ color: '#0f172a' });
+            } catch { /* browser, ignore */ }
 
-            } catch (e) {
-                console.warn('[StatusBar] init failed:', e);
-            }
-
-            // Init push notifications
+            // Register with FCM (no Capacitor guard — tries silently, fails in browser)
             await initPushNotifications(user?.uid);
         }
+        setup();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []); // run only once
 
-        init();
+    // When user signs in, save the FCM token that was already cached
+    useEffect(() => {
+        if (user?.uid) {
+            saveFcmToken(user.uid);
+        }
     }, [user?.uid]);
 
     return null;
