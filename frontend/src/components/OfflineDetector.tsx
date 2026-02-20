@@ -1,0 +1,92 @@
+'use client';
+
+import { useEffect, useState } from 'react';
+
+export default function OfflineDetector() {
+    const [isOffline, setIsOffline] = useState(false);
+
+    useEffect(() => {
+        setIsOffline(!navigator.onLine);
+        const goOffline = () => setIsOffline(true);
+        const goOnline = () => setIsOffline(false);
+        window.addEventListener('offline', goOffline);
+        window.addEventListener('online', goOnline);
+        return () => {
+            window.removeEventListener('offline', goOffline);
+            window.removeEventListener('online', goOnline);
+        };
+    }, []);
+
+    if (!isOffline) return null;
+
+    return (
+        <div style={{
+            position: 'fixed', inset: 0, zIndex: 9999,
+            background: 'linear-gradient(135deg, #0f172a 0%, #1e293b 100%)',
+            display: 'flex', flexDirection: 'column',
+            alignItems: 'center', justifyContent: 'center',
+            fontFamily: 'Inter, system-ui, sans-serif',
+            padding: '2rem',
+            color: '#fff',
+        }}>
+            {/* Logo */}
+            <img
+                src="/logo.jpg"
+                alt="NeedYou"
+                style={{
+                    width: 80, height: 80,
+                    borderRadius: '50%',
+                    marginBottom: '1.5rem',
+                    border: '3px solid rgba(99,102,241,0.5)',
+                    boxShadow: '0 0 30px rgba(99,102,241,0.3)',
+                    objectFit: 'cover',
+                }}
+            />
+
+            {/* Wifi off icon (SVG inline) */}
+            <div style={{
+                width: 64, height: 64, marginBottom: '1.5rem',
+                background: 'rgba(239,68,68,0.15)',
+                borderRadius: '50%',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+            }}>
+                <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#ef4444" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <line x1="1" y1="1" x2="23" y2="23" />
+                    <path d="M16.72 11.06A10.94 10.94 0 0 1 19 12.55" />
+                    <path d="M5 12.55a10.94 10.94 0 0 1 5.17-2.39" />
+                    <path d="M10.71 5.05A16 16 0 0 1 22.56 9" />
+                    <path d="M1.42 9a15.91 15.91 0 0 1 4.7-2.88" />
+                    <path d="M8.53 16.11a6 6 0 0 1 6.95 0" />
+                    <circle cx="12" cy="20" r="1" fill="#ef4444" stroke="none" />
+                </svg>
+            </div>
+
+            <h1 style={{ fontSize: '1.5rem', fontWeight: 700, marginBottom: '0.5rem', textAlign: 'center' }}>
+                No Internet Connection
+            </h1>
+            <p style={{ color: '#94a3b8', marginBottom: '2rem', textAlign: 'center', maxWidth: 280 }}>
+                Please check your Wi-Fi or mobile data and try again.
+            </p>
+
+            <button
+                onClick={() => window.location.reload()}
+                style={{
+                    background: 'linear-gradient(135deg, #6366f1, #8b5cf6)',
+                    color: '#fff',
+                    border: 'none',
+                    borderRadius: '12px',
+                    padding: '0.85rem 2.5rem',
+                    fontSize: '1rem',
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                    boxShadow: '0 4px 20px rgba(99,102,241,0.4)',
+                    transition: 'transform 0.15s, box-shadow 0.15s',
+                }}
+                onMouseDown={e => (e.currentTarget.style.transform = 'scale(0.97)')}
+                onMouseUp={e => (e.currentTarget.style.transform = 'scale(1)')}
+            >
+                🔄 Retry
+            </button>
+        </div>
+    );
+}

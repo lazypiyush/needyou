@@ -2,6 +2,8 @@ import { AuthProvider } from '@/context/AuthContext'
 import type { Metadata } from 'next'
 import { Providers } from '@/components/Providers'
 import PushNotificationInit from '@/components/PushNotificationInit'
+import SplashScreen from '@/components/SplashScreen'
+import OfflineDetector from '@/components/OfflineDetector'
 import './globals.css'
 
 export const metadata: Metadata = {
@@ -95,6 +97,8 @@ export default function RootLayout({
       <body className="bg-white dark:bg-[#181818] text-gray-900 dark:text-white transition-colors duration-300">
         <Providers>
           <AuthProvider>
+            <SplashScreen />
+            <OfflineDetector />
             <PushNotificationInit />
             {children}
           </AuthProvider>
