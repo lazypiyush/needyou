@@ -1,0 +1,11 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Open access for development - NO EXPIRATION
+    // This matches your previous test mode behavior
+    match /{document=**} {
+      allow read, write: if true;
+    }
+  }
+}

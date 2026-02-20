@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">NeedYou</string>
+    <string name="title_activity_main">NeedYou</string>
+    <string name="package_name">com.needyou.app</string>
+    <string name="custom_url_scheme">com.needyou.app</string>
+</resources>

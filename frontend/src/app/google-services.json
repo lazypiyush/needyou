@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "11557689616",
+    "project_id": "needyou-b8e00",
+    "storage_bucket": "needyou-b8e00.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:11557689616:android:c92b5666ee92c446122d95",
+        "android_client_info": {
+          "package_name": "com.needyou.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAGaqcZI5_V9la0-Aj7Q1-xQPKOiWRsGao"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

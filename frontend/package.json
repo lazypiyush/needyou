@@ -11,6 +11,10 @@
     "deploy:firebase": "npm run build:firebase && firebase deploy --only hosting"
   },
   "dependencies": {
+    "@capacitor/android": "^8.1.0",
+    "@capacitor/cli": "^8.1.0",
+    "@capacitor/core": "^8.1.0",
+    "@capacitor/push-notifications": "^8.0.1",
     "@google/generative-ai": "^0.24.1",
     "@hookform/resolvers": "^5.2.2",
     "@opentelemetry/api": "^1.9.0",
