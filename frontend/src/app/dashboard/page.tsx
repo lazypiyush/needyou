@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/context/AuthContext'
 import { Loader2, MapPin, Search, Filter, Home, Plus, Bell, User, Briefcase, Edit, Trash2, Check, CheckCircle, RotateCw } from 'lucide-react'
+import CreateJobInline from '@/components/CreateJobInline'
 import ThemeToggle from '@/components/ThemeToggle'
 import { useTheme } from 'next-themes'
 import { getJobs, Job, Notification } from '@/lib/auth'
@@ -220,12 +221,6 @@ export default function DashboardPage() {
         setFilteredJobs(result)
     }, [jobs, searchQuery, distanceFilter, customDistance, userLocation, user, selectedCategory])
 
-    // Navigate to create job page when create tab is clicked
-    useEffect(() => {
-        if (activeTab === 'create') {
-            router.push('/dashboard/create-job')
-        }
-    }, [activeTab, router])
 
     // Reset pagination when filters change
     useEffect(() => {
@@ -316,82 +311,84 @@ export default function DashboardPage() {
                 style={{
                     background: 'linear-gradient(to bottom right, rgb(var(--gradient-from)), rgb(var(--gradient-via)), rgb(var(--gradient-to)))'
                 }}>
-                {/* Top Bar */}
-                <div
-                    className="sticky top-0 z-40 backdrop-blur-md border-b border-gray-200 dark:border-gray-700"
-                    style={{
-                        backgroundColor: mounted && isDark ? 'rgba(28, 28, 28, 0.8)' : 'rgba(255, 255, 255, 0.8)',
-                        boxShadow: mounted && isDark
-                            ? '0 1px 2px 0 rgba(255, 255, 255, 0.05)'
-                            : '0 1px 2px 0 rgba(0, 0, 0, 0.05)',
-                        // Respect Android status bar height inside the native app
-                        paddingTop: 'env(safe-area-inset-top)',
-                    }}
-                >
-                    <div className="max-w-7xl mx-auto px-4 py-3">
-                        <div className="flex items-center justify-between gap-4">
+                {/* Top Bar — only shown for home & jobs tabs */}
+                {(activeTab === 'home' || activeTab === 'jobs') && (
+                    <div
+                        className="sticky top-0 z-40 backdrop-blur-md border-b border-gray-200 dark:border-gray-700"
+                        style={{
+                            backgroundColor: mounted && isDark ? 'rgba(28, 28, 28, 0.8)' : 'rgba(255, 255, 255, 0.8)',
+                            boxShadow: mounted && isDark
+                                ? '0 1px 2px 0 rgba(255, 255, 255, 0.05)'
+                                : '0 1px 2px 0 rgba(0, 0, 0, 0.05)',
+                            // Respect Android status bar height inside the native app
+                            paddingTop: 'env(safe-area-inset-top)',
+                        }}
+                    >
+                        <div className="max-w-7xl mx-auto px-4 py-3">
+                            <div className="flex items-center justify-between gap-4">
 
-                            {/* Location - Top Left */}
-                            <button
-                                onClick={() => setShowLocationModal(true)}
-                                className="flex items-center gap-2 text-sm hover:opacity-80 transition-opacity"
-                            >
-                                <MapPin className="w-4 h-4 text-blue-600 dark:text-blue-400" />
-                                <div className="hidden sm:block text-left">
-                                    <p className="font-medium" style={{ color: mounted && isDark ? '#ffffff' : '#111827' }}>
+                                {/* Location - Top Left */}
+                                <button
+                                    onClick={() => setShowLocationModal(true)}
+                                    className="flex items-center gap-2 text-sm hover:opacity-80 transition-opacity"
+                                >
+                                    <MapPin className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+                                    <div className="hidden sm:block text-left">
+                                        <p className="font-medium" style={{ color: mounted && isDark ? '#ffffff' : '#111827' }}>
+                                            {userLocation?.city || 'Loading...'}
+                                        </p>
+                                        <p className="text-xs" style={{ color: mounted && isDark ? '#dbd7d7ff' : '#6b7280' }}>
+                                            {userLocation ? `${userLocation.state}, ${userLocation.country}` : 'Fetching location...'}
+                                        </p>
+                                    </div>
+                                    <p className="sm:hidden font-medium" style={{ color: mounted && isDark ? '#ffffff' : '#111827' }}>
                                         {userLocation?.city || 'Loading...'}
                                     </p>
-                                    <p className="text-xs" style={{ color: mounted && isDark ? '#dbd7d7ff' : '#6b7280' }}>
-                                        {userLocation ? `${userLocation.state}, ${userLocation.country}` : 'Fetching location...'}
-                                    </p>
-                                </div>
-                                <p className="sm:hidden font-medium" style={{ color: mounted && isDark ? '#ffffff' : '#111827' }}>
-                                    {userLocation?.city || 'Loading...'}
-                                </p>
-                            </button>
-
-                            {/* Search & Filter - Center/Right */}
-                            <div className="flex-1 max-w-2xl flex items-center gap-2">
-                                {/* Search Bar */}
-                                <div className="relative flex-1">
-                                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 dark:text-gray-300" />
-                                    <input
-                                        type="text"
-                                        value={searchQuery}
-                                        onChange={(e) => setSearchQuery(e.target.value)}
-                                        placeholder="Search for services, jobs, or people..."
-                                        className="w-full pl-10 pr-4 py-2 bg-gray-100 dark:bg-gray-700 border-0 rounded-full focus:ring-2 focus:ring-blue-500 outline-none text-sm text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-300"
-                                    />
-                                </div>
-
-                                {/* Filter Button */}
-                                <button
-                                    onClick={() => {
-                                        setShowFilters(!showFilters)
-                                    }}
-                                    className="p-2 bg-gray-100 dark:bg-gray-700 rounded-full hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors relative z-10"
-                                    type="button"
-                                    title="Filters"
-                                >
-                                    <Filter className="w-4 h-4 text-gray-600 dark:text-white" />
                                 </button>
 
-                                {/* Refresh Jobs Button */}
-                                <button
-                                    onClick={() => fetchJobs()}
-                                    className="p-2 bg-gray-100 dark:bg-gray-700 rounded-full hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors relative z-10"
-                                    type="button"
-                                    title="Refresh jobs"
-                                >
-                                    <RotateCw className={`w-4 h-4 text-gray-600 dark:text-white ${loadingJobs ? 'animate-spin' : ''}`} />
-                                </button>
+                                {/* Search & Filter - Center/Right */}
+                                <div className="flex-1 max-w-2xl flex items-center gap-2">
+                                    {/* Search Bar */}
+                                    <div className="relative flex-1">
+                                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 dark:text-gray-300" />
+                                        <input
+                                            type="text"
+                                            value={searchQuery}
+                                            onChange={(e) => setSearchQuery(e.target.value)}
+                                            placeholder="Search for services, jobs, or people..."
+                                            className="w-full pl-10 pr-4 py-2 bg-gray-100 dark:bg-gray-700 border-0 rounded-full focus:ring-2 focus:ring-blue-500 outline-none text-sm text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-300"
+                                        />
+                                    </div>
+
+                                    {/* Filter Button */}
+                                    <button
+                                        onClick={() => {
+                                            setShowFilters(!showFilters)
+                                        }}
+                                        className="p-2 bg-gray-100 dark:bg-gray-700 rounded-full hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors relative z-10"
+                                        type="button"
+                                        title="Filters"
+                                    >
+                                        <Filter className="w-4 h-4 text-gray-600 dark:text-white" />
+                                    </button>
+
+                                    {/* Refresh Jobs Button */}
+                                    <button
+                                        onClick={() => fetchJobs()}
+                                        className="p-2 bg-gray-100 dark:bg-gray-700 rounded-full hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors relative z-10"
+                                        type="button"
+                                        title="Refresh jobs"
+                                    >
+                                        <RotateCw className={`w-4 h-4 text-gray-600 dark:text-white ${loadingJobs ? 'animate-spin' : ''}`} />
+                                    </button>
+                                </div>
+
+                                {/* Theme Toggle - Right */}
+                                <ThemeToggle variant="inline" />
                             </div>
-
-                            {/* Theme Toggle - Right */}
-                            <ThemeToggle variant="inline" />
                         </div>
                     </div>
-                </div>
+                )}
 
                 {/* Main Content Area */}
                 <div className="max-w-7xl mx-auto px-4 py-6 md:ml-64">
@@ -791,6 +788,15 @@ export default function DashboardPage() {
                                 </div>
                             )}
                         </div>
+                    )}
+
+                    {activeTab === 'create' && (
+                        <CreateJobInline
+                            onSuccess={() => {
+                                fetchJobs()
+                                setActiveTab('home')
+                            }}
+                        />
                     )}
 
                     {activeTab === 'profile' && (

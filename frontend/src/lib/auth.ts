@@ -991,7 +991,7 @@ export interface CreateJobData {
 export interface Notification {
   id: string
   userId: string  // Recipient
-  type: 'new_application' | 'counter_offer_received' | 'applicant_counter_offer' | 'budget_accepted'
+  type: 'new_application' | 'counter_offer_received' | 'applicant_counter_offer' | 'budget_accepted' | 'new_job_nearby'
   title: string
   message: string
   jobId: string

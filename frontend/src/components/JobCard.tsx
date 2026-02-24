@@ -280,7 +280,7 @@ export default function JobCard({ job, onApply, onDelete, userLocation, highligh
                                 <button
                                     onClick={handleDetectLanguage}
                                     disabled={isTranslating || isDetectingLanguage}
-                                    className="flex items-center gap-2 text-sm font-medium text-purple-600 dark:text-purple-400 hover:text-purple-700 dark:hover:text-purple-300 transition-colors disabled:opacity-50"
+                                    className="flex items-center gap-2 text-sm font-medium text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 transition-colors disabled:opacity-50"
                                 >
                                     <Languages className="w-4 h-4" />
                                     <span>{isDetectingLanguage ? 'Detecting language...' : 'Translate'}</span>
