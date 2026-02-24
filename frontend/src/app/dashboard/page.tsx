@@ -506,11 +506,8 @@ export default function DashboardPage() {
 
                             {/* Category Filter Buttons */}
                             {categories.length > 0 && (
-                                <div className="sticky z-30 mb-2 -mx-4 px-4 pt-1 pb-2 backdrop-blur-md"
-                                    style={{
-                                        top: 'calc(56px + env(safe-area-inset-top))',
-                                        backgroundColor: mounted && isDark ? 'rgba(15,23,42,0.92)' : 'rgba(255,255,255,0.92)'
-                                    }}>
+                                <div className="sticky z-30 mb-2 -mx-4 px-4 pt-1 pb-2 backdrop-blur-sm"
+                                    style={{ top: 'calc(56px + env(safe-area-inset-top))' }}>
                                     <div
                                         className="overflow-x-auto px-4"
                                         style={{
@@ -528,6 +525,9 @@ export default function DashboardPage() {
                                                 indicator.style.width = `${scrollPercentage}%`
                                             }
                                         }}
+                                        onTouchStart={e => e.stopPropagation()}
+                                        onTouchEnd={e => e.stopPropagation()}
+                                        onTouchMove={e => e.stopPropagation()}
                                     >
                                         <style jsx>{`
                                             div::-webkit-scrollbar {

@@ -7,6 +7,7 @@ import android.app.NotificationChannel;
 import android.app.NotificationManager;
 import android.app.PendingIntent;
 import android.content.ActivityNotFoundException;
+import android.content.ClipData;
 import android.content.DialogInterface;
 import android.content.Intent;
 import android.content.pm.PackageManager;
@@ -282,7 +283,20 @@ public class MainActivity extends BridgeActivity {
         if (requestCode == FILE_CHOOSER_REQUEST_CODE) {
             Uri[] results = null;
             if (resultCode == Activity.RESULT_OK && data != null) {
-                results = WebChromeClient.FileChooserParams.parseResult(resultCode, data);
+                ClipData clipData = data.getClipData();
+                if (clipData != null && clipData.getItemCount() > 0) {
+                    // Multiple files selected — iterate ClipData directly
+                    results = new Uri[clipData.getItemCount()];
+                    for (int i = 0; i < clipData.getItemCount(); i++) {
+                        results[i] = clipData.getItemAt(i).getUri();
+                    }
+                } else if (data.getData() != null) {
+                    // Single file
+                    results = new Uri[] { data.getData() };
+                } else {
+                    // Final fallback
+                    results = WebChromeClient.FileChooserParams.parseResult(resultCode, data);
+                }
             }
             if (fileUploadCallback != null) {
                 fileUploadCallback.onReceiveValue(results);
