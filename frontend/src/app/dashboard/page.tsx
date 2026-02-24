@@ -46,7 +46,7 @@ export default function DashboardPage() {
     // Swipe navigation — use ref to avoid stale closure issues with useState
     const touchStartXRef = useRef<number | null>(null)
     const [swipeAnimClass, setSwipeAnimClass] = useState('')
-    const SWIPE_TABS = ['home', 'jobs', 'create', 'notifications', 'profile'] as const
+    const SWIPE_TABS = ['home', 'jobs', 'notifications', 'profile'] as const
     type SwipeTab = typeof SWIPE_TABS[number]
     // Infinite scroll sentinel for home tab
     const sentinelRef = useRef<HTMLDivElement>(null)
@@ -356,7 +356,7 @@ export default function DashboardPage() {
                 style={{ background: 'linear-gradient(to bottom right, rgb(var(--gradient-from)), rgb(var(--gradient-via)), rgb(var(--gradient-to)))' }}>
                 {/* Top bar skeleton */}
                 <div className="sticky top-0 z-40 border-b border-gray-200 dark:border-gray-700 px-4 py-3"
-                    style={{ backgroundColor: 'rgba(255,255,255,0.8)' }}>
+                    style={{ backgroundColor: 'rgba(255,255,255,0.8)', paddingTop: 'env(safe-area-inset-top)' }}>
                     <div className="flex items-center justify-between">
                         <div className="skeleton h-5 w-40 rounded-lg" />
                         <div className="flex gap-3">
@@ -410,8 +410,8 @@ export default function DashboardPage() {
                 style={{
                     background: 'linear-gradient(to bottom right, rgb(var(--gradient-from)), rgb(var(--gradient-via)), rgb(var(--gradient-to)))'
                 }}
-                onTouchStart={(e) => { touchStartXRef.current = e.touches[0].clientX }}
-                onTouchEnd={(e) => handleSwipe(e.changedTouches[0].clientX)}
+                onTouchStart={(e) => { if (activeTab !== 'create') touchStartXRef.current = e.touches[0].clientX }}
+                onTouchEnd={(e) => { if (activeTab !== 'create') handleSwipe(e.changedTouches[0].clientX) }}
             >
                 {/* Top Bar — only shown for home & jobs tabs */}
                 {(activeTab === 'home' || activeTab === 'jobs') && (
@@ -506,7 +506,11 @@ export default function DashboardPage() {
 
                             {/* Category Filter Buttons */}
                             {categories.length > 0 && (
-                                <div className="mb-4">
+                                <div className="sticky z-30 mb-2 -mx-4 px-4 pt-1 pb-2 backdrop-blur-md"
+                                    style={{
+                                        top: 'calc(56px + env(safe-area-inset-top))',
+                                        backgroundColor: mounted && isDark ? 'rgba(15,23,42,0.92)' : 'rgba(255,255,255,0.92)'
+                                    }}>
                                     <div
                                         className="overflow-x-auto px-4"
                                         style={{
