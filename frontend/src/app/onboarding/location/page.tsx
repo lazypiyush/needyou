@@ -48,6 +48,7 @@ function LocationContent() {
     const [loading, setLoading] = useState(false)
     const [error, setError] = useState('')
     const [mounted, setMounted] = useState(false)
+    const [showGPSDialog, setShowGPSDialog] = useState(false)
 
     // Google Maps API key from environment
     const GOOGLE_MAPS_API_KEY = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || ''
@@ -236,7 +237,16 @@ function LocationContent() {
 
         } catch (err: any) {
             console.error('❌ Auto-detect error:', err)
-            setError(err.message || 'Failed to detect location')
+            const msg: string = err.message || 'Failed to detect location'
+            // GPS off or position unavailable → show a proper dialog
+            if (msg.toLowerCase().includes('gps') ||
+                msg.toLowerCase().includes('turned off') ||
+                msg.toLowerCase().includes('position unavailable') ||
+                msg.toLowerCase().includes('unavailable')) {
+                setShowGPSDialog(true)
+            } else {
+                setError(msg)
+            }
         } finally {
             setDetecting(false)
         }
@@ -328,6 +338,44 @@ function LocationContent() {
                     strategy="lazyOnload"
                 />
             )}
+
+            {/* GPS Off Dialog */}
+            {showGPSDialog && (
+                <div className="fixed inset-0 z-[9999] flex items-end justify-center p-4 bg-black/60"
+                    onClick={() => setShowGPSDialog(false)}>
+                    <div
+                        className="w-full max-w-sm rounded-3xl p-6 shadow-2xl bg-white dark:bg-gray-900"
+                        onClick={e => e.stopPropagation()}
+                    >
+                        <div className="text-5xl text-center mb-3">📍</div>
+                        <h2 className="text-xl font-bold text-center mb-2 text-gray-900 dark:text-white">
+                            Location is Turned Off
+                        </h2>
+                        <p className="text-sm text-gray-600 dark:text-gray-400 text-center mb-6">
+                            Your device GPS / Location Services are disabled. Please turn them on so
+                            we can detect your location automatically.
+                        </p>
+                        <button
+                            onClick={() => {
+                                setShowGPSDialog(false)
+                                if (typeof window !== 'undefined' && (window as any).NeedYouBridge?.openLocationSettings) {
+                                    ; (window as any).NeedYouBridge.openLocationSettings()
+                                }
+                            }}
+                            className="w-full py-3 mb-3 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-2xl transition-colors"
+                        >
+                            Open Location Settings
+                        </button>
+                        <button
+                            onClick={() => setShowGPSDialog(false)}
+                            className="w-full py-3 text-gray-600 dark:text-gray-400 font-medium text-sm hover:text-gray-800 dark:hover:text-gray-200 transition-colors"
+                        >
+                            Use Manual Search Instead
+                        </button>
+                    </div>
+                </div>
+            )}
+
 
             <div className="min-h-screen w-full flex items-center justify-center px-4 py-12"
                 style={{

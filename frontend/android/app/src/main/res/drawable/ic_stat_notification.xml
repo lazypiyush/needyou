@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Notification small icon for NeedYou.
+  Android 5+ renders notification icons as white-on-transparent monochrome.
+  Using the launcher adaptive icon causes a solid white blob — this clean
+  "N" vector resolves that and looks sharp in the status bar at any size.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+
+    <!--
+      The letter N drawn as two verticals connected by a diagonal:
+      Left bar (4,3) → (4,21)
+      Diagonal (4,3) → (20,21)
+      Right bar (20,3) → (20,21)
+      Each stroke is 3dp wide so it reads well at 16–24 dp.
+    -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="
+          M4,3 L4,21 L7,21 L7,8.5 L17,21 L20,21 L20,3 L17,3 L17,15.5 L7,3 Z" />
+
+</vector>

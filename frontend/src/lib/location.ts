@@ -69,11 +69,7 @@ export const detectUserLocation = (): Promise<GeolocationPosition> => {
                     reject(new Error('Location permission denied. Please enable location access in your settings.'))
                     break
                 case error.POSITION_UNAVAILABLE:
-                    // GPS is off — open Android Location Settings if native bridge is available
-                    if (typeof window !== 'undefined' && (window as any).NeedYouBridge?.openLocationSettings) {
-                        (window as any).NeedYouBridge.openLocationSettings()
-                    }
-                    reject(new Error('GPS is turned off. Please enable Location in your device settings and try again.'))
+                    reject(new Error('GPS is turned off. Please enable Location Services in your device settings and try again.'))
                     break
                 case error.TIMEOUT:
                     reject(new Error('Location request timed out. Please ensure GPS is enabled and try again.'))

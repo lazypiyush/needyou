@@ -1,10 +1,10 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { useAuth } from '@/context/AuthContext'
 import { createJob, CreateJobData } from '@/lib/auth'
 import { uploadToCloudinary, getVideoThumbnailUrl } from '@/lib/cloudinary'
-import { Loader2, Upload, X, Video, MapPin } from 'lucide-react'
+import { Loader2, Upload, X, Video, MapPin, ChevronLeft, ChevronRight } from 'lucide-react'
 import { useTheme } from 'next-themes'
 import Image from 'next/image'
 
@@ -30,6 +30,10 @@ export default function CreateJobInline({ onSuccess }: CreateJobInlineProps) {
     const [savedAddresses, setSavedAddresses] = useState<any[]>([])
     const [selectedAddressId, setSelectedAddressId] = useState<string>('')
     const [selectedAddress, setSelectedAddress] = useState<any>(null)
+    // Media reorder
+    const [focusedMediaIndex, setFocusedMediaIndex] = useState<number | null>(null)
+    const [dragIndex, setDragIndex] = useState<number | null>(null)
+    const [dragOverIndex, setDragOverIndex] = useState<number | null>(null)
 
     // ── Effects ───────────────────────────────────────────────────────────────
     useEffect(() => {
@@ -82,7 +86,34 @@ export default function CreateJobInline({ onSuccess }: CreateJobInlineProps) {
         URL.revokeObjectURL(mediaPreviews[index])
         setMediaFiles(prev => prev.filter((_, i) => i !== index))
         setMediaPreviews(prev => prev.filter((_, i) => i !== index))
+        setFocusedMediaIndex(null)
     }
+
+    const moveMedia = useCallback((from: number, to: number) => {
+        setMediaFiles(prev => {
+            if (to < 0 || to >= prev.length) return prev
+            const arr = [...prev]; const [item] = arr.splice(from, 1); arr.splice(to, 0, item); return arr
+        })
+        setMediaPreviews(prev => {
+            if (to < 0 || to >= prev.length) return prev
+            const arr = [...prev]; const [item] = arr.splice(from, 1); arr.splice(to, 0, item); return arr
+        })
+        setFocusedMediaIndex(to)
+    }, [])
+
+    // Keyboard arrow key reorder (desktop)
+    const focusedRef = useRef<number | null>(null)
+    focusedRef.current = focusedMediaIndex
+    useEffect(() => {
+        const onKey = (e: KeyboardEvent) => {
+            const idx = focusedRef.current
+            if (idx === null) return
+            if (e.key === 'ArrowLeft') { e.preventDefault(); moveMedia(idx, idx - 1) }
+            if (e.key === 'ArrowRight') { e.preventDefault(); moveMedia(idx, idx + 1) }
+        }
+        window.addEventListener('keydown', onKey)
+        return () => window.removeEventListener('keydown', onKey)
+    }, [moveMedia])
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault()
@@ -217,37 +248,83 @@ export default function CreateJobInline({ onSuccess }: CreateJobInlineProps) {
                     {/* Media Upload */}
                     <div className="mb-6">
                         <label className="block text-sm font-medium mb-2" style={{ color: isDark ? '#ffffff' : '#111827' }}>
-                            Photos/Videos (Optional)
+                            Photos / Videos
+                            <span className="ml-2 text-xs font-normal" style={{ color: isDark ? '#6b7280' : '#9ca3af' }}>(first = cover shown on dashboard)</span>
                         </label>
-                        <label className="block w-full p-8 border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-xl cursor-pointer hover:border-blue-500 dark:hover:border-blue-400 transition-colors"
-                            style={{ backgroundColor: isDark ? '#1a1a1a' : '#f9fafb' }}>
+
+                        {/* Upload zone */}
+                        <label className="flex flex-col items-center justify-center w-full p-6 border-2 border-dashed rounded-xl cursor-pointer transition-colors hover:border-blue-500 dark:hover:border-blue-400"
+                            style={{ borderColor: isDark ? '#374151' : '#d1d5db', backgroundColor: isDark ? '#1a1a1a' : '#f9fafb' }}>
                             <input type="file" accept="image/*,video/*" multiple onChange={handleFileSelect} className="hidden" disabled={uploading} />
-                            <div className="text-center">
-                                <Upload className="w-12 h-12 mx-auto mb-3 text-gray-400" />
-                                <p className="text-sm font-medium" style={{ color: isDark ? '#9ca3af' : '#6b7280' }}>Click to upload or drag and drop</p>
-                                <p className="text-xs mt-1" style={{ color: isDark ? '#6b7280' : '#9ca3af' }}>Images (max 10MB) or Videos (max 50MB)</p>
-                            </div>
+                            <Upload className="w-8 h-8 mb-2 text-gray-400" />
+                            <p className="text-sm font-medium" style={{ color: isDark ? '#9ca3af' : '#6b7280' }}>Click or drag to upload</p>
+                            <p className="text-xs mt-1" style={{ color: isDark ? '#6b7280' : '#9ca3af' }}>Images ≤ 10 MB · Videos ≤ 50 MB · multiple allowed</p>
                         </label>
+
+                        {/* Sortable media grid */}
                         {mediaPreviews.length > 0 && (
                             <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mt-4">
                                 {mediaPreviews.map((preview, index) => (
-                                    <div key={index} className="relative group">
-                                        <div className="relative w-full h-32 rounded-lg overflow-hidden bg-gray-200 dark:bg-gray-700">
-                                            {mediaFiles[index].type.startsWith('image/') ? (
-                                                <Image src={preview} alt={`Preview ${index + 1}`} fill className="object-cover" />
+                                    <div
+                                        key={`${preview}-${index}`}
+                                        tabIndex={0}
+                                        onFocus={() => setFocusedMediaIndex(index)}
+                                        onBlur={() => setFocusedMediaIndex(null)}
+                                        draggable
+                                        onDragStart={() => setDragIndex(index)}
+                                        onDragOver={e => { e.preventDefault(); setDragOverIndex(index) }}
+                                        onDrop={() => {
+                                            if (dragIndex !== null && dragIndex !== index) moveMedia(dragIndex, index)
+                                            setDragIndex(null); setDragOverIndex(null)
+                                        }}
+                                        onDragEnd={() => { setDragIndex(null); setDragOverIndex(null) }}
+                                        className={`relative group rounded-xl overflow-hidden outline-none transition-all cursor-grab active:cursor-grabbing ${focusedMediaIndex === index ? 'ring-2 ring-blue-500 ring-offset-1' :
+                                                dragOverIndex === index ? 'ring-2 ring-blue-400 ring-dashed' : ''
+                                            }`}
+                                        style={{ opacity: dragIndex === index ? 0.5 : 1 }}
+                                    >
+                                        {/* Preview */}
+                                        <div className="relative w-full h-28 bg-gray-200 dark:bg-gray-700">
+                                            {mediaFiles[index]?.type.startsWith('image/') ? (
+                                                <Image src={preview} alt={`Media ${index + 1}`} fill className="object-cover" />
                                             ) : (
-                                                <div className="w-full h-full flex items-center justify-center">
+                                                <div className="w-full h-full flex flex-col items-center justify-center gap-1">
                                                     <Video className="w-8 h-8 text-gray-400" />
+                                                    <span className="text-xs text-gray-400">Video</span>
                                                 </div>
                                             )}
+                                            {/* COVER badge */}
+                                            {index === 0 && (
+                                                <span className="absolute top-1.5 left-1.5 px-1.5 py-0.5 bg-blue-600 text-white text-[10px] font-bold rounded z-10">COVER</span>
+                                            )}
+                                            {/* Delete button */}
+                                            <button type="button"
+                                                onClick={e => { e.stopPropagation(); removeMedia(index) }}
+                                                className="absolute top-1.5 right-1.5 p-1 bg-red-500 text-white rounded-full opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity z-10">
+                                                <X className="w-3 h-3" />
+                                            </button>
                                         </div>
-                                        <button type="button" onClick={() => removeMedia(index)}
-                                            className="absolute top-1 right-1 p-1 bg-red-500 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity">
-                                            <X className="w-4 h-4" />
-                                        </button>
+
+                                        {/* Arrow controls + position */}
+                                        <div className="flex items-center justify-between px-1 py-1" style={{ backgroundColor: isDark ? '#1a1a1a' : '#f3f4f6' }}>
+                                            <button type="button" disabled={index === 0} onClick={e => { e.stopPropagation(); moveMedia(index, index - 1) }}
+                                                className="p-1 rounded disabled:opacity-25 hover:text-blue-500 transition-colors">
+                                                <ChevronLeft className="w-4 h-4" />
+                                            </button>
+                                            <span className="text-xs font-medium" style={{ color: isDark ? '#9ca3af' : '#6b7280' }}>{index + 1}/{mediaPreviews.length}</span>
+                                            <button type="button" disabled={index === mediaPreviews.length - 1} onClick={e => { e.stopPropagation(); moveMedia(index, index + 1) }}
+                                                className="p-1 rounded disabled:opacity-25 hover:text-blue-500 transition-colors">
+                                                <ChevronRight className="w-4 h-4" />
+                                            </button>
+                                        </div>
                                     </div>
                                 ))}
                             </div>
+                        )}
+                        {mediaPreviews.length > 0 && (
+                            <p className="mt-2 text-xs text-center" style={{ color: isDark ? '#6b7280' : '#9ca3af' }}>
+                                Drag thumbnails or use ◀ ▶ arrows to reorder · Keyboard ← → when focused
+                            </p>
                         )}
                     </div>
 

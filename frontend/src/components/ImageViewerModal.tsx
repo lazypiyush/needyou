@@ -24,6 +24,7 @@ export default function ImageViewerModal({ media, initialIndex = 0, onClose }: I
     const [dragStart, setDragStart] = useState({ x: 0, y: 0 })
     const imageContainerRef = useRef<HTMLDivElement>(null)
     const lastTouchDistance = useRef<number>(0)
+    const swipeStartX = useRef<number | null>(null) // for single-finger image navigation
     const { theme, systemTheme } = useTheme()
     const currentTheme = theme === 'system' ? systemTheme : theme
     const isDark = currentTheme === 'dark'
@@ -166,15 +167,20 @@ export default function ImageViewerModal({ media, initialIndex = 0, onClose }: I
             e.preventDefault()
             e.stopPropagation()
             lastTouchDistance.current = getDistance(e.touches)
-            setIsDragging(false) // Stop any dragging
-        } else if (e.touches.length === 1 && zoom > 1) {
-            // Single finger when zoomed - drag to pan
-            e.preventDefault()
-            setIsDragging(true)
-            setDragStart({
-                x: e.touches[0].clientX - position.x,
-                y: e.touches[0].clientY - position.y,
-            })
+            setIsDragging(false)
+        } else if (e.touches.length === 1) {
+            if (zoom > 1) {
+                // Zoomed in - drag to pan
+                e.preventDefault()
+                setIsDragging(true)
+                setDragStart({
+                    x: e.touches[0].clientX - position.x,
+                    y: e.touches[0].clientY - position.y,
+                })
+            } else {
+                // Normal zoom - store start for swipe navigation
+                swipeStartX.current = e.touches[0].clientX
+            }
         }
     }
 
@@ -203,9 +209,18 @@ export default function ImageViewerModal({ media, initialIndex = 0, onClose }: I
         }
     }
 
-    const handleTouchEndUnified = () => {
+    const handleTouchEndUnified = (e: React.TouchEvent) => {
         setIsDragging(false)
         lastTouchDistance.current = 0
+        // Single-finger swipe at zoom=1 → navigate between images
+        if (swipeStartX.current !== null && zoom === 1 && media.length > 1) {
+            const diff = swipeStartX.current - e.changedTouches[0].clientX
+            if (Math.abs(diff) > 60) {
+                if (diff > 0) goToNext()
+                else goToPrevious()
+            }
+            swipeStartX.current = null
+        }
     }
 
     if (!mounted) return null
@@ -214,6 +229,8 @@ export default function ImageViewerModal({ media, initialIndex = 0, onClose }: I
         <div
             className="fixed inset-0 bg-black/90 z-[9999] flex items-center justify-center"
             onClick={handleBackdropClick}
+            onTouchStart={e => e.stopPropagation()}
+            onTouchEnd={e => e.stopPropagation()}
             style={{ touchAction: 'none' }}
         >
             {/* Close Button */}

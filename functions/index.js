@@ -60,9 +60,9 @@ exports.sendFCMOnNotification = functions.firestore
                     notification: {
                         sound: 'default',
                         channelId: 'needyou_notifications',
-                        icon: 'ic_launcher',          // uses @mipmap/ic_launcher
+                        icon: 'ic_stat_notification',  // monochrome drawable — avoids white blob
                         color: '#1E5EFF',              // NeedYou brand blue
-                        notificationPriority: 'PRIORITY_HIGH',
+                        priority: 'max',              // PRIORITY_MAX — pops over other notifications
                         defaultVibrateTimings: true,
                     },
                 },

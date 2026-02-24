@@ -41,12 +41,15 @@ export default function DashboardPage() {
     const [displayedJobsCount, setDisplayedJobsCount] = useState(12) // Show 12 jobs initially
     const [displayedMyJobsCount, setDisplayedMyJobsCount] = useState(12) // Show 12 my jobs initially
     const [notificationJobId, setNotificationJobId] = useState<string | null>(null) // Track job from notification
+    const [showBatteryBanner, setShowBatteryBanner] = useState(false)
 
     // Swipe navigation — use ref to avoid stale closure issues with useState
     const touchStartXRef = useRef<number | null>(null)
     const [swipeAnimClass, setSwipeAnimClass] = useState('')
     const SWIPE_TABS = ['home', 'jobs', 'create', 'notifications', 'profile'] as const
     type SwipeTab = typeof SWIPE_TABS[number]
+    // Infinite scroll sentinel for home tab
+    const sentinelRef = useRef<HTMLDivElement>(null)
 
     const handleSwipe = (endX: number) => {
         if (touchStartXRef.current === null) return
@@ -67,9 +70,35 @@ export default function DashboardPage() {
         }
     }
 
+    // Battery optimisation check (native Android only)
+    useEffect(() => {
+        const timer = setTimeout(() => {
+            if (typeof window !== 'undefined' && (window as any).NeedYouBridge?.isBatteryOptimizationEnabled?.()) {
+                setShowBatteryBanner(true)
+            }
+        }, 2000)
+        return () => clearTimeout(timer)
+    }, [])
+
     useEffect(() => {
         setMounted(true)
     }, [])
+
+    // Infinite scroll: load 12 more jobs when sentinel enters viewport
+    useEffect(() => {
+        const sentinel = sentinelRef.current
+        if (!sentinel) return
+        const observer = new IntersectionObserver(
+            (entries) => {
+                if (entries[0].isIntersecting) {
+                    setDisplayedJobsCount(prev => prev + 12)
+                }
+            },
+            { rootMargin: '200px' }
+        )
+        observer.observe(sentinel)
+        return () => observer.disconnect()
+    }, [sentinelRef, activeTab])
 
     // Subscribe to notifications for unread count
     useEffect(() => {
@@ -323,11 +352,54 @@ export default function DashboardPage() {
 
     if (loading || !locationChecked) {
         return (
-            <div className="min-h-screen w-full flex items-center justify-center transition-colors duration-300"
-                style={{
-                    background: 'linear-gradient(to bottom right, rgb(var(--gradient-from)), rgb(var(--gradient-via)), rgb(var(--gradient-to)))'
-                }}>
-                <Loader2 className="w-12 h-12 animate-spin text-blue-600 dark:text-blue-400" />
+            <div className="min-h-screen pb-20 transition-colors duration-300"
+                style={{ background: 'linear-gradient(to bottom right, rgb(var(--gradient-from)), rgb(var(--gradient-via)), rgb(var(--gradient-to)))' }}>
+                {/* Top bar skeleton */}
+                <div className="sticky top-0 z-40 border-b border-gray-200 dark:border-gray-700 px-4 py-3"
+                    style={{ backgroundColor: 'rgba(255,255,255,0.8)' }}>
+                    <div className="flex items-center justify-between">
+                        <div className="skeleton h-5 w-40 rounded-lg" />
+                        <div className="flex gap-3">
+                            <div className="skeleton w-8 h-8 rounded-full" />
+                            <div className="skeleton w-8 h-8 rounded-full" />
+                        </div>
+                    </div>
+                </div>
+                {/* Content area skeleton */}
+                <div className="max-w-7xl mx-auto px-4 py-6 space-y-4">
+                    <div className="skeleton h-6 w-44 rounded-lg mb-4" />
+                    {[1, 2, 3].map(i => (
+                        <div key={i} className="rounded-2xl border border-gray-200 dark:border-gray-700 p-4"
+                            style={{ backgroundColor: 'rgba(255,255,255,0.6)' }}>
+                            <div className="flex items-center gap-3 mb-3">
+                                <div className="skeleton w-10 h-10 rounded-full flex-shrink-0" />
+                                <div className="flex-1 space-y-2">
+                                    <div className="skeleton h-4 w-28 rounded" />
+                                    <div className="skeleton h-3 w-20 rounded" />
+                                </div>
+                            </div>
+                            <div className="skeleton w-full h-44 rounded-xl mb-3" />
+                            <div className="space-y-2 mb-3">
+                                <div className="skeleton h-4 w-3/4 rounded" />
+                                <div className="skeleton h-3 w-1/2 rounded" />
+                            </div>
+                            <div className="flex gap-2">
+                                <div className="skeleton h-7 w-24 rounded-full" />
+                                <div className="skeleton h-7 w-20 rounded-full" />
+                            </div>
+                        </div>
+                    ))}
+                </div>
+                {/* Bottom nav skeleton */}
+                <div className="fixed bottom-0 left-0 right-0 h-16 border-t border-gray-200 dark:border-gray-700 flex items-center justify-around px-4"
+                    style={{ backgroundColor: 'rgba(255,255,255,0.9)' }}>
+                    {[1, 2, 3, 4, 5].map(i => (
+                        <div key={i} className="flex flex-col items-center gap-1">
+                            <div className="skeleton w-6 h-6 rounded-lg" />
+                            <div className="skeleton h-2 w-8 rounded" />
+                        </div>
+                    ))}
+                </div>
             </div>
         )
     }
@@ -596,8 +668,22 @@ export default function DashboardPage() {
                             )}
 
                             {loadingJobs ? (
-                                <div className="flex items-center justify-center py-12">
-                                    <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
+                                // Inline skeleton while jobs load
+                                <div className="space-y-4">
+                                    {[1, 2].map(i => (
+                                        <div key={i} className="rounded-2xl border border-gray-200 dark:border-gray-700 p-4"
+                                            style={{ backgroundColor: 'rgba(255,255,255,0.6)' }}>
+                                            <div className="flex items-center gap-3 mb-3">
+                                                <div className="skeleton w-10 h-10 rounded-full" />
+                                                <div className="flex-1 space-y-2">
+                                                    <div className="skeleton h-4 w-28 rounded" />
+                                                    <div className="skeleton h-3 w-20 rounded" />
+                                                </div>
+                                            </div>
+                                            <div className="skeleton w-full h-44 rounded-xl mb-3" />
+                                            <div className="skeleton h-4 w-3/4 rounded" />
+                                        </div>
+                                    ))}
                                 </div>
                             ) : filteredJobs.length === 0 ? (
                                 <div className="text-center py-12">
@@ -638,15 +724,15 @@ export default function DashboardPage() {
                                         ))}
                                     </div>
 
-                                    {/* Load More Button */}
+                                    {/* Infinite scroll sentinel */}
                                     {filteredJobs.length > displayedJobsCount && (
-                                        <div className="flex justify-center mt-8">
-                                            <button
-                                                onClick={() => setDisplayedJobsCount(prev => prev + 12)}
-                                                className="px-6 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-bold rounded-xl hover:shadow-lg transition-all"
-                                            >
-                                                Load More ({filteredJobs.length - displayedJobsCount} remaining)
-                                            </button>
+                                        <div ref={sentinelRef} className="flex justify-center py-6">
+                                            <div className="flex gap-1">
+                                                {[1, 2, 3].map(i => (
+                                                    <div key={i} className="w-2 h-2 rounded-full bg-blue-400 animate-bounce"
+                                                        style={{ animationDelay: `${i * 0.15}s` }} />
+                                                ))}
+                                            </div>
                                         </div>
                                     )}
                                 </>
@@ -1144,6 +1230,40 @@ export default function DashboardPage() {
                     </div>
                 </div>
             )}
+            {/* Battery Optimization Consent Banner */}
+            {showBatteryBanner && (
+                <div className="fixed bottom-16 left-0 right-0 z-50 px-4 pb-2 pointer-events-none">
+                    <div className="pointer-events-auto bg-orange-500 rounded-2xl shadow-2xl p-4 flex items-start gap-3">
+                        <span className="text-2xl shrink-0">🔋</span>
+                        <div className="flex-1 min-w-0">
+                            <p className="font-bold text-white text-sm leading-tight">Enable Background Notifications</p>
+                            <p className="text-orange-100 text-xs mt-0.5 leading-snug">
+                                Job alerts won't arrive when the app is closed unless battery restriction is removed.
+                            </p>
+                        </div>
+                        <div className="flex flex-col gap-1 shrink-0 ml-2">
+                            <button
+                                onClick={() => {
+                                    setShowBatteryBanner(false)
+                                    if (typeof window !== 'undefined' && (window as any).NeedYouBridge?.openBatterySettings) {
+                                        ; (window as any).NeedYouBridge.openBatterySettings()
+                                    }
+                                }}
+                                className="px-3 py-1.5 bg-white text-orange-600 font-bold rounded-xl text-xs shadow"
+                            >
+                                Allow
+                            </button>
+                            <button
+                                onClick={() => setShowBatteryBanner(false)}
+                                className="px-3 py-1.5 text-orange-100 font-medium text-xs text-center"
+                            >
+                                Later
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
         </>
     )
 }

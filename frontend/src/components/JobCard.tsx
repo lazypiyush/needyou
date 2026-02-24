@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import { useTheme } from 'next-themes'
 import { MapPin, User, Clock, Image as ImageIcon, Video, Trash2, Users, ChevronDown, Languages } from 'lucide-react'
 import { Job, applyToJob, deleteJob, checkIfUserApplied } from '@/lib/auth'
+import { getCompressedImageUrl } from '@/lib/cloudinary'
 import { useAuth } from '@/context/AuthContext'
 import Image from 'next/image'
 import JobApplicationsModal from './JobApplicationsModal'
@@ -223,7 +224,7 @@ export default function JobCard({ job, onApply, onDelete, userLocation, highligh
                 >
                     {job.media[0].type === 'image' ? (
                         <Image
-                            src={job.media[0].url}
+                            src={getCompressedImageUrl(job.media[0].url)}
                             alt="Job media"
                             fill
                             className="object-cover"

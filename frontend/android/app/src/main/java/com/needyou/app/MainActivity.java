@@ -141,6 +141,19 @@ public class MainActivity extends BridgeActivity {
                 }
             });
         }
+
+        /**
+         * Returns true if battery optimisation is still active for this app.
+         * Call from JS: window.NeedYouBridge.isBatteryOptimizationEnabled()
+         */
+        @JavascriptInterface
+        public boolean isBatteryOptimizationEnabled() {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                PowerManager pm = (PowerManager) getSystemService(POWER_SERVICE);
+                return pm != null && !pm.isIgnoringBatteryOptimizations(getPackageName());
+            }
+            return false;
+        }
     }
 
     @Override
@@ -365,7 +378,7 @@ public class MainActivity extends BridgeActivity {
         PendingIntent pendingIntent = PendingIntent.getActivity(this, 0, intent, flags);
 
         NotificationCompat.Builder builder = new NotificationCompat.Builder(this, CHANNEL_ID)
-                .setSmallIcon(R.mipmap.ic_launcher)
+                .setSmallIcon(R.drawable.ic_stat_notification)
                 .setColor(0xFF1E5EFF)
                 .setContentTitle(title != null ? title : "NeedYou")
                 .setContentText(body != null ? body : "")

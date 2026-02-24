@@ -131,3 +131,15 @@ export function getRotationCorrectedVideoUrl(publicId: string): string {
 
     return `https://res.cloudinary.com/${cloudName}/video/upload/${publicId}`
 }
+
+/**
+ * Get a compressed thumbnail URL for Cloudinary images.
+ * Inserts w_700,q_auto:low,f_auto transformations for fast dashboard loading.
+ * Falls back to the original URL if it's not a Cloudinary URL.
+ */
+export function getCompressedImageUrl(url: string): string {
+    if (!url || !url.includes('res.cloudinary.com')) return url
+    // Avoid double-transforming
+    if (url.includes('/upload/w_') || url.includes('/upload/q_')) return url
+    return url.replace('/upload/', '/upload/w_700,q_auto:low,f_auto/')
+}
