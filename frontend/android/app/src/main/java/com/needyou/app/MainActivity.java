@@ -37,7 +37,7 @@ public class MainActivity extends BridgeActivity {
 
     private static final int NOTIFICATION_PERMISSION_CODE = 1001;
     private static final int LOCATION_PERMISSION_CODE = 1002;
-    private static final String APP_URL = "https://need-you.xyz/signin";
+    private static final String APP_URL = "https://need-you.xyz/dashboard";
     private static final String OFFLINE_URL = "file:///android_asset/offline.html";
     private static final String SPLASH_INTRO_URL = "file:///android_asset/splash_intro.html";
     private static final String CHANNEL_ID = "needyou_notifications";

@@ -8,7 +8,7 @@ const config: CapacitorConfig = {
   // ✅ Load your live Vercel app inside the native shell
   // Replace this URL with your actual Vercel deployment URL
   server: {
-    url: 'https://need-you.xyz/signin',
+    url: 'https://need-you.xyz/dashboard',
     cleartext: false,
     androidScheme: 'https',
     allowNavigation: [
