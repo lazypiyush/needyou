@@ -126,7 +126,8 @@ public class MainActivity extends BridgeActivity {
         PendingIntent pendingIntent = PendingIntent.getActivity(this, 0, intent, flags);
 
         NotificationCompat.Builder builder = new NotificationCompat.Builder(this, CHANNEL_ID)
-                .setSmallIcon(android.R.drawable.ic_dialog_info) // replace with your own icon later
+                .setSmallIcon(R.mipmap.ic_launcher) // uses the actual NeedYou app icon
+                .setColor(0xFF1E5EFF) // NeedYou brand blue tint
                 .setContentTitle(title != null ? title : "NeedYou")
                 .setContentText(body != null ? body : "")
                 .setStyle(new NotificationCompat.BigTextStyle().bigText(body != null ? body : ""))

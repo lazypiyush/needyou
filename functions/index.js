@@ -52,13 +52,16 @@ exports.sendFCMOnNotification = functions.firestore
                     notification: {
                         sound: 'default',
                         channelId: 'needyou_notifications',
-                        clickAction: 'FLUTTER_NOTIFICATION_CLICK',
+                        icon: 'ic_launcher',          // uses @mipmap/ic_launcher (app icon)
+                        color: '#1E5EFF',              // NeedYou brand blue
+                        notificationPriority: 'PRIORITY_HIGH',
+                        defaultVibrateTimings: true,
+                        // No clickAction — lets Capacitor handle the tap natively
                     },
                 },
                 data: {
                     userId: userId,
                     notifId: context.params.notifId,
-                    // Add jobId or other data if present in the notification
                     ...(notification.jobId ? { jobId: notification.jobId } : {}),
                 },
             };

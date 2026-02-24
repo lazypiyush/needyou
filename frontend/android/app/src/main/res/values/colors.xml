@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- NeedYou brand blue — used as the notification icon tint color -->
+    <color name="colorPrimary">#1E5EFF</color>
+    <color name="colorPrimaryDark">#1448CC</color>
+    <color name="colorAccent">#03DAC5</color>
+</resources>
