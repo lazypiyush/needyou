@@ -1,9 +1,11 @@
 package com.needyou.app;
 
 import android.Manifest;
+import android.app.Activity;
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
 import android.app.PendingIntent;
+import android.content.ActivityNotFoundException;
 import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.net.ConnectivityManager;
@@ -19,6 +21,7 @@ import android.os.PowerManager;
 import android.provider.Settings;
 import android.webkit.GeolocationPermissions;
 import android.webkit.JavascriptInterface;
+import android.webkit.ValueCallback;
 import android.webkit.WebChromeClient;
 import android.webkit.WebView;
 import android.widget.Toast;
@@ -41,9 +44,11 @@ public class MainActivity extends BridgeActivity {
 
     private ConnectivityManager.NetworkCallback networkCallback;
     private boolean isShowingOfflinePage = false;
-    private volatile boolean splashReady = false; // controls native splash hold
+    private volatile boolean splashReady = false;
     private int notificationIdCounter = 1000;
-    private long lastBackPressed = 0; // for double-back-to-exit
+    private long lastBackPressed = 0;
+    private ValueCallback<Uri[]> fileUploadCallback = null;
+    private static final int FILE_CHOOSER_REQUEST_CODE = 2000;
 
     // ─── Native bridge exposed to the WebView ────────────────────────────────
     public class NeedYouBridge {
@@ -135,16 +140,12 @@ public class MainActivity extends BridgeActivity {
             @Override
             public void onGeolocationPermissionsShowPrompt(
                     String origin, GeolocationPermissions.Callback callback) {
-                // Check if location permission is already granted natively
                 boolean granted = ContextCompat.checkSelfPermission(
                         MainActivity.this,
                         Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED;
-
                 if (granted) {
-                    // Native permission is granted → also grant it to the WebView context
                     callback.invoke(origin, true, false);
                 } else {
-                    // Request native permission first; once granted WebView can try again
                     ActivityCompat.requestPermissions(
                             MainActivity.this,
                             new String[] {
@@ -152,9 +153,37 @@ public class MainActivity extends BridgeActivity {
                                     Manifest.permission.ACCESS_COARSE_LOCATION
                             },
                             LOCATION_PERMISSION_CODE);
-                    // For now deny the WebView until user grants
                     callback.invoke(origin, false, false);
                 }
+            }
+
+            @Override
+            public boolean onShowFileChooser(
+                    WebView webView,
+                    ValueCallback<Uri[]> filePathCallback,
+                    FileChooserParams fileChooserParams) {
+                // Cancel any pending callback
+                if (fileUploadCallback != null) {
+                    fileUploadCallback.onReceiveValue(null);
+                }
+                fileUploadCallback = filePathCallback;
+
+                // Build a chooser that offers gallery + camera
+                Intent galleryIntent = new Intent(Intent.ACTION_GET_CONTENT);
+                galleryIntent.setType("*/*");
+                galleryIntent.addCategory(Intent.CATEGORY_OPENABLE);
+                String[] mimeTypes = { "image/*", "video/*", "audio/*" };
+                galleryIntent.putExtra(Intent.EXTRA_MIME_TYPES, mimeTypes);
+                galleryIntent.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true);
+
+                Intent chooser = Intent.createChooser(galleryIntent, "Select Media");
+                try {
+                    startActivityForResult(chooser, FILE_CHOOSER_REQUEST_CODE);
+                } catch (ActivityNotFoundException e) {
+                    fileUploadCallback = null;
+                    return false;
+                }
+                return true;
             }
         });
 
@@ -168,6 +197,24 @@ public class MainActivity extends BridgeActivity {
             splashReady = true; // release the native splash screen
             registerNetworkCallback();
         }, 2700);
+    }
+
+    // ─── File chooser result ─────────────────────────────────────────────────
+
+    @Override
+    public void onActivityResult(int requestCode, int resultCode, Intent data) {
+        if (requestCode == FILE_CHOOSER_REQUEST_CODE) {
+            Uri[] results = null;
+            if (resultCode == Activity.RESULT_OK && data != null) {
+                results = WebChromeClient.FileChooserParams.parseResult(resultCode, data);
+            }
+            if (fileUploadCallback != null) {
+                fileUploadCallback.onReceiveValue(results);
+                fileUploadCallback = null;
+            }
+            return;
+        }
+        super.onActivityResult(requestCode, resultCode, data);
     }
 
     // ─── Back button: navigate WebView history, double-back to exit ───────────

@@ -19,15 +19,15 @@ export default function SplashScreen() {
 
     const [showSplash, setShowSplash] = useState(false); // launch splash
     const [splashFade, setSplashFade] = useState(false);
-    const [showShield, setShowShield] = useState(false); // auth shield
+    const [showShield, setShowShield] = useState(true);  // start visible → no flash
     const [shieldFade, setShieldFade] = useState(false);
 
     useEffect(() => {
-        // Only in the native Android/iOS app
-        if (!(window as any).Capacitor?.isNativePlatform()) return;
-
-        // ── Auth shield: hold until Firebase resolves auth state ──────────
-        setShowShield(true);
+        // Not native → hide the shield that was shown by default
+        if (!(window as any).Capacitor?.isNativePlatform()) {
+            setShowShield(false);
+            return;
+        }
 
         // ── Launch splash: show once per session ──────────────────────────
         if (!sessionStorage.getItem('splashShown')) {
