@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/context/AuthContext'
 import { Loader2, MapPin, Search, Filter, Home, Plus, Bell, User, Briefcase, Edit, Trash2, Check, CheckCircle, RotateCw } from 'lucide-react'
@@ -42,6 +42,31 @@ export default function DashboardPage() {
     const [displayedMyJobsCount, setDisplayedMyJobsCount] = useState(12) // Show 12 my jobs initially
     const [notificationJobId, setNotificationJobId] = useState<string | null>(null) // Track job from notification
 
+    // Swipe navigation — use ref to avoid stale closure issues with useState
+    const touchStartXRef = useRef<number | null>(null)
+    const [swipeAnimClass, setSwipeAnimClass] = useState('')
+    const SWIPE_TABS = ['home', 'jobs', 'create', 'notifications', 'profile'] as const
+    type SwipeTab = typeof SWIPE_TABS[number]
+
+    const handleSwipe = (endX: number) => {
+        if (touchStartXRef.current === null) return
+        const diff = touchStartXRef.current - endX
+        touchStartXRef.current = null
+        const THRESHOLD = 60
+        if (Math.abs(diff) < THRESHOLD) return
+        const currentIdx = SWIPE_TABS.indexOf(activeTab as SwipeTab)
+        if (currentIdx === -1) return
+        if (diff > 0) {
+            // Swiped left → next tab
+            const next = SWIPE_TABS[currentIdx + 1]
+            if (next) { setActiveTab(next); setSwipeAnimClass('tab-slide-left') }
+        } else {
+            // Swiped right → previous tab
+            const prev = SWIPE_TABS[currentIdx - 1]
+            if (prev) { setActiveTab(prev); setSwipeAnimClass('tab-slide-right') }
+        }
+    }
+
     useEffect(() => {
         setMounted(true)
     }, [])
@@ -65,41 +90,43 @@ export default function DashboardPage() {
     // Fetch user location from database
     useEffect(() => {
         const fetchUserLocation = async () => {
-            if (user) {
-                try {
-                    if (!db) {
-                        console.error('Firestore not initialized')
-                        setLocationChecked(true)
+            if (!user) return
+            try {
+                if (!db) {
+                    console.error('Firestore not initialized')
+                    setLocationChecked(true)
+                    return
+                }
+
+                const userDoc = await getDoc(doc(db, 'users', user.uid))
+
+                if (userDoc.exists()) {
+                    const userData = userDoc.data()
+                    if (userData.location) {
+                        setUserLocation({
+                            city: userData.location.city || '',
+                            state: userData.location.state || '',
+                            country: userData.location.country || '',
+                            latitude: userData.location.latitude,
+                            longitude: userData.location.longitude,
+                        })
+                    } else {
+                        // User has no location saved → send them to set it up
+                        router.replace('/onboarding/location')
                         return
                     }
-
-                    const userDoc = await getDoc(doc(db, 'users', user.uid))
-
-                    if (userDoc.exists()) {
-                        const userData = userDoc.data()
-                        if (userData.location) {
-                            setUserLocation({
-                                city: userData.location.city || '',
-                                state: userData.location.state || '',
-                                country: userData.location.country || '',
-                                latitude: userData.location.latitude,
-                                longitude: userData.location.longitude,
-                            })
-                        } else {
-                            // User has no location saved → send them to set it up
-                            router.replace('/onboarding/location')
-                            return
-                        }
-                    }
-                } catch (error) {
-                    console.error('Error fetching user location:', error)
-                } finally {
-                    setLocationChecked(true)
                 }
+            } catch (error) {
+                console.error('Error fetching user location:', error)
+            } finally {
+                setLocationChecked(true)
             }
         }
 
         fetchUserLocation()
+        // Safety timeout: if location check hangs (network issue), unblock after 5s
+        const safetyTimer = setTimeout(() => setLocationChecked(true), 5000)
+        return () => clearTimeout(safetyTimer)
     }, [user, router])
 
     // Fetch saved addresses
@@ -310,7 +337,10 @@ export default function DashboardPage() {
             <div className="min-h-screen w-full pb-20 md:pb-0 transition-colors duration-300"
                 style={{
                     background: 'linear-gradient(to bottom right, rgb(var(--gradient-from)), rgb(var(--gradient-via)), rgb(var(--gradient-to)))'
-                }}>
+                }}
+                onTouchStart={(e) => { touchStartXRef.current = e.touches[0].clientX }}
+                onTouchEnd={(e) => handleSwipe(e.changedTouches[0].clientX)}
+            >
                 {/* Top Bar — only shown for home & jobs tabs */}
                 {(activeTab === 'home' || activeTab === 'jobs') && (
                     <div
@@ -391,7 +421,11 @@ export default function DashboardPage() {
                 )}
 
                 {/* Main Content Area */}
-                <div className="max-w-7xl mx-auto px-4 py-6 md:ml-64">
+                <div
+                    key={activeTab}
+                    className={`max-w-7xl mx-auto px-4 py-6 md:ml-64 ${swipeAnimClass}`}
+                    onAnimationEnd={() => setSwipeAnimClass('')}
+                >
                     {activeTab === 'home' && (
                         <div>
                             <h1 className="text-2xl font-bold mb-2" style={{ color: mounted && isDark ? '#ffffff' : '#111827' }}>
@@ -672,14 +706,10 @@ export default function DashboardPage() {
                             )}
                         </div>
                     )}
-                    {activeTab === 'create' && (
-                        <div className="flex items-center justify-center py-12">
-                            <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
-                        </div>
-                    )}
+
 
                     {activeTab === 'notifications' && (
-                        <div>
+                        <div style={{ paddingTop: 'env(safe-area-inset-top)' }}>
                             <div className="flex items-center justify-between mb-6">
                                 <h1 className="text-2xl font-bold" style={{ color: mounted && isDark ? '#ffffff' : '#111827' }}>
                                     Notifications
@@ -727,8 +757,9 @@ export default function DashboardPage() {
                                                 notification.type === 'budget_accepted') {
                                                 // Job poster notifications - go to My Jobs tab
                                                 setActiveTab('jobs')
-                                            } else if (notification.type === 'counter_offer_received') {
-                                                // Applicant received counter-offer - go to Home to find the job
+                                            } else if (notification.type === 'counter_offer_received' ||
+                                                notification.type === 'new_job_nearby') {
+                                                // Applicant / nearby job notifications - go to Home feed
                                                 setActiveTab('home')
                                             }
                                         }
@@ -800,7 +831,7 @@ export default function DashboardPage() {
                     )}
 
                     {activeTab === 'profile' && (
-                        <div>
+                        <div style={{ paddingTop: 'env(safe-area-inset-top)' }}>
                             <h1 className="text-2xl font-bold mb-4" style={{ color: mounted && isDark ? '#ffffff' : '#111827' }}>
                                 Profile
                             </h1>

@@ -606,25 +606,23 @@ function LocationContent() {
                             )}
 
                             {/* Submit Button */}
-                            {location && houseNumber && detailedAddress && (
-                                <button
-                                    type="submit"
-                                    disabled={loading}
-                                    className="w-full py-3 bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-bold rounded-xl hover:shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-                                >
-                                    {loading ? (
-                                        <>
-                                            <Loader2 className="w-5 h-5 animate-spin" />
-                                            Saving Address...
-                                        </>
-                                    ) : (
-                                        <>
-                                            Save Address
-                                            <ArrowRight className="w-5 h-5" />
-                                        </>
-                                    )}
-                                </button>
-                            )}
+                            <button
+                                type="submit"
+                                disabled={loading || !location || !houseNumber || !detailedAddress}
+                                className="w-full py-3 bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-bold rounded-xl hover:shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                            >
+                                {loading ? (
+                                    <>
+                                        <Loader2 className="w-5 h-5 animate-spin" />
+                                        Saving Address...
+                                    </>
+                                ) : (
+                                    <>
+                                        Save Address
+                                        <ArrowRight className="w-5 h-5" />
+                                    </>
+                                )}
+                            </button>
                         </form>
                     </div>
                 </motion.div>

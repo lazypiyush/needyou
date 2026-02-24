@@ -23,6 +23,7 @@ import android.webkit.WebView;
 import androidx.core.app.ActivityCompat;
 import androidx.core.app.NotificationCompat;
 import androidx.core.content.ContextCompat;
+import androidx.core.splashscreen.SplashScreen;
 
 import com.getcapacitor.BridgeActivity;
 
@@ -81,10 +82,25 @@ public class MainActivity extends BridgeActivity {
                 }
             });
         }
+
+        /**
+         * Opens Android Location Settings so the user can enable GPS.
+         * Call from JS: window.NeedYouBridge.openLocationSettings()
+         */
+        @JavascriptInterface
+        public void openLocationSettings() {
+            runOnUiThread(() -> {
+                Intent intent = new Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS);
+                startActivity(intent);
+            });
+        }
     }
 
     @Override
     public void onCreate(Bundle savedInstanceState) {
+        // Install splash screen BEFORE super.onCreate() — required by the Android
+        // SplashScreen API
+        SplashScreen.installSplashScreen(this);
         super.onCreate(savedInstanceState);
 
         // 1. Notification channel (Android 8+)
@@ -138,12 +154,7 @@ public class MainActivity extends BridgeActivity {
             }
         });
 
-        // 6. Show offline page immediately if no internet on startup
-        if (!isNetworkAvailable()) {
-            loadOffline();
-        }
-
-        // 7. Listen for network changes throughout the session
+        // 6. Network callback: auto-reload the app when connection is restored
         registerNetworkCallback();
     }
 

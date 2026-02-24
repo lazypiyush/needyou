@@ -9,14 +9,15 @@ import { useTheme } from 'next-themes'
 import Image from 'next/image'
 
 interface CreateJobInlineProps {
-    onSuccess: () => void  // called after job posted → parent switches back to 'home'
+    onSuccess: () => void
 }
 
 export default function CreateJobInline({ onSuccess }: CreateJobInlineProps) {
     const { user } = useAuth()
-    const { theme, systemTheme } = useTheme()
-    const [mounted, setMounted] = useState(false)
+    const { theme, resolvedTheme } = useTheme()
+    const isDark = resolvedTheme === 'dark'
 
+    // ── All state hooks ───────────────────────────────────────────────────────
     const [caption, setCaption] = useState('')
     const [budget, setBudget] = useState('')
     const [budgetNotSet, setBudgetNotSet] = useState(false)
@@ -30,17 +31,7 @@ export default function CreateJobInline({ onSuccess }: CreateJobInlineProps) {
     const [selectedAddressId, setSelectedAddressId] = useState<string>('')
     const [selectedAddress, setSelectedAddress] = useState<any>(null)
 
-    useEffect(() => { setMounted(true) }, [])
-
-    const currentTheme = theme === 'system' ? systemTheme : theme
-    const isDark = currentTheme === 'dark'
-
-    if (!mounted) return (
-        <div className="flex items-center justify-center py-32">
-            <Loader2 className="w-10 h-10 animate-spin text-blue-600 dark:text-blue-400" />
-        </div>
-    )
-    // Fetch user saved addresses
+    // ── Effects ───────────────────────────────────────────────────────────────
     useEffect(() => {
         if (!user) return
         const fetchAddresses = async () => {
@@ -62,6 +53,7 @@ export default function CreateJobInline({ onSuccess }: CreateJobInlineProps) {
         fetchAddresses()
     }, [user])
 
+    // ── Handlers ─────────────────────────────────────────────────────────────
     const handleAddressChange = (addressId: string) => {
         setSelectedAddressId(addressId)
         const selected = savedAddresses.find(addr => addr.id === addressId)
@@ -140,7 +132,7 @@ export default function CreateJobInline({ onSuccess }: CreateJobInlineProps) {
             }
 
             await createJob(user!.uid, jobData)
-            onSuccess() // switch back to home tab
+            onSuccess()
 
         } catch (err: any) {
             console.error('Error creating job:', err)
@@ -151,8 +143,9 @@ export default function CreateJobInline({ onSuccess }: CreateJobInlineProps) {
         }
     }
 
+    // ── Render ────────────────────────────────────────────────────────────────
     return (
-        <div className="max-w-2xl mx-auto py-6">
+        <div className="max-w-2xl mx-auto py-6" style={{ paddingTop: 'env(safe-area-inset-top)' }}>
             <div className="mb-6">
                 <h1 className="text-2xl font-bold" style={{ color: isDark ? '#ffffff' : '#111827' }}>
                     Create New Job
@@ -268,7 +261,7 @@ export default function CreateJobInline({ onSuccess }: CreateJobInlineProps) {
                                 {savedAddresses.map(addr => (
                                     <div key={addr.id} onClick={() => handleAddressChange(addr.id)}
                                         className={`p-4 rounded-xl border-2 cursor-pointer transition-all ${selectedAddressId === addr.id
-                                            ? 'border-blue-600 bg-blue-50 dark:bg-blue-900/20'
+                                            ? 'border-blue-600'
                                             : 'border-gray-300 dark:border-gray-600 hover:border-blue-400'}`}
                                         style={{
                                             backgroundColor: selectedAddressId === addr.id
