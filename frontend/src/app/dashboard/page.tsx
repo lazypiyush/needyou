@@ -416,7 +416,7 @@ export default function DashboardPage() {
                 {/* Top Bar — only shown for home & jobs tabs */}
                 {(activeTab === 'home' || activeTab === 'jobs') && (
                     <div
-                        className="sticky top-0 z-40 backdrop-blur-md border-b border-gray-200 dark:border-gray-700"
+                        className="fixed top-0 left-0 right-0 z-40 backdrop-blur-md border-b border-gray-200 dark:border-gray-700"
                         style={{
                             backgroundColor: mounted && isDark ? 'rgba(28, 28, 28, 0.8)' : 'rgba(255, 255, 255, 0.8)',
                             boxShadow: mounted && isDark
@@ -490,6 +490,11 @@ export default function DashboardPage() {
                             </div>
                         </div>
                     </div>
+                )}
+
+                {/* Spacer — pushes content below the fixed top bar */}
+                {(activeTab === 'home' || activeTab === 'jobs') && (
+                    <div style={{ height: 'calc(57px + env(safe-area-inset-top))' }} />
                 )}
 
                 {/* Main Content Area */}
