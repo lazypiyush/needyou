@@ -101,10 +101,8 @@ public class MainActivity extends BridgeActivity {
 
     @Override
     public void onCreate(Bundle savedInstanceState) {
-        // Hold the native splash until we explicitly release it
-        androidx.core.splashscreen.SplashScreen splashScreen = SplashScreen.installSplashScreen(this);
-        splashScreen.setKeepOnScreenCondition(() -> !splashReady);
-
+        // Show native splash.png while activity initialises
+        SplashScreen.installSplashScreen(this);
         super.onCreate(savedInstanceState);
 
         // 1. Notification channel (Android 8+)
