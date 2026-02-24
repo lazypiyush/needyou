@@ -27,6 +27,7 @@ export default function DashboardPage() {
     const [showLocationModal, setShowLocationModal] = useState(false)
     const [jobs, setJobs] = useState<Job[]>([])
     const [loadingJobs, setLoadingJobs] = useState(false)
+    const [locationChecked, setLocationChecked] = useState(false) // blocks job fetch until we know location status
 
     // Filter states
     const [distanceFilter, setDistanceFilter] = useState<string>('all')
@@ -67,6 +68,7 @@ export default function DashboardPage() {
                 try {
                     if (!db) {
                         console.error('Firestore not initialized')
+                        setLocationChecked(true)
                         return
                     }
 
@@ -82,16 +84,22 @@ export default function DashboardPage() {
                                 latitude: userData.location.latitude,
                                 longitude: userData.location.longitude,
                             })
+                        } else {
+                            // User has no location saved → send them to set it up
+                            router.replace('/onboarding/location')
+                            return
                         }
                     }
                 } catch (error) {
                     console.error('Error fetching user location:', error)
+                } finally {
+                    setLocationChecked(true)
                 }
             }
         }
 
         fetchUserLocation()
-    }, [user])
+    }, [user, router])
 
     // Fetch saved addresses
     const [savedAddresses, setSavedAddresses] = useState<any[]>([])
@@ -136,10 +144,10 @@ export default function DashboardPage() {
     }
 
     useEffect(() => {
-        if (user) {
+        if (user && locationChecked && userLocation) {
             fetchJobs()
         }
-    }, [user])
+    }, [user, locationChecked, userLocation])
 
     // Apply filters whenever jobs, search, or distance filter changes
     useEffect(() => {
@@ -291,7 +299,7 @@ export default function DashboardPage() {
         }
     }, [user, loading, router])
 
-    if (loading) {
+    if (loading || !locationChecked) {
         return (
             <div className="min-h-screen w-full flex items-center justify-center transition-colors duration-300"
                 style={{
