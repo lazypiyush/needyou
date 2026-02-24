@@ -462,17 +462,19 @@ export default function DashboardPage() {
                                         />
                                     </div>
 
-                                    {/* Filter Button */}
-                                    <button
-                                        onClick={() => {
-                                            setShowFilters(!showFilters)
-                                        }}
-                                        className="p-2 bg-gray-100 dark:bg-gray-700 rounded-full hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors relative z-10"
-                                        type="button"
-                                        title="Filters"
-                                    >
-                                        <Filter className="w-4 h-4 text-gray-600 dark:text-white" />
-                                    </button>
+                                    {/* Filter Button — only on home tab */}
+                                    {activeTab === 'home' && (
+                                        <button
+                                            onClick={() => {
+                                                setShowFilters(!showFilters)
+                                            }}
+                                            className="p-2 bg-gray-100 dark:bg-gray-700 rounded-full hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors relative z-10"
+                                            type="button"
+                                            title="Filters"
+                                        >
+                                            <Filter className="w-4 h-4 text-gray-600 dark:text-white" />
+                                        </button>
+                                    )}
 
                                     {/* Refresh Jobs Button */}
                                     <button
@@ -768,37 +770,55 @@ export default function DashboardPage() {
                                         Create Your First Job
                                     </button>
                                 </div>
-                            ) : (
-                                <>
-                                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                                        {jobs.filter(j => j.userId === user?.uid).slice(0, displayedMyJobsCount).map((job) => (
-                                            <JobCard
-                                                key={job.id}
-                                                job={job}
-                                                highlightJobId={notificationJobId}
-                                                onDelete={() => {
-                                                    // Refresh jobs after deleting
-                                                    fetchJobs()
-                                                    // Clear notification job ID after viewing
-                                                    setNotificationJobId(null)
-                                                }}
-                                            />
-                                        ))}
-                                    </div>
-
-                                    {/* Load More Button for My Jobs */}
-                                    {jobs.filter(j => j.userId === user?.uid).length > displayedMyJobsCount && (
-                                        <div className="flex justify-center mt-8">
+                            ) : (() => {
+                                const myJobs = jobs.filter(j =>
+                                    j.userId === user?.uid &&
+                                    (!searchQuery || j.caption?.toLowerCase().includes(searchQuery.toLowerCase()))
+                                );
+                                return myJobs.length === 0 ? (
+                                    <div className="text-center py-12">
+                                        <Briefcase className="w-16 h-16 mx-auto mb-4 text-gray-400" />
+                                        <p className="text-gray-500 dark:text-gray-400 mb-4">
+                                            {searchQuery ? `No jobs matching "${searchQuery}"` : "You haven't created any jobs yet"}
+                                        </p>
+                                        {!searchQuery && (
                                             <button
-                                                onClick={() => setDisplayedMyJobsCount(prev => prev + 12)}
+                                                onClick={() => setActiveTab('create')}
                                                 className="px-6 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-bold rounded-xl hover:shadow-lg transition-all"
                                             >
-                                                Load More ({jobs.filter(j => j.userId === user?.uid).length - displayedMyJobsCount} remaining)
+                                                Create Your First Job
                                             </button>
+                                        )}
+                                    </div>
+                                ) : (
+                                    <>
+                                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                                            {myJobs.slice(0, displayedMyJobsCount).map((job) => (
+                                                <JobCard
+                                                    key={job.id}
+                                                    job={job}
+                                                    highlightJobId={notificationJobId}
+                                                    onDelete={() => {
+                                                        fetchJobs()
+                                                        setNotificationJobId(null)
+                                                    }}
+                                                />
+                                            ))}
                                         </div>
-                                    )}
-                                </>
-                            )}
+                                        {myJobs.length > displayedMyJobsCount && (
+                                            <div className="flex justify-center mt-8">
+                                                <button
+                                                    onClick={() => setDisplayedMyJobsCount(prev => prev + 12)}
+                                                    className="px-6 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-bold rounded-xl hover:shadow-lg transition-all"
+                                                >
+                                                    Load More ({myJobs.length - displayedMyJobsCount} remaining)
+                                                </button>
+                                            </div>
+                                        )}
+                                    </>
+                                );
+                            })()
+                            }
                         </div>
                     )}
 
