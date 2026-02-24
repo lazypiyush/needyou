@@ -2,10 +2,12 @@ package com.needyou.app;
 
 import android.Manifest;
 import android.app.Activity;
+import android.app.AlertDialog;
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
 import android.app.PendingIntent;
 import android.content.ActivityNotFoundException;
+import android.content.DialogInterface;
 import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.net.ConnectivityManager;
@@ -49,7 +51,9 @@ public class MainActivity extends BridgeActivity {
     private int notificationIdCounter = 1000;
     private long lastBackPressed = 0;
     private ValueCallback<Uri[]> fileUploadCallback = null;
+    private ValueCallback<Uri[]> pendingFileCallback = null; // held while requesting media permission
     private static final int FILE_CHOOSER_REQUEST_CODE = 2000;
+    private static final int MEDIA_PERMISSION_CODE = 3000;
 
     // ─── Native bridge exposed to the WebView ────────────────────────────────
     public class NeedYouBridge {
@@ -121,6 +125,22 @@ public class MainActivity extends BridgeActivity {
                 startActivity(intent);
             });
         }
+
+        /**
+         * Opens the battery optimisation settings for this app.
+         * Call from JS: window.NeedYouBridge.openBatterySettings()
+         */
+        @JavascriptInterface
+        public void openBatterySettings() {
+            runOnUiThread(() -> {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                    Intent intent = new Intent(
+                            Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,
+                            Uri.parse("package:" + getPackageName()));
+                    startActivity(intent);
+                }
+            });
+        }
     }
 
     @Override
@@ -143,9 +163,8 @@ public class MainActivity extends BridgeActivity {
             }
         }
 
-        // 3. Request battery optimization exemption so background notifications work
-        // reliably
-        requestBatteryOptimizationExemption();
+        // 3. Ask user about battery optimisation with an explanatory dialog
+        showBatteryOptimizationDialog();
 
         // 4. Expose NeedYouBridge to the WebView
         WebView webView = getBridge().getWebView();
@@ -185,21 +204,38 @@ public class MainActivity extends BridgeActivity {
                 }
                 fileUploadCallback = filePathCallback;
 
-                // Build a chooser that offers gallery + camera
-                Intent galleryIntent = new Intent(Intent.ACTION_GET_CONTENT);
-                galleryIntent.setType("*/*");
-                galleryIntent.addCategory(Intent.CATEGORY_OPENABLE);
-                String[] mimeTypes = { "image/*", "video/*", "audio/*" };
-                galleryIntent.putExtra(Intent.EXTRA_MIME_TYPES, mimeTypes);
-                galleryIntent.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true);
-
-                Intent chooser = Intent.createChooser(galleryIntent, "Select Media");
-                try {
-                    startActivityForResult(chooser, FILE_CHOOSER_REQUEST_CODE);
-                } catch (ActivityNotFoundException e) {
-                    fileUploadCallback = null;
-                    return false;
+                // Check media permission before launching picker
+                boolean hasPermission;
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                    hasPermission = ContextCompat.checkSelfPermission(MainActivity.this,
+                            Manifest.permission.READ_MEDIA_IMAGES) == PackageManager.PERMISSION_GRANTED;
+                } else {
+                    hasPermission = ContextCompat.checkSelfPermission(MainActivity.this,
+                            Manifest.permission.READ_EXTERNAL_STORAGE) == PackageManager.PERMISSION_GRANTED;
                 }
+
+                if (!hasPermission) {
+                    // Store the callback and request permission
+                    pendingFileCallback = filePathCallback;
+                    fileUploadCallback = null; // will be set after permission grant
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                        ActivityCompat.requestPermissions(MainActivity.this,
+                                new String[] {
+                                        Manifest.permission.READ_MEDIA_IMAGES,
+                                        Manifest.permission.READ_MEDIA_VIDEO,
+                                        Manifest.permission.CAMERA },
+                                MEDIA_PERMISSION_CODE);
+                    } else {
+                        ActivityCompat.requestPermissions(MainActivity.this,
+                                new String[] {
+                                        Manifest.permission.READ_EXTERNAL_STORAGE,
+                                        Manifest.permission.CAMERA },
+                                MEDIA_PERMISSION_CODE);
+                    }
+                    return true;
+                }
+
+                launchFilePicker(filePathCallback);
                 return true;
             }
         });
@@ -210,6 +246,23 @@ public class MainActivity extends BridgeActivity {
     }
 
     // ─── File chooser result ─────────────────────────────────────────────────
+
+    /** Launches the system file/media picker for WebView file inputs. */
+    private void launchFilePicker(ValueCallback<Uri[]> callback) {
+        fileUploadCallback = callback;
+        Intent galleryIntent = new Intent(Intent.ACTION_GET_CONTENT);
+        galleryIntent.setType("*/*");
+        galleryIntent.addCategory(Intent.CATEGORY_OPENABLE);
+        galleryIntent.putExtra(Intent.EXTRA_MIME_TYPES, new String[] { "image/*", "video/*", "audio/*" });
+        galleryIntent.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true);
+        Intent chooser = Intent.createChooser(galleryIntent, "Select Media");
+        try {
+            startActivityForResult(chooser, FILE_CHOOSER_REQUEST_CODE);
+        } catch (ActivityNotFoundException e) {
+            fileUploadCallback = null;
+            callback.onReceiveValue(null);
+        }
+    }
 
     @Override
     public void onActivityResult(int requestCode, int resultCode, Intent data) {
@@ -225,6 +278,17 @@ public class MainActivity extends BridgeActivity {
             return;
         }
         super.onActivityResult(requestCode, resultCode, data);
+    }
+
+    @Override
+    public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        if (requestCode == MEDIA_PERMISSION_CODE && pendingFileCallback != null) {
+            // Launch picker regardless of result — user can still pick from Recent files
+            ValueCallback<Uri[]> cb = pendingFileCallback;
+            pendingFileCallback = null;
+            launchFilePicker(cb);
+        }
     }
 
     // ─── Back button: navigate WebView history, double-back to exit ───────────
@@ -246,6 +310,23 @@ public class MainActivity extends BridgeActivity {
     }
 
     // ─── Battery optimisation ─────────────────────────────────────────────────
+
+    private void showBatteryOptimizationDialog() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M)
+            return;
+        PowerManager pm = (PowerManager) getSystemService(POWER_SERVICE);
+        if (pm == null || pm.isIgnoringBatteryOptimizations(getPackageName()))
+            return;
+
+        new AlertDialog.Builder(this)
+                .setTitle("Enable Background Notifications")
+                .setMessage(
+                        "To receive job alerts even when the app is closed, please allow NeedYou to run without battery restrictions.")
+                .setPositiveButton("Allow", (dialog, which) -> requestBatteryOptimizationExemption())
+                .setNegativeButton("Not Now", null)
+                .setCancelable(true)
+                .show();
+    }
 
     private void requestBatteryOptimizationExemption() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
