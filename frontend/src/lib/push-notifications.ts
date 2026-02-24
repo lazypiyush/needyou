@@ -1,7 +1,6 @@
 /**
  * push-notifications.ts
- * Registers with FCM and saves the token to Firestore.
- * No Capacitor platform check — just tries and silently fails in browser.
+ * Registers with FCM, saves token to Firestore, and handles foreground/background notifications.
  */
 
 export async function initPushNotifications(userId?: string): Promise<void> {
@@ -16,14 +15,22 @@ export async function initPushNotifications(userId?: string): Promise<void> {
         await PushNotifications.register();
 
         // Save FCM token to Firestore when received
-        await PushNotifications.addListener('registration', async (token) => {
-            console.log('[FCM] Token:', token.value);
+        PushNotifications.addListener('registration', async (token) => {
+            console.log('[FCM] Token received:', token.value);
 
-            // Cache locally so we can save once user logs in
+            // Always cache locally
             try { localStorage.setItem('fcmToken', token.value); } catch (_) { }
 
+            // Save to Firestore with whatever userId we have
+            // (saveFcmToken will also be called again once user logs in)
             if (userId) {
                 await saveFcmToken(userId, token.value);
+            } else {
+                // Try to get userId from localStorage fallback
+                try {
+                    const cachedUid = localStorage.getItem('cachedUserId');
+                    if (cachedUid) await saveFcmToken(cachedUid, token.value);
+                } catch (_) { }
             }
         });
 
@@ -31,13 +38,31 @@ export async function initPushNotifications(userId?: string): Promise<void> {
             console.warn('[FCM] Registration error:', err);
         });
 
-        // Navigate on notification tap
+        // ── Foreground notification handler ─────────────────────────────────
+        // When app is in FOREGROUND, Android does NOT auto-show FCM banners.
+        // We call the native bridge to post a real system notification.
+        PushNotifications.addListener('pushNotificationReceived', (notification) => {
+            console.log('[FCM] Foreground notification received:', notification);
+            const title = notification.title ?? 'NeedYou';
+            const body = notification.body ?? '';
+            try {
+                const bridge = (window as any).NeedYouBridge;
+                if (bridge && typeof bridge.showNotification === 'function') {
+                    bridge.showNotification(title, body);
+                }
+            } catch (_) { /* no bridge in browser */ }
+        });
+
+        // Navigate on notification tap (background/killed state)
         PushNotifications.addListener('pushNotificationActionPerformed', (action) => {
             const data = action.notification.data;
             if (data?.jobId) {
                 window.location.href = `/dashboard?tab=jobs&highlight=${data.jobId}`;
             } else if (data?.url) {
                 window.location.href = data.url;
+            } else {
+                // Default: open dashboard alerts tab
+                window.location.href = '/dashboard?tab=notifications';
             }
         });
 
@@ -51,13 +76,16 @@ export async function saveFcmToken(userId: string, token?: string): Promise<void
     const fcmToken = token ?? (typeof localStorage !== 'undefined' ? localStorage.getItem('fcmToken') : null);
     if (!fcmToken || !userId) return;
 
+    // Cache userId so registration callback can use it even if called before auth resolves
+    try { localStorage.setItem('cachedUserId', userId); } catch (_) { }
+
     try {
         const { doc, setDoc, getFirestore } = await import('firebase/firestore');
         const { getApp } = await import('firebase/app');
         const db = getFirestore(getApp());
         await setDoc(doc(db, 'users', userId), { fcmToken }, { merge: true });
-        console.log('[FCM] Token saved for user', userId);
+        console.log('[FCM] ✅ Token saved for user', userId);
     } catch (e) {
-        console.error('[FCM] Failed to save token:', e);
+        console.error('[FCM] ❌ Failed to save token:', e);
     }
 }

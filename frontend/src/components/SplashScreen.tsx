@@ -8,6 +8,9 @@ export default function SplashScreen() {
     const [fadeOut, setFadeOut] = useState(false);
 
     useEffect(() => {
+        // Only show inside the native Android/iOS app — never on the web browser
+        if (!(window as any).Capacitor?.isNativePlatform()) return;
+
         // Only show once per session
         if (sessionStorage.getItem('splashShown')) {
             setVisible(false);

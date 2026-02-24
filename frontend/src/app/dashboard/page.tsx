@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/context/AuthContext'
-import { Loader2, MapPin, Search, Filter, Home, Plus, Bell, User, Briefcase, Edit, Trash2, Check, CheckCircle } from 'lucide-react'
+import { Loader2, MapPin, Search, Filter, Home, Plus, Bell, User, Briefcase, Edit, Trash2, Check, CheckCircle, RotateCw } from 'lucide-react'
 import ThemeToggle from '@/components/ThemeToggle'
 import { useTheme } from 'next-themes'
 import { getJobs, Job, Notification } from '@/lib/auth'
@@ -316,6 +316,8 @@ export default function DashboardPage() {
                         boxShadow: mounted && isDark
                             ? '0 1px 2px 0 rgba(255, 255, 255, 0.05)'
                             : '0 1px 2px 0 rgba(0, 0, 0, 0.05)',
+                        // Respect Android status bar height inside the native app
+                        paddingTop: 'env(safe-area-inset-top)',
                     }}
                 >
                     <div className="max-w-7xl mx-auto px-4 py-3">
@@ -357,13 +359,23 @@ export default function DashboardPage() {
                                 {/* Filter Button */}
                                 <button
                                     onClick={() => {
-                                        console.log('Filter button clicked, current state:', showFilters)
                                         setShowFilters(!showFilters)
                                     }}
                                     className="p-2 bg-gray-100 dark:bg-gray-700 rounded-full hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors relative z-10"
                                     type="button"
+                                    title="Filters"
                                 >
                                     <Filter className="w-4 h-4 text-gray-600 dark:text-white" />
+                                </button>
+
+                                {/* Refresh Jobs Button */}
+                                <button
+                                    onClick={() => fetchJobs()}
+                                    className="p-2 bg-gray-100 dark:bg-gray-700 rounded-full hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors relative z-10"
+                                    type="button"
+                                    title="Refresh jobs"
+                                >
+                                    <RotateCw className={`w-4 h-4 text-gray-600 dark:text-white ${loadingJobs ? 'animate-spin' : ''}`} />
                                 </button>
                             </div>
 
