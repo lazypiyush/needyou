@@ -21,6 +21,7 @@ import android.webkit.GeolocationPermissions;
 import android.webkit.JavascriptInterface;
 import android.webkit.WebChromeClient;
 import android.webkit.WebView;
+import android.widget.Toast;
 
 import androidx.core.app.ActivityCompat;
 import androidx.core.app.NotificationCompat;
@@ -42,6 +43,7 @@ public class MainActivity extends BridgeActivity {
     private boolean isShowingOfflinePage = false;
     private volatile boolean splashReady = false; // controls native splash hold
     private int notificationIdCounter = 1000;
+    private long lastBackPressed = 0; // for double-back-to-exit
 
     // ─── Native bridge exposed to the WebView ────────────────────────────────
     public class NeedYouBridge {
@@ -166,6 +168,24 @@ public class MainActivity extends BridgeActivity {
             splashReady = true; // release the native splash screen
             registerNetworkCallback();
         }, 2700);
+    }
+
+    // ─── Back button: navigate WebView history, double-back to exit ───────────
+
+    @Override
+    public void onBackPressed() {
+        WebView webView = getBridge().getWebView();
+        if (webView != null && webView.canGoBack()) {
+            webView.goBack();
+        } else {
+            long now = System.currentTimeMillis();
+            if (now - lastBackPressed < 2000) {
+                super.onBackPressed(); // exit
+            } else {
+                lastBackPressed = now;
+                Toast.makeText(this, "Press back again to exit", Toast.LENGTH_SHORT).show();
+            }
+        }
     }
 
     // ─── Battery optimisation ─────────────────────────────────────────────────
