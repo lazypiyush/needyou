@@ -13,6 +13,8 @@ import android.net.NetworkRequest;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
 import android.os.PowerManager;
 import android.provider.Settings;
 import android.webkit.GeolocationPermissions;
@@ -38,6 +40,7 @@ public class MainActivity extends BridgeActivity {
 
     private ConnectivityManager.NetworkCallback networkCallback;
     private boolean isShowingOfflinePage = false;
+    private volatile boolean splashReady = false; // controls native splash hold
     private int notificationIdCounter = 1000;
 
     // ─── Native bridge exposed to the WebView ────────────────────────────────
@@ -98,9 +101,10 @@ public class MainActivity extends BridgeActivity {
 
     @Override
     public void onCreate(Bundle savedInstanceState) {
-        // Install splash screen BEFORE super.onCreate() — required by the Android
-        // SplashScreen API
-        SplashScreen.installSplashScreen(this);
+        // Hold the native splash until we explicitly release it
+        androidx.core.splashscreen.SplashScreen splashScreen = SplashScreen.installSplashScreen(this);
+        splashScreen.setKeepOnScreenCondition(() -> !splashReady);
+
         super.onCreate(savedInstanceState);
 
         // 1. Notification channel (Android 8+)
@@ -154,8 +158,16 @@ public class MainActivity extends BridgeActivity {
             }
         });
 
-        // 6. Network callback: auto-reload the app when connection is restored
-        registerNetworkCallback();
+        // 6. After 2.7 s, check network and release the native splash
+        // If offline → load bundled offline.html (works with no internet)
+        // If online → Capacitor already loaded the app URL
+        new Handler(Looper.getMainLooper()).postDelayed(() -> {
+            if (!isNetworkAvailable()) {
+                loadOffline();
+            }
+            splashReady = true; // release the native splash screen
+            registerNetworkCallback();
+        }, 2700);
     }
 
     // ─── Battery optimisation ─────────────────────────────────────────────────
