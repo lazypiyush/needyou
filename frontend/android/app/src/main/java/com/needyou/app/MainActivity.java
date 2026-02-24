@@ -39,6 +39,7 @@ public class MainActivity extends BridgeActivity {
     private static final int LOCATION_PERMISSION_CODE = 1002;
     private static final String APP_URL = "https://need-you.xyz/signin";
     private static final String OFFLINE_URL = "file:///android_asset/offline.html";
+    private static final String SPLASH_INTRO_URL = "file:///android_asset/splash_intro.html";
     private static final String CHANNEL_ID = "needyou_notifications";
     private static final String CHANNEL_NAME = "NeedYou Notifications";
 
@@ -61,6 +62,22 @@ public class MainActivity extends BridgeActivity {
                     loadApp();
                 else
                     loadOffline();
+            });
+        }
+
+        /**
+         * Called by splash_intro.html after its animation completes.
+         * Navigates to the live app (if online) or the offline error page.
+         */
+        @JavascriptInterface
+        public void splashDone() {
+            runOnUiThread(() -> {
+                if (isNetworkAvailable())
+                    loadApp();
+                else
+                    loadOffline();
+                splashReady = true; // release native splash screen
+                registerNetworkCallback();
             });
         }
 
@@ -187,16 +204,9 @@ public class MainActivity extends BridgeActivity {
             }
         });
 
-        // 6. After 2.7 s, check network and release the native splash
-        // If offline → load bundled offline.html (works with no internet)
-        // If online → Capacitor already loaded the app URL
-        new Handler(Looper.getMainLooper()).postDelayed(() -> {
-            if (!isNetworkAvailable()) {
-                loadOffline();
-            }
-            splashReady = true; // release the native splash screen
-            registerNetworkCallback();
-        }, 2700);
+        // 6. Load bundled splash intro — works offline, runs 2.7 s animation,
+        // then calls NeedYouBridge.splashDone() to go to app or offline page
+        getBridge().getWebView().loadUrl(SPLASH_INTRO_URL);
     }
 
     // ─── File chooser result ─────────────────────────────────────────────────
