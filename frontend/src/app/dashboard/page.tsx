@@ -17,6 +17,7 @@ import { doc, getDoc } from 'firebase/firestore'
 import { getUniqueCategories } from '@/lib/gemini'
 import { subscribeToNotifications, markNotificationAsRead, markAllNotificationsAsRead } from '@/lib/notifications'
 import { useModalHistory } from '@/hooks/useModalHistory'
+import ChatModal from '@/components/ChatModal'
 
 export default function DashboardPage() {
     const router = useRouter()
@@ -50,6 +51,13 @@ export default function DashboardPage() {
     const [appliedJobs, setAppliedJobs] = useState<Array<Job & { application: any }>>([])
     const [loadingApplied, setLoadingApplied] = useState(false)
     const [selectedAppliedJob, setSelectedAppliedJob] = useState<(Job & { application: any }) | null>(null)
+
+    // Chat overlay state — populated when pushChatState() is called (no real navigation)
+    const [chatOverlay, setChatOverlay] = useState<{
+        jobId: string; jobTitle: string
+        otherUserId: string; otherUserName: string
+        otherUserEmail: string; otherUserPhone?: string
+    } | null>(null)
 
     // Swipe navigation — use ref to avoid stale closure issues with useState
     const touchStartXRef = useRef<number | null>(null)
@@ -93,10 +101,42 @@ export default function DashboardPage() {
     }, [])
 
     // Keep anyModalOpenRef in sync with every modal/popup state
-    // Also does a live DOM scan for child-component modals (e.g. JobCard popups)
     useEffect(() => {
-        anyModalOpenRef.current = showFilters || showLocationModal || showBatteryBanner
-    }, [showFilters, showLocationModal, showBatteryBanner])
+        anyModalOpenRef.current = showFilters || showLocationModal || showBatteryBanner || !!chatOverlay
+    }, [showFilters, showLocationModal, showBatteryBanner, chatOverlay])
+
+    // Listen for pushChatState pushState entries so we can open/close the chat overlay
+    useEffect(() => {
+        const checkChatState = () => {
+            if (window.history.state?.chatOverlay) {
+                // Parse params from the current URL
+                const params = new URLSearchParams(window.location.search)
+                setChatOverlay({
+                    jobId: params.get('jobId') || '',
+                    jobTitle: params.get('jobTitle') || '',
+                    otherUserId: params.get('otherUserId') || '',
+                    otherUserName: params.get('otherUserName') || '',
+                    otherUserEmail: params.get('otherUserEmail') || '',
+                    otherUserPhone: params.get('otherUserPhone') || undefined,
+                })
+            } else {
+                setChatOverlay(null)
+            }
+        }
+
+        // Also fire on initial render if the URL already has chatOverlay state (e.g. after back)
+        checkChatState()
+
+        window.addEventListener('popstate', checkChatState)
+        // MutationObserver trick: whenever history.pushState is called, our pushChatState
+        // won't fire popstate, so we poll via a custom event dispatched in chatNavigation.ts.
+        // For now, direct call from the chat button will set state via the effect above.
+        window.addEventListener('pushChatState', checkChatState as EventListener)
+        return () => {
+            window.removeEventListener('popstate', checkChatState)
+            window.removeEventListener('pushChatState', checkChatState as EventListener)
+        }
+    }, [])
 
     // Back button dismisses each inline popup
     useModalHistory(showFilters, () => setShowFilters(false))
@@ -1459,6 +1499,24 @@ export default function DashboardPage() {
                         </div>
                     </div>
                 </div>
+            )}
+
+            {/* Chat overlay — opened via pushChatState() without real navigation */}
+            {chatOverlay && (
+                <ChatModal
+                    jobId={chatOverlay.jobId}
+                    jobTitle={chatOverlay.jobTitle}
+                    otherUserId={chatOverlay.otherUserId}
+                    otherUserName={chatOverlay.otherUserName}
+                    otherUserEmail={chatOverlay.otherUserEmail}
+                    otherUserPhone={chatOverlay.otherUserPhone}
+                    fullPage
+                    onClose={() => {
+                        // Pop the chatOverlay history entry to restore the /dashboard URL
+                        if (window.history.state?.chatOverlay) window.history.back()
+                        setChatOverlay(null)
+                    }}
+                />
             )}
 
         </>

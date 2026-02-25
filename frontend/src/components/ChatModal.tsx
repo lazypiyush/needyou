@@ -464,7 +464,11 @@ export default function ChatModal({
                 {/* Header */}
                 <div
                     className="p-4 border-b flex items-center justify-between"
-                    style={{ borderColor: isDark ? '#2a2a2a' : '#e5e7eb' }}
+                    style={{
+                        borderColor: isDark ? '#2a2a2a' : '#e5e7eb',
+                        // On the /dashboard/chat page (fullPage mode), push header below Android status bar
+                        paddingTop: fullPage ? 'calc(1rem + env(safe-area-inset-top))' : undefined,
+                    }}
                 >
                     <div className="flex-1 min-w-0">
                         <h2 className="text-lg font-bold truncate" style={{ color: isDark ? '#ffffff' : '#111827' }}>
@@ -961,18 +965,20 @@ export default function ChatModal({
     )
 
     if (fullPage) {
-        // Render as a full-screen page — no portal or backdrop
-        // Apply safe-area insets so content doesn't clip under the status bar / nav bar on Android APK
+        // Render inline (no portal, no backdrop) as a full-screen page
         return (
             <div
                 className="fixed inset-0 flex flex-col"
-                style={{
-                    backgroundColor: isDark ? '#1c1c1c' : '#ffffff',
-                    paddingTop: 'env(safe-area-inset-top)',
-                    paddingBottom: 'env(safe-area-inset-bottom)',
-                }}
+                style={{ backgroundColor: isDark ? '#1c1c1c' : '#ffffff' }}
             >
-                {modalContent}
+                {/* Header with top safe area already applied via fullPage style above */}
+                <div
+                    className="w-full h-full flex flex-col"
+                    style={{ backgroundColor: isDark ? '#1c1c1c' : '#ffffff' }}
+                >
+                    {/* Re-render header with paddingTop already set via fullPage flag */}
+                    {modalContent}
+                </div>
             </div>
         )
     }

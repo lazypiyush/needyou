@@ -5,12 +5,12 @@ import { createPortal } from 'react-dom'
 import { X, User, Mail, Phone, Clock, ChevronDown, ChevronUp, CheckCircle, XCircle, IndianRupee, MessageCircle } from 'lucide-react'
 import { getJobApplications } from '@/lib/auth'
 import { useTheme } from 'next-themes'
-import ChatModal from './ChatModal'
 import { renegotiateBudget } from '@/lib/renegotiation'
 import { useState as useReactState } from 'react'
 import UserProfileSheet from './UserProfileSheet'
 import { getCompressedImageUrl } from '@/lib/cloudinary'
 import { useModalHistory } from '@/hooks/useModalHistory'
+import { pushChatState } from '@/lib/chatNavigation'
 
 interface JobApplicationsModalProps {
     jobId: string
@@ -25,7 +25,6 @@ export default function JobApplicationsModal({ jobId, jobTitle, jobBudget, onClo
     const [loading, setLoading] = useState(true)
     const [mounted, setMounted] = useState(false)
     const [expandedId, setExpandedId] = useState<string | null>(null)
-    const [chatWith, setChatWith] = useState<{ userId: string; userName: string; userEmail: string; userPhone?: string } | null>(null)
     const [viewingProfileId, setViewingProfileId] = useState<string | null>(null)
 
     // Back button closes this modal
@@ -272,11 +271,13 @@ export default function JobApplicationsModal({ jobId, jobTitle, jobBudget, onClo
                                                                 <button
                                                                     onClick={(e) => {
                                                                         e.stopPropagation()
-                                                                        setChatWith({
-                                                                            userId: app.userId,
-                                                                            userName: app.userName,
-                                                                            userEmail: app.userEmail,
-                                                                            userPhone: app.userPhone
+                                                                        pushChatState({
+                                                                            jobId,
+                                                                            jobTitle,
+                                                                            otherUserId: app.userId,
+                                                                            otherUserName: app.userName,
+                                                                            otherUserEmail: app.userEmail,
+                                                                            otherUserPhone: app.userPhone,
                                                                         })
                                                                     }}
                                                                     className="ml-2 p-1.5 rounded-full bg-blue-600 hover:bg-blue-700 transition-colors"
@@ -554,17 +555,6 @@ export default function JobApplicationsModal({ jobId, jobTitle, jobBudget, onClo
     return (
         <>
             {createPortal(modalContent, document.body)}
-            {chatWith && (
-                <ChatModal
-                    jobId={jobId}
-                    jobTitle={jobTitle}
-                    otherUserId={chatWith.userId}
-                    otherUserName={chatWith.userName}
-                    otherUserEmail={chatWith.userEmail}
-                    otherUserPhone={chatWith.userPhone}
-                    onClose={() => setChatWith(null)}
-                />
-            )}
             {viewingProfileId && (
                 <UserProfileSheet
                     userId={viewingProfileId}

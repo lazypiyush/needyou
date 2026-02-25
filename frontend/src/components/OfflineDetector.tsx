@@ -29,28 +29,53 @@ export default function OfflineDetector() {
             padding: '2rem',
             color: '#fff',
         }}>
-            {/* Logo */}
-            <img
-                src="/logo.jpg"
-                alt="NeedYou"
-                style={{
-                    width: 80, height: 80,
-                    borderRadius: '50%',
-                    marginBottom: '1.5rem',
-                    border: '3px solid rgba(99,102,241,0.5)',
-                    boxShadow: '0 0 30px rgba(99,102,241,0.3)',
-                    objectFit: 'cover',
-                }}
-            />
+            {/* Logo inside spinning ring */}
+            <div style={{ position: 'relative', width: 100, height: 100, marginBottom: '2rem' }}>
+                {/* Spinning ring */}
+                <svg
+                    width="100" height="100"
+                    viewBox="0 0 100 100"
+                    style={{ position: 'absolute', inset: 0, animation: 'spin 1.8s linear infinite' }}
+                >
+                    <circle
+                        cx="50" cy="50" r="46"
+                        fill="none"
+                        stroke="url(#grad)"
+                        strokeWidth="4"
+                        strokeDasharray="200 90"
+                        strokeLinecap="round"
+                    />
+                    <defs>
+                        <linearGradient id="grad" x1="0%" y1="0%" x2="100%" y2="100%">
+                            <stop offset="0%" stopColor="#ef4444" />
+                            <stop offset="100%" stopColor="#6366f1" />
+                        </linearGradient>
+                    </defs>
+                </svg>
+                {/* Logo */}
+                <img
+                    src="/logo.jpg"
+                    alt="NeedYou"
+                    style={{
+                        position: 'absolute',
+                        inset: 8,
+                        width: 84, height: 84,
+                        borderRadius: '50%',
+                        objectFit: 'cover',
+                        border: '2px solid rgba(99,102,241,0.4)',
+                        boxShadow: '0 0 20px rgba(99,102,241,0.3)',
+                    }}
+                />
+            </div>
 
-            {/* Wifi off icon (SVG inline) */}
+            {/* Wifi off icon */}
             <div style={{
-                width: 64, height: 64, marginBottom: '1.5rem',
+                width: 56, height: 56, marginBottom: '1.25rem',
                 background: 'rgba(239,68,68,0.15)',
                 borderRadius: '50%',
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
             }}>
-                <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#ef4444" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#ef4444" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                     <line x1="1" y1="1" x2="23" y2="23" />
                     <path d="M16.72 11.06A10.94 10.94 0 0 1 19 12.55" />
                     <path d="M5 12.55a10.94 10.94 0 0 1 5.17-2.39" />
@@ -87,6 +112,10 @@ export default function OfflineDetector() {
             >
                 🔄 Retry
             </button>
+
+            <style>{`
+                @keyframes spin { to { transform: rotate(360deg); } }
+            `}</style>
         </div>
     );
 }
