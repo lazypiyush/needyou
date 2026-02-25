@@ -47,7 +47,8 @@ export default function ThemeToggle({ variant = 'floating' }: ThemeToggleProps) 
         return (
             <button
                 onClick={toggleTheme}
-                className="fixed top-6 right-6 z-50 p-3 rounded-full bg-white/90 dark:bg-[#1c1c1c]/90 backdrop-blur-md hover:bg-white dark:hover:bg-[#202020] transition-all shadow-lg hover:shadow-xl border border-gray-200 dark:border-gray-700"
+                className="fixed right-6 z-50 p-3 rounded-full bg-white/90 dark:bg-[#1c1c1c]/90 backdrop-blur-md hover:bg-white dark:hover:bg-[#202020] transition-all shadow-lg hover:shadow-xl border border-gray-200 dark:border-gray-700"
+                style={{ top: 'calc(24px + env(safe-area-inset-top))' }}
                 aria-label={`Switch to ${isDark ? 'light' : 'dark'} mode`}
             >
                 {isDark ? (

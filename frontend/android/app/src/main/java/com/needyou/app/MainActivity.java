@@ -26,8 +26,13 @@ import android.webkit.GeolocationPermissions;
 import android.webkit.JavascriptInterface;
 import android.webkit.ValueCallback;
 import android.webkit.WebChromeClient;
+import android.view.View;
+import android.view.Window;
 import android.webkit.WebView;
 import android.widget.Toast;
+import androidx.core.view.WindowCompat;
+import androidx.core.view.WindowInsetsCompat;
+import androidx.core.view.WindowInsetsControllerCompat;
 
 import androidx.core.app.ActivityCompat;
 import androidx.core.app.NotificationCompat;
@@ -157,11 +162,30 @@ public class MainActivity extends BridgeActivity {
         }
     }
 
+    private void hideSystemUI() {
+        Window window = getWindow();
+        WindowCompat.setDecorFitsSystemWindows(window, false);
+        WindowInsetsControllerCompat controller = WindowCompat.getInsetsController(window, window.getDecorView());
+        if (controller != null) {
+            controller.hide(WindowInsetsCompat.Type.navigationBars());
+            controller.setSystemBarsBehavior(
+                    WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE);
+        }
+    }
+
+    @Override
+    public void onWindowFocusChanged(boolean hasFocus) {
+        super.onWindowFocusChanged(hasFocus);
+        if (hasFocus)
+            hideSystemUI();
+    }
+
     @Override
     public void onCreate(Bundle savedInstanceState) {
         // Show native splash.png while activity initialises
         SplashScreen.installSplashScreen(this);
         super.onCreate(savedInstanceState);
+        hideSystemUI();
 
         // 1. Notification channel (Android 8+)
         createNotificationChannel();

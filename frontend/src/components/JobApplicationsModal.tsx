@@ -145,7 +145,8 @@ export default function JobApplicationsModal({ jobId, jobTitle, jobBudget, onClo
     if (!mounted) return null
 
     const modalContent = (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[9999] flex items-center justify-center p-4">
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[9999] flex items-center justify-center p-4"
+            onTouchStart={e => e.stopPropagation()} onTouchEnd={e => e.stopPropagation()} onTouchMove={e => e.stopPropagation()}>
             <div
                 className="w-full max-w-3xl max-h-[85vh] overflow-hidden rounded-2xl"
                 style={{

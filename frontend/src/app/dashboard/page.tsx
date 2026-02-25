@@ -410,8 +410,8 @@ export default function DashboardPage() {
                 style={{
                     background: 'linear-gradient(to bottom right, rgb(var(--gradient-from)), rgb(var(--gradient-via)), rgb(var(--gradient-to)))'
                 }}
-                onTouchStart={(e) => { if (activeTab !== 'create') touchStartXRef.current = e.touches[0].clientX }}
-                onTouchEnd={(e) => { if (activeTab !== 'create') handleSwipe(e.changedTouches[0].clientX) }}
+                onTouchStart={(e) => { if (activeTab === 'home') touchStartXRef.current = e.touches[0].clientX }}
+                onTouchEnd={(e) => { if (activeTab === 'home') handleSwipe(e.changedTouches[0].clientX) }}
             >
                 {/* Top Bar — only shown for home & jobs tabs */}
                 {(activeTab === 'home' || activeTab === 'jobs') && (
