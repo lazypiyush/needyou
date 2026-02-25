@@ -48,11 +48,15 @@ export default function DashboardPage() {
     const [swipeAnimClass, setSwipeAnimClass] = useState('')
     const SWIPE_TABS = ['home', 'jobs', 'notifications', 'profile'] as const
     type SwipeTab = typeof SWIPE_TABS[number]
+    // Track whether any modal/popup is open so we can block swipe
+    const anyModalOpenRef = useRef(false)
     // Infinite scroll sentinel for home tab
     const sentinelRef = useRef<HTMLDivElement>(null)
 
     const handleSwipe = (endX: number) => {
         if (touchStartXRef.current === null) return
+        // Don't navigate if any modal / popup is open
+        if (anyModalOpenRef.current) { touchStartXRef.current = null; return }
         const diff = touchStartXRef.current - endX
         touchStartXRef.current = null
         const THRESHOLD = 60
@@ -79,6 +83,12 @@ export default function DashboardPage() {
         }, 2000)
         return () => clearTimeout(timer)
     }, [])
+
+    // Keep anyModalOpenRef in sync with every modal/popup state
+    // Also does a live DOM scan for child-component modals (e.g. JobCard popups)
+    useEffect(() => {
+        anyModalOpenRef.current = showFilters || showLocationModal || showBatteryBanner
+    }, [showFilters, showLocationModal, showBatteryBanner])
 
     useEffect(() => {
         setMounted(true)
@@ -410,8 +420,15 @@ export default function DashboardPage() {
                 style={{
                     background: 'linear-gradient(to bottom right, rgb(var(--gradient-from)), rgb(var(--gradient-via)), rgb(var(--gradient-to)))'
                 }}
-                onTouchStart={(e) => { if (activeTab === 'home') touchStartXRef.current = e.touches[0].clientX }}
-                onTouchEnd={(e) => { if (activeTab === 'home') handleSwipe(e.changedTouches[0].clientX) }}
+                onTouchStart={(e) => {
+                    // Block swipe if any modal is open (state-tracked or DOM-detected from child components)
+                    const hasOpenModal = anyModalOpenRef.current
+                        || !!document.querySelector('[data-modal="true"]')
+                        || !!document.querySelector('.fixed.inset-0:not([style*="display: none"])')
+                    if (hasOpenModal) { touchStartXRef.current = null; return }
+                    touchStartXRef.current = e.touches[0].clientX
+                }}
+                onTouchEnd={(e) => { handleSwipe(e.changedTouches[0].clientX) }}
             >
                 {/* Top Bar — only shown for home & jobs tabs */}
                 {(activeTab === 'home' || activeTab === 'jobs') && (
