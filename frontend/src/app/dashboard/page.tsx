@@ -107,34 +107,23 @@ export default function DashboardPage() {
 
     // Listen for pushChatState pushState entries so we can open/close the chat overlay
     useEffect(() => {
-        const checkChatState = () => {
-            if (window.history.state?.chatOverlay) {
-                // Parse params from the current URL
-                const params = new URLSearchParams(window.location.search)
-                setChatOverlay({
-                    jobId: params.get('jobId') || '',
-                    jobTitle: params.get('jobTitle') || '',
-                    otherUserId: params.get('otherUserId') || '',
-                    otherUserName: params.get('otherUserName') || '',
-                    otherUserEmail: params.get('otherUserEmail') || '',
-                    otherUserPhone: params.get('otherUserPhone') || undefined,
-                })
+        const checkChatState = (e?: Event) => {
+            const state = window.history.state
+            if (state?.chatOverlay && state?.chatParams) {
+                setChatOverlay(state.chatParams)
             } else {
                 setChatOverlay(null)
             }
         }
 
-        // Also fire on initial render if the URL already has chatOverlay state (e.g. after back)
+        // Check on mount (in case state already has chatOverlay)
         checkChatState()
 
         window.addEventListener('popstate', checkChatState)
-        // MutationObserver trick: whenever history.pushState is called, our pushChatState
-        // won't fire popstate, so we poll via a custom event dispatched in chatNavigation.ts.
-        // For now, direct call from the chat button will set state via the effect above.
-        window.addEventListener('pushChatState', checkChatState as EventListener)
+        window.addEventListener('pushChatState', checkChatState)
         return () => {
             window.removeEventListener('popstate', checkChatState)
-            window.removeEventListener('pushChatState', checkChatState as EventListener)
+            window.removeEventListener('pushChatState', checkChatState)
         }
     }, [])
 
