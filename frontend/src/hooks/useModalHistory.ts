@@ -4,39 +4,34 @@ import { useEffect, useRef } from 'react'
  * Pushes a dummy history entry when a modal opens so the Android/browser
  * back button fires `popstate` and closes the modal instead of exiting the app.
  *
- * Usage: call this hook at the top of any modal component —
- *   useModalHistory(true, onClose)
+ * Stacks correctly: if two modals are open each has its own history entry.
+ * Pressing back closes the top-most modal first, then the next, etc.
+ *
+ * Usage: call at the top of any modal —  useModalHistory(true, onClose)
  */
 export function useModalHistory(isOpen: boolean, onClose: () => void) {
-    const pushed = useRef(false)
+    // Keep onClose stable so we don't re-register listeners unnecessarily
+    const onCloseRef = useRef(onClose)
+    onCloseRef.current = onClose
 
     useEffect(() => {
-        if (!isOpen) {
-            // If WE pushed a state and the modal was closed programmatically
-            // (not via back button), pop the state we pushed so history stays clean.
-            if (pushed.current) {
-                pushed.current = false
-                // Only go back if our modal state is the current one
-                if (window.history.state?.modal === true) {
-                    window.history.back()
-                }
-            }
-            return
-        }
+        if (!isOpen) return
 
         // Push a history entry so back button has something to pop
         window.history.pushState({ modal: true }, '')
-        pushed.current = true
 
-        const handlePopState = (e: PopStateEvent) => {
-            // Back button was pressed — close the modal
-            pushed.current = false
-            onClose()
+        const handlePopState = () => {
+            // Back button was pressed — close this modal
+            onCloseRef.current()
         }
 
         window.addEventListener('popstate', handlePopState)
+
         return () => {
+            // Modal closed via UI (X button / programmatic) — just remove listener.
+            // We intentionally do NOT call history.back() here because that would
+            // fire popstate on the parent modal and close it unexpectedly.
             window.removeEventListener('popstate', handlePopState)
         }
-    }, [isOpen, onClose])
+    }, [isOpen]) // eslint-disable-line react-hooks/exhaustive-deps
 }

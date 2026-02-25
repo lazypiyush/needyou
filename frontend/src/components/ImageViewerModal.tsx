@@ -235,7 +235,7 @@ export default function ImageViewerModal({ media, initialIndex = 0, onClose }: I
             onClick={handleBackdropClick}
             onTouchStart={e => e.stopPropagation()}
             onTouchEnd={e => e.stopPropagation()}
-            style={{ touchAction: 'none' }}
+            style={{ touchAction: 'none', paddingTop: 'env(safe-area-inset-top)' }}
         >
             {/* Close Button */}
             <button
