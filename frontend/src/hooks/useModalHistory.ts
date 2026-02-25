@@ -1,37 +1,40 @@
 import { useEffect, useRef } from 'react'
 
-/**
- * Pushes a dummy history entry when a modal opens so the Android/browser
- * back button fires `popstate` and closes the modal instead of exiting the app.
- *
- * Stacks correctly: if two modals are open each has its own history entry.
- * Pressing back closes the top-most modal first, then the next, etc.
- *
- * Usage: call at the top of any modal —  useModalHistory(true, onClose)
- */
+// Monotonically increasing counter so each modal gets a unique depth.
+// This lets each handler know whether ITS own entry was popped or a deeper one.
+let _depth = 0
+
 export function useModalHistory(isOpen: boolean, onClose: () => void) {
-    // Keep onClose stable so we don't re-register listeners unnecessarily
     const onCloseRef = useRef(onClose)
     onCloseRef.current = onClose
 
     useEffect(() => {
         if (!isOpen) return
 
-        // Push a history entry so back button has something to pop
-        window.history.pushState({ modal: true }, '')
+        _depth++
+        const myDepth = _depth
 
-        const handlePopState = () => {
-            // Back button was pressed — close this modal
+        window.history.pushState({ modal: true, depth: myDepth }, '')
+
+        const handlePopState = (e: PopStateEvent) => {
+            // 'e.state' is the state we just navigated BACK TO.
+            // If its depth >= myDepth it means something above us was popped
+            // (e.g. a chat overlay or a child modal) — don't close this modal.
+            const newDepth: number = e.state?.depth ?? 0
+            if (newDepth >= myDepth) return
             onCloseRef.current()
         }
 
         window.addEventListener('popstate', handlePopState)
 
         return () => {
-            // Modal closed via UI (X button / programmatic) — just remove listener.
-            // We intentionally do NOT call history.back() here because that would
-            // fire popstate on the parent modal and close it unexpectedly.
             window.removeEventListener('popstate', handlePopState)
+            // If the modal was closed via the UI (X button), the history entry
+            // is still there — pop it so stale entries don't accumulate.
+            // We only back() if our entry is still the current top.
+            if (window.history.state?.depth === myDepth) {
+                window.history.back()
+            }
         }
-    }, [isOpen]) // eslint-disable-line react-hooks/exhaustive-deps
+    }, [isOpen])
 }

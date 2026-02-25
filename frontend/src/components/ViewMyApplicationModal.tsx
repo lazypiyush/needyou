@@ -11,6 +11,8 @@ import { db } from '@/lib/firebase'
 import { respondToRenegotiation } from '@/lib/renegotiation'
 import { useModalHistory } from '@/hooks/useModalHistory'
 import { pushChatState } from '@/lib/chatNavigation'
+import { getCompressedImageUrl } from '@/lib/cloudinary'
+import UserProfileSheet from './UserProfileSheet'
 
 interface ViewMyApplicationModalProps {
     jobId: string
@@ -37,6 +39,8 @@ export default function ViewMyApplicationModal({
     const [loading, setLoading] = useState(true)
     const [mounted, setMounted] = useState(false)
     const [jobPosterPhone, setJobPosterPhone] = useState<string | undefined>(undefined)
+    const [jobPosterAvatar, setJobPosterAvatar] = useState<string | null>(null)
+    const [viewingProfileId, setViewingProfileId] = useState<string | null>(null)
 
     // Back button closes modal
     useModalHistory(true, onClose)
@@ -84,20 +88,19 @@ export default function ViewMyApplicationModal({
     useEffect(() => {
         const fetchJobPosterPhone = async () => {
             if (!jobPosterId) return
-
             try {
-                if (!db) {
-                    console.error('Firestore not initialized')
-                    return
-                }
-
+                if (!db) return
                 const userDoc = await getDoc(doc(db, 'users', jobPosterId))
                 if (userDoc.exists()) {
                     const userData = userDoc.data()
                     setJobPosterPhone(userData?.phoneNumber)
+                    // Fetch compressed avatar
+                    if (userData?.photoURL) {
+                        setJobPosterAvatar(getCompressedImageUrl(userData.photoURL))
+                    }
                 }
             } catch (error) {
-                console.error('Error fetching job poster phone:', error)
+                console.error('Error fetching job poster details:', error)
             }
         }
 
@@ -256,20 +259,32 @@ export default function ViewMyApplicationModal({
                                     Job Posted By
                                 </h3>
                                 <div className="flex flex-wrap items-center justify-between gap-3">
-                                    <div className="space-y-1 min-w-0">
-                                        <div className="flex items-center gap-2">
-                                            <User className="w-4 h-4 text-blue-600 flex-shrink-0" />
-                                            <span className="font-medium truncate" style={{ color: isDark ? '#ffffff' : '#111827' }}>
-                                                {jobPosterName}
-                                            </span>
+                                    {/* Avatar + Name (clickable) */}
+                                    <button
+                                        type="button"
+                                        onClick={() => setViewingProfileId(jobPosterId)}
+                                        className="flex items-center gap-3 min-w-0 hover:opacity-80 transition-opacity"
+                                    >
+                                        {jobPosterAvatar ? (
+                                            <img
+                                                src={jobPosterAvatar}
+                                                alt={jobPosterName}
+                                                className="w-10 h-10 rounded-full object-cover flex-shrink-0"
+                                                style={{ border: `2px solid ${isDark ? '#3a3a3a' : '#e5e7eb'}` }}
+                                            />
+                                        ) : (
+                                            <div
+                                                className="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 text-sm font-bold"
+                                                style={{ backgroundColor: isDark ? '#3a3a3a' : '#e5e7eb', color: isDark ? '#ffffff' : '#374151' }}
+                                            >
+                                                {jobPosterName?.[0]?.toUpperCase() || '?'}
+                                            </div>
+                                        )}
+                                        <div className="text-left min-w-0">
+                                            <p className="font-semibold truncate" style={{ color: isDark ? '#ffffff' : '#111827' }}>{jobPosterName}</p>
+                                            <p className="text-xs" style={{ color: isDark ? '#6b7280' : '#9ca3af' }}>Tap to view profile</p>
                                         </div>
-                                        <div className="flex items-center gap-2">
-                                            <Mail className="w-4 h-4 flex-shrink-0" style={{ color: isDark ? '#6b7280' : '#9ca3af' }} />
-                                            <span className="text-sm truncate" style={{ color: isDark ? '#9ca3af' : '#6b7280' }}>
-                                                {jobPosterEmail}
-                                            </span>
-                                        </div>
-                                    </div>
+                                    </button>
                                     <button
                                         onClick={() => pushChatState({
                                             jobId,
@@ -549,5 +564,16 @@ export default function ViewMyApplicationModal({
         </div>
     )
 
-    return createPortal(modalContent, document.body)
+    return (
+        <>
+            {createPortal(modalContent, document.body)}
+            {viewingProfileId && (
+                <UserProfileSheet
+                    userId={viewingProfileId}
+                    isDark={isDark}
+                    onClose={() => setViewingProfileId(null)}
+                />
+            )}
+        </>
+    )
 }

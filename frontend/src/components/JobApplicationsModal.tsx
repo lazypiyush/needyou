@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { createPortal } from 'react-dom'
-import { X, User, Mail, Phone, Clock, ChevronDown, ChevronUp, CheckCircle, XCircle, IndianRupee, MessageCircle } from 'lucide-react'
+import { X, User, Clock, ChevronDown, ChevronUp, CheckCircle, XCircle, IndianRupee, MessageCircle } from 'lucide-react'
 import { getJobApplications } from '@/lib/auth'
 import { useTheme } from 'next-themes'
 import { renegotiateBudget } from '@/lib/renegotiation'
@@ -241,54 +241,36 @@ export default function JobApplicationsModal({ jobId, jobTitle, jobBudget, onClo
                                                                 </span>
                                                             )}
                                                         </button>
-                                                        {/* Name — clickable to open profile */}
-                                                        <button
-                                                            type="button"
-                                                            onClick={e => { e.stopPropagation(); setViewingProfileId(app.userId) }}
-                                                            className="font-semibold hover:underline text-left"
-                                                            style={{ color: isDark ? '#ffffff' : '#111827' }}
-                                                        >
-                                                            {app.userName}
-                                                        </button>
-                                                    </div>
+                                                        {/* Name + Chat button inline — no email/phone shown */}
+                                                        <div className="flex items-center gap-2">
+                                                            <button
+                                                                type="button"
+                                                                onClick={e => { e.stopPropagation(); setViewingProfileId(app.userId) }}
+                                                                className="font-semibold hover:underline text-left"
+                                                                style={{ color: isDark ? '#ffffff' : '#111827' }}
+                                                            >
+                                                                {app.userName}
+                                                            </button>
+                                                            <button
+                                                                onClick={(e) => {
+                                                                    e.stopPropagation()
+                                                                    pushChatState({
+                                                                        jobId,
+                                                                        jobTitle,
+                                                                        otherUserId: app.userId,
+                                                                        otherUserName: app.userName,
+                                                                        otherUserEmail: app.userEmail,
+                                                                        otherUserPhone: app.userPhone,
+                                                                    })
+                                                                }}
+                                                                className="p-1.5 rounded-full bg-blue-600 hover:bg-blue-700 transition-colors"
+                                                                title="Chat with applicant"
+                                                            >
+                                                                <MessageCircle className="w-3.5 h-3.5 text-white" />
+                                                            </button>
+                                                        </div>
 
-                                                    <div className="space-y-1">
-                                                        {app.userEmail && (
-                                                            <div className="flex items-center gap-2">
-                                                                <Mail className="w-4 h-4" style={{ color: isDark ? '#6b7280' : '#9ca3af' }} />
-                                                                <span className="text-sm" style={{ color: isDark ? '#9ca3af' : '#6b7280' }}>
-                                                                    {app.userEmail}
-                                                                </span>
-                                                            </div>
-                                                        )}
-
-                                                        {app.userPhone && (
-                                                            <div className="flex items-center gap-2">
-                                                                <Phone className="w-4 h-4" style={{ color: isDark ? '#6b7280' : '#9ca3af' }} />
-                                                                <span className="text-sm" style={{ color: isDark ? '#9ca3af' : '#6b7280' }}>
-                                                                    {app.userPhone.startsWith('+91') ? `+91 ${app.userPhone.slice(3)}` : app.userPhone}
-                                                                </span>
-                                                                <button
-                                                                    onClick={(e) => {
-                                                                        e.stopPropagation()
-                                                                        pushChatState({
-                                                                            jobId,
-                                                                            jobTitle,
-                                                                            otherUserId: app.userId,
-                                                                            otherUserName: app.userName,
-                                                                            otherUserEmail: app.userEmail,
-                                                                            otherUserPhone: app.userPhone,
-                                                                        })
-                                                                    }}
-                                                                    className="ml-2 p-1.5 rounded-full bg-blue-600 hover:bg-blue-700 transition-colors"
-                                                                    title="Chat with applicant"
-                                                                >
-                                                                    <MessageCircle className="w-3.5 h-3.5 text-white" />
-                                                                </button>
-                                                            </div>
-                                                        )}
-
-                                                        <div className="flex items-center gap-2 mt-2">
+                                                        <div className="flex items-center gap-2 mt-1">
                                                             <Clock className="w-4 h-4" style={{ color: isDark ? '#6b7280' : '#9ca3af' }} />
                                                             <span className="text-xs" style={{ color: isDark ? '#6b7280' : '#9ca3af' }}>
                                                                 Applied {formatTimeAgo(app.appliedAt)}
