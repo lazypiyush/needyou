@@ -10,7 +10,28 @@ const ensureDbInitialized = () => {
     return db
 }
 
-// Create a notification
+// Send a real FCM push to a device via the server-side API route.
+// Fire-and-forget — never blocks the caller.
+const sendPushNotification = (
+    userId: string,
+    title: string,
+    body: string,
+    data?: Record<string, string>
+) => {
+    fetch('/api/send-notification', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId, title, body, data }),
+    })
+        .then(res => res.json())
+        .then(json => {
+            if (json.success) console.log('✅ FCM push sent for user', userId)
+            else console.warn('⚠️ FCM push not sent:', json.error)
+        })
+        .catch(err => console.error('❌ FCM push fetch error:', err))
+}
+
+// Create a notification (Firestore in-app) + send a real FCM push
 export const createNotification = async (
     notification: Omit<Notification, 'id'>
 ): Promise<void> => {
@@ -22,6 +43,15 @@ export const createNotification = async (
             read: false
         })
         console.log('✅ Notification created')
+
+        // Also send a real FCM push so the device wakes up when app is closed/background
+        sendPushNotification(
+            notification.userId,
+            notification.title,
+            notification.message,
+            // Pass jobId as data for deep-link handling in MyFirebaseMessagingService
+            notification.jobId ? { jobId: notification.jobId } : undefined
+        )
     } catch (error: any) {
         console.error('❌ Create Notification Error:', error)
         throw new Error(error.message || 'Failed to create notification')
