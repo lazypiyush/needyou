@@ -14,6 +14,19 @@ export async function initPushNotifications(userId?: string): Promise<void> {
         // Register with FCM
         await PushNotifications.register();
 
+        // ── Fallback: read the token already cached natively by MainActivity ──
+        // This fires immediately (no async wait) so the token reaches Firestore
+        // even if the 'registration' callback hasn't fired yet in this session.
+        try {
+            const bridge = (window as any).NeedYouBridge;
+            const nativeToken = bridge?.getFcmToken?.();
+            if (nativeToken && userId) {
+                // Cache in localStorage so the 'registration' listener below can skip
+                try { localStorage.setItem('fcmToken', nativeToken); } catch (_) { }
+                await saveFcmToken(userId, nativeToken);
+            }
+        } catch (_) { /* no bridge in browser */ }
+
         // Save FCM token to Firestore when received
         PushNotifications.addListener('registration', async (token) => {
             console.log('[FCM] Token received:', token.value);
@@ -28,8 +41,8 @@ export async function initPushNotifications(userId?: string): Promise<void> {
             } else {
                 // Try to get userId from localStorage fallback
                 try {
-                    const cachedUid = localStorage.getItem('cachedUserId');
-                    if (cachedUid) await saveFcmToken(cachedUid, token.value);
+                    const cachedUid = localStorage.getItem('cachedUserId')
+                    if (cachedUid) await saveFcmToken(cachedUid, token.value)
                 } catch (_) { }
             }
         });
