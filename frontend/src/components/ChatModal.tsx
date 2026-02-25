@@ -451,12 +451,21 @@ export default function ChatModal({
     if (!mounted) return null
 
     const modalContent = (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[9999] flex items-center justify-center p-0 md:p-4">
+        <div
+            className={fullPage
+                ? 'fixed inset-0 z-[9999] flex flex-col'
+                : 'fixed inset-0 bg-black/50 backdrop-blur-sm z-[9999] flex items-center justify-center p-0 md:p-4'
+            }
+            style={fullPage ? { backgroundColor: isDark ? '#1c1c1c' : '#ffffff' } : undefined}
+        >
             <div
-                className="w-full h-full md:max-w-2xl md:h-[600px] md:rounded-2xl overflow-hidden flex flex-col"
+                className={fullPage
+                    ? 'flex flex-col flex-1 w-full overflow-hidden'
+                    : 'w-full h-full md:max-w-2xl md:h-[600px] md:rounded-2xl overflow-hidden flex flex-col'
+                }
                 style={{
                     backgroundColor: isDark ? '#1c1c1c' : '#ffffff',
-                    boxShadow: isDark
+                    boxShadow: fullPage ? 'none' : isDark
                         ? '0 25px 50px -12px rgba(255, 255, 255, 0.2)'
                         : '0 25px 50px -12px rgba(0, 0, 0, 0.25)',
                 }}
@@ -965,22 +974,8 @@ export default function ChatModal({
     )
 
     if (fullPage) {
-        // Render inline (no portal, no backdrop) as a full-screen page
-        return (
-            <div
-                className="fixed inset-0 flex flex-col"
-                style={{ backgroundColor: isDark ? '#1c1c1c' : '#ffffff' }}
-            >
-                {/* Header with top safe area already applied via fullPage style above */}
-                <div
-                    className="w-full h-full flex flex-col"
-                    style={{ backgroundColor: isDark ? '#1c1c1c' : '#ffffff' }}
-                >
-                    {/* Re-render header with paddingTop already set via fullPage flag */}
-                    {modalContent}
-                </div>
-            </div>
-        )
+        // Render as a dedicated overlay — modalContent already handles fullPage styles
+        return createPortal(modalContent, document.body)
     }
 
     return createPortal(modalContent, document.body)
