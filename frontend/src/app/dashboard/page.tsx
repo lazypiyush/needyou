@@ -16,6 +16,7 @@ import { db } from '@/lib/firebase'
 import { doc, getDoc } from 'firebase/firestore'
 import { getUniqueCategories } from '@/lib/gemini'
 import { subscribeToNotifications, markNotificationAsRead, markAllNotificationsAsRead } from '@/lib/notifications'
+import { useModalHistory } from '@/hooks/useModalHistory'
 
 export default function DashboardPage() {
     const router = useRouter()
@@ -96,6 +97,11 @@ export default function DashboardPage() {
     useEffect(() => {
         anyModalOpenRef.current = showFilters || showLocationModal || showBatteryBanner
     }, [showFilters, showLocationModal, showBatteryBanner])
+
+    // Back button dismisses each inline popup
+    useModalHistory(showFilters, () => setShowFilters(false))
+    useModalHistory(showLocationModal, () => setShowLocationModal(false))
+    useModalHistory(!!selectedAppliedJob, () => setSelectedAppliedJob(null))
 
     useEffect(() => {
         setMounted(true)
