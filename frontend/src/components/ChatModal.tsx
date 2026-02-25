@@ -962,8 +962,16 @@ export default function ChatModal({
 
     if (fullPage) {
         // Render as a full-screen page — no portal or backdrop
+        // Apply safe-area insets so content doesn't clip under the status bar / nav bar on Android APK
         return (
-            <div className="fixed inset-0 flex flex-col" style={{ backgroundColor: isDark ? '#1c1c1c' : '#ffffff' }}>
+            <div
+                className="fixed inset-0 flex flex-col"
+                style={{
+                    backgroundColor: isDark ? '#1c1c1c' : '#ffffff',
+                    paddingTop: 'env(safe-area-inset-top)',
+                    paddingBottom: 'env(safe-area-inset-bottom)',
+                }}
+            >
                 {modalContent}
             </div>
         )
