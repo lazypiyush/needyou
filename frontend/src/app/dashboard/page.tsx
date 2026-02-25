@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { useAuth } from '@/context/AuthContext'
 import { Loader2, MapPin, Search, Filter, Home, Plus, Bell, User, Briefcase, Edit, Trash2, Check, CheckCircle, RotateCw, Send } from 'lucide-react'
 import CreateJobInline from '@/components/CreateJobInline'
+import ProfileSection from '@/components/ProfileSection'
 import ThemeToggle from '@/components/ThemeToggle'
 import { useTheme } from 'next-themes'
 import { getJobs, Job, Notification, getUserAppliedJobs } from '@/lib/auth'
@@ -1113,15 +1114,8 @@ export default function DashboardPage() {
                         />
                     )}
 
-                    {activeTab === 'profile' && (
-                        <div style={{ paddingTop: 'env(safe-area-inset-top)' }}>
-                            <h1 className="text-2xl font-bold mb-4" style={{ color: mounted && isDark ? '#ffffff' : '#111827' }}>
-                                Profile
-                            </h1>
-                            <p style={{ color: mounted && isDark ? '#dbd7d7ff' : '#6b7280' }}>
-                                Your profile settings will go here
-                            </p>
-                        </div>
+                    {activeTab === 'profile' && user && (
+                        <ProfileSection user={user} isDark={isDark} />
                     )}
                 </div>
 

@@ -8,6 +8,8 @@ import { useTheme } from 'next-themes'
 import ChatModal from './ChatModal'
 import { renegotiateBudget } from '@/lib/renegotiation'
 import { useState as useReactState } from 'react'
+import UserProfileSheet from './UserProfileSheet'
+import { getCompressedImageUrl } from '@/lib/cloudinary'
 
 interface JobApplicationsModalProps {
     jobId: string
@@ -23,6 +25,7 @@ export default function JobApplicationsModal({ jobId, jobTitle, jobBudget, onClo
     const [mounted, setMounted] = useState(false)
     const [expandedId, setExpandedId] = useState<string | null>(null)
     const [chatWith, setChatWith] = useState<{ userId: string; userName: string; userEmail: string; userPhone?: string } | null>(null)
+    const [viewingProfileId, setViewingProfileId] = useState<string | null>(null)
 
     // Renegotiation state
     const [negotiatingId, setNegotiatingId] = useState<string | null>(null)
@@ -218,11 +221,32 @@ export default function JobApplicationsModal({ jobId, jobTitle, jobBudget, onClo
                                         >
                                             <div className="flex items-start justify-between">
                                                 <div className="flex-1">
-                                                    <div className="flex items-center gap-2 mb-2">
-                                                        <User className="w-5 h-5 text-blue-600" />
-                                                        <h3 className="font-semibold" style={{ color: isDark ? '#ffffff' : '#111827' }}>
+                                                    <div className="flex items-center gap-3 mb-2">
+                                                        {/* Avatar — clickable to open profile */}
+                                                        <button
+                                                            type="button"
+                                                            onClick={e => { e.stopPropagation(); setViewingProfileId(app.userId) }}
+                                                            className="flex-shrink-0 w-10 h-10 rounded-full overflow-hidden flex items-center justify-center font-bold text-sm border-2 border-blue-500/30 hover:ring-2 hover:ring-blue-400 transition-all"
+                                                            style={{ backgroundColor: isDark ? '#2a2a2a' : '#eff6ff' }}
+                                                            title="View profile"
+                                                        >
+                                                            {app.userPhotoURL ? (
+                                                                <img src={getCompressedImageUrl(app.userPhotoURL)} alt={app.userName} className="w-full h-full object-cover" />
+                                                            ) : (
+                                                                <span style={{ color: isDark ? '#60a5fa' : '#2563eb' }}>
+                                                                    {app.userName?.[0]?.toUpperCase() || '?'}
+                                                                </span>
+                                                            )}
+                                                        </button>
+                                                        {/* Name — clickable to open profile */}
+                                                        <button
+                                                            type="button"
+                                                            onClick={e => { e.stopPropagation(); setViewingProfileId(app.userId) }}
+                                                            className="font-semibold hover:underline text-left"
+                                                            style={{ color: isDark ? '#ffffff' : '#111827' }}
+                                                        >
                                                             {app.userName}
-                                                        </h3>
+                                                        </button>
                                                     </div>
 
                                                     <div className="space-y-1">
@@ -535,6 +559,13 @@ export default function JobApplicationsModal({ jobId, jobTitle, jobBudget, onClo
                     otherUserEmail={chatWith.userEmail}
                     otherUserPhone={chatWith.userPhone}
                     onClose={() => setChatWith(null)}
+                />
+            )}
+            {viewingProfileId && (
+                <UserProfileSheet
+                    userId={viewingProfileId}
+                    isDark={isDark}
+                    onClose={() => setViewingProfileId(null)}
                 />
             )}
         </>

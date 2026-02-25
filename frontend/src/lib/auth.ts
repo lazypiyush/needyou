@@ -1521,9 +1521,25 @@ export const getJobApplications = async (jobId: string): Promise<any[]> => {
     const q = query(applicationsRef, where('jobId', '==', jobId), orderBy('appliedAt', 'desc'))
     const snapshot = await getDocs(q)
 
-    return snapshot.docs.map(doc => ({
-      id: doc.id,
-      ...doc.data()
+    const apps = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }))
+
+    // Batch-fetch photoURL from users collection for each unique applicant
+    const uniqueUserIds = [...new Set(apps.map((a: any) => a.userId).filter(Boolean))]
+    const userPhotoMap: Record<string, string> = {}
+    await Promise.all(
+      uniqueUserIds.map(async (uid: string) => {
+        try {
+          const userSnap = await getDoc(doc(db, 'users', uid))
+          if (userSnap.exists()) {
+            userPhotoMap[uid] = userSnap.data().photoURL || ''
+          }
+        } catch { /* skip */ }
+      })
+    )
+
+    return apps.map((a: any) => ({
+      ...a,
+      userPhotoURL: userPhotoMap[a.userId] || ''
     }))
   } catch (error: any) {
     console.error(' Get Job Applications Error:', error)
@@ -1857,4 +1873,55 @@ export const sendMediaMessage = async (
     console.error('❌ Send Media Message Error:', error)
     throw new Error(error.message || 'Failed to send media message')
   }
+}
+
+// ─── Profile ──────────────────────────────────────────────────────────────────
+
+export const updateUserProfile = async (
+  uid: string,
+  data: { photoURL?: string; aboutMe?: string }
+): Promise<void> => {
+  const database = ensureDbInitialized()
+  const userRef = doc(database, 'users', uid)
+  await updateDoc(userRef, {
+    ...(data.photoURL !== undefined && { photoURL: data.photoURL }),
+    ...(data.aboutMe !== undefined && { aboutMe: data.aboutMe }),
+    updatedAt: Date.now(),
+  })
+}
+
+// ─── Reviews ──────────────────────────────────────────────────────────────────
+
+export interface Review {
+  id: string
+  reviewerId: string
+  reviewerName: string
+  revieweeId: string
+  jobId: string
+  jobTitle: string
+  rating: number // 1–5
+  comment: string
+  createdAt: number
+}
+
+export const submitReview = async (
+  reviewData: Omit<Review, 'id'>
+): Promise<string> => {
+  const database = ensureDbInitialized()
+  const ref = await addDoc(collection(database, 'reviews'), {
+    ...reviewData,
+    createdAt: Date.now(),
+  })
+  return ref.id
+}
+
+export const getUserReviews = async (uid: string): Promise<Review[]> => {
+  const database = ensureDbInitialized()
+  const q = query(
+    collection(database, 'reviews'),
+    where('revieweeId', '==', uid),
+    orderBy('createdAt', 'desc')
+  )
+  const snap = await getDocs(q)
+  return snap.docs.map(d => ({ id: d.id, ...d.data() } as Review))
 }
