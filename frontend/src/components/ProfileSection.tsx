@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import {
     Camera, Star, GraduationCap, Briefcase, Building2,
     Calendar, LogOut, Save, Loader2, Check, AlertCircle,
-    User, Mail, MapPin, Edit3, X
+    User, Mail, MapPin, Edit3, X, Award
 } from 'lucide-react'
 import { auth, db } from '@/lib/firebase'
 import { signOut } from 'firebase/auth'
@@ -14,7 +14,9 @@ import {
     updateUserProfile, getUserReviews, Review,
     updateUserEducation, updateUserEmployment
 } from '@/lib/auth'
-import { uploadToCloudinary } from '@/lib/cloudinary'
+import { uploadToCloudinary, getCompressedImageUrl } from '@/lib/cloudinary'
+import ImageViewerModal from '@/components/ImageViewerModal'
+import { Maximize2 } from 'lucide-react'
 
 interface Props {
     user: { uid: string; email?: string | null; displayName?: string | null }
@@ -76,6 +78,7 @@ export default function ProfileSection({ user, isDark }: Props) {
     const [savingForm, setSavingForm] = useState(false)
     const [formSuccess, setFormSuccess] = useState(false)
     const [error, setError] = useState('')
+    const [showPhotoViewer, setShowPhotoViewer] = useState(false)
 
     const needsCompany = ['Employed', 'Self-Employed'].includes(employmentStatus)
 
@@ -230,13 +233,29 @@ export default function ProfileSection({ user, isDark }: Props) {
                         style={{ backgroundColor: isDark ? '#2a2a2a' : '#eff6ff' }}
                     >
                         {photoURL ? (
-                            <img src={photoURL} alt="Profile" className="w-full h-full object-cover" />
+                            <img
+                                src={getCompressedImageUrl(photoURL)}
+                                alt="Profile"
+                                className="w-full h-full object-cover"
+                            />
                         ) : (
                             <span style={{ color: isDark ? '#60a5fa' : '#2563eb' }}>
                                 {displayName?.[0]?.toUpperCase() || user.email?.[0]?.toUpperCase() || '?'}
                             </span>
                         )}
                     </div>
+                    {/* Tap avatar to view full-screen */}
+                    {photoURL && (
+                        <button
+                            onClick={() => setShowPhotoViewer(true)}
+                            className="absolute inset-0 rounded-full flex items-end justify-end p-0.5"
+                            title="View full photo"
+                        >
+                            <span className="w-6 h-6 rounded-full bg-black/60 flex items-center justify-center">
+                                <Maximize2 className="w-3.5 h-3.5 text-white" />
+                            </span>
+                        </button>
+                    )}
                     <button
                         onClick={() => fileInputRef.current?.click()}
                         disabled={uploading}
@@ -321,7 +340,7 @@ export default function ProfileSection({ user, isDark }: Props) {
             {/* ── Ratings & Reviews ── */}
             <div className="rounded-2xl border p-5" style={card}>
                 <h3 className="font-semibold flex items-center gap-2 mb-4" style={{ color: textPri }}>
-                    <Star className="w-4 h-4 text-yellow-400 fill-yellow-400" /> Ratings & Reviews
+                    <Award className="w-4 h-4 text-blue-500" /> Ratings &amp; Reviews
                 </h3>
 
                 {loadingReviews ? (
@@ -450,7 +469,7 @@ export default function ProfileSection({ user, isDark }: Props) {
                 )}
             </div>
 
-            {/* ── Logout ── */}
+            {/* Logout */}
             <button
                 onClick={handleLogout}
                 className="w-full py-3.5 rounded-2xl border-2 border-red-500/40 font-semibold flex items-center justify-center gap-2 transition-all hover:bg-red-50 dark:hover:bg-red-900/10 active:scale-[0.98]"
@@ -458,6 +477,15 @@ export default function ProfileSection({ user, isDark }: Props) {
             >
                 <LogOut className="w-5 h-5" /> Sign Out
             </button>
+
+            {/* Full-res profile photo viewer */}
+            {showPhotoViewer && photoURL && (
+                <ImageViewerModal
+                    media={[{ type: 'image', url: photoURL }]}
+                    initialIndex={0}
+                    onClose={() => setShowPhotoViewer(false)}
+                />
+            )}
         </div>
     )
 }

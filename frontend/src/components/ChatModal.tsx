@@ -11,6 +11,7 @@ import ImageViewerModal from './ImageViewerModal'
 import MediaPreviewModal, { MediaItem } from './MediaPreviewModal'
 import { getRotationCorrectedVideoUrl } from '@/lib/cloudinary'
 import VideoViewerModal from './VideoViewerModal'
+import { useModalHistory } from '@/hooks/useModalHistory'
 
 interface ChatModalProps {
     jobId: string
@@ -20,6 +21,8 @@ interface ChatModalProps {
     otherUserEmail: string
     otherUserPhone?: string
     onClose: () => void
+    /** When true, renders as a full-screen page (no portal/backdrop) — used by /dashboard/chat route */
+    fullPage?: boolean
 }
 
 export default function ChatModal({
@@ -29,7 +32,8 @@ export default function ChatModal({
     otherUserName,
     otherUserEmail,
     otherUserPhone,
-    onClose
+    onClose,
+    fullPage = false
 }: ChatModalProps) {
     const { user } = useAuth()
     const { theme, systemTheme } = useTheme()
@@ -68,6 +72,9 @@ export default function ChatModal({
     useEffect(() => {
         setMounted(true)
     }, [])
+
+    // Back button closes modal (Android WebView)
+    useModalHistory(!fullPage, onClose)
 
     // Create or get conversation
     useEffect(() => {
@@ -952,6 +959,15 @@ export default function ChatModal({
             )}
         </div>
     )
+
+    if (fullPage) {
+        // Render as a full-screen page — no portal or backdrop
+        return (
+            <div className="fixed inset-0 flex flex-col" style={{ backgroundColor: isDark ? '#1c1c1c' : '#ffffff' }}>
+                {modalContent}
+            </div>
+        )
+    }
 
     return createPortal(modalContent, document.body)
 }

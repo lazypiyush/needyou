@@ -5,6 +5,7 @@ import { createPortal } from 'react-dom'
 import { X, ChevronLeft, ChevronRight, ZoomIn, ZoomOut, Maximize2 } from 'lucide-react'
 import Image from 'next/image'
 import { useTheme } from 'next-themes'
+import { useModalHistory } from '@/hooks/useModalHistory'
 
 interface ImageViewerModalProps {
     media: Array<{
@@ -28,6 +29,9 @@ export default function ImageViewerModal({ media, initialIndex = 0, onClose }: I
     const { theme, systemTheme } = useTheme()
     const currentTheme = theme === 'system' ? systemTheme : theme
     const isDark = currentTheme === 'dark'
+
+    // Back button closes image viewer
+    useModalHistory(true, onClose)
 
     const MIN_ZOOM = 0.5
     const MAX_ZOOM = 5

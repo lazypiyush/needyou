@@ -5,6 +5,7 @@ import { createPortal } from 'react-dom'
 import { X, Send, Trash2, Edit3, ChevronLeft, ChevronRight, Undo, Eraser, Pen, Loader2 } from 'lucide-react'
 import Image from 'next/image'
 import { useTheme } from 'next-themes'
+import { useModalHistory } from '@/hooks/useModalHistory'
 
 export interface MediaItem {
     file: File
@@ -42,6 +43,9 @@ export default function MediaPreviewModal({ media: initialMedia, onClose, onSend
 
     const currentTheme = theme === 'system' ? systemTheme : theme
     const isDark = currentTheme === 'dark'
+
+    // Back button closes this modal
+    useModalHistory(true, onClose)
 
     const colors = [
         '#FFFFFF', // White

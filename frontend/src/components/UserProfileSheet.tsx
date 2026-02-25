@@ -11,6 +11,7 @@ import { doc, getDoc } from 'firebase/firestore'
 import { getUserReviews, Review } from '@/lib/auth'
 import { getCompressedImageUrl } from '@/lib/cloudinary'
 import ImageViewerModal from './ImageViewerModal'
+import { useModalHistory } from '@/hooks/useModalHistory'
 
 interface UserProfileSheetProps {
     userId: string
@@ -38,6 +39,9 @@ export default function UserProfileSheet({ userId, isDark, onClose }: UserProfil
     const [profile, setProfile] = useState<any>(null)
     const [reviews, setReviews] = useState<Review[]>([])
     const [showPhotoViewer, setShowPhotoViewer] = useState(false)
+
+    // Back button closes this sheet
+    useModalHistory(true, onClose)
 
     useEffect(() => { setMounted(true) }, [])
 

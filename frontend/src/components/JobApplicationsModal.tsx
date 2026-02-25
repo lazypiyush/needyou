@@ -5,11 +5,12 @@ import { createPortal } from 'react-dom'
 import { X, User, Mail, Phone, Clock, ChevronDown, ChevronUp, CheckCircle, XCircle, IndianRupee, MessageCircle } from 'lucide-react'
 import { getJobApplications } from '@/lib/auth'
 import { useTheme } from 'next-themes'
-import ChatModal from './ChatModal'
 import { renegotiateBudget } from '@/lib/renegotiation'
 import { useState as useReactState } from 'react'
 import UserProfileSheet from './UserProfileSheet'
 import { getCompressedImageUrl } from '@/lib/cloudinary'
+import { useModalHistory } from '@/hooks/useModalHistory'
+import { useRouter } from 'next/navigation'
 
 interface JobApplicationsModalProps {
     jobId: string
@@ -20,12 +21,15 @@ interface JobApplicationsModalProps {
 
 export default function JobApplicationsModal({ jobId, jobTitle, jobBudget, onClose }: JobApplicationsModalProps) {
     const { theme, systemTheme } = useTheme()
+    const router = useRouter()
     const [applications, setApplications] = useState<any[]>([])
     const [loading, setLoading] = useState(true)
     const [mounted, setMounted] = useState(false)
     const [expandedId, setExpandedId] = useState<string | null>(null)
-    const [chatWith, setChatWith] = useState<{ userId: string; userName: string; userEmail: string; userPhone?: string } | null>(null)
     const [viewingProfileId, setViewingProfileId] = useState<string | null>(null)
+
+    // Back button closes this modal
+    useModalHistory(true, onClose)
 
     // Renegotiation state
     const [negotiatingId, setNegotiatingId] = useState<string | null>(null)
@@ -268,12 +272,7 @@ export default function JobApplicationsModal({ jobId, jobTitle, jobBudget, onClo
                                                                 <button
                                                                     onClick={(e) => {
                                                                         e.stopPropagation()
-                                                                        setChatWith({
-                                                                            userId: app.userId,
-                                                                            userName: app.userName,
-                                                                            userEmail: app.userEmail,
-                                                                            userPhone: app.userPhone
-                                                                        })
+                                                                        router.push(`/dashboard/chat?jobId=${encodeURIComponent(jobId)}&jobTitle=${encodeURIComponent(jobTitle)}&otherUserId=${encodeURIComponent(app.userId)}&otherUserName=${encodeURIComponent(app.userName)}&otherUserEmail=${encodeURIComponent(app.userEmail)}&otherUserPhone=${encodeURIComponent(app.userPhone || '')}`)
                                                                     }}
                                                                     className="ml-2 p-1.5 rounded-full bg-blue-600 hover:bg-blue-700 transition-colors"
                                                                     title="Chat with applicant"
@@ -550,17 +549,6 @@ export default function JobApplicationsModal({ jobId, jobTitle, jobBudget, onClo
     return (
         <>
             {createPortal(modalContent, document.body)}
-            {chatWith && (
-                <ChatModal
-                    jobId={jobId}
-                    jobTitle={jobTitle}
-                    otherUserId={chatWith.userId}
-                    otherUserName={chatWith.userName}
-                    otherUserEmail={chatWith.userEmail}
-                    otherUserPhone={chatWith.userPhone}
-                    onClose={() => setChatWith(null)}
-                />
-            )}
             {viewingProfileId && (
                 <UserProfileSheet
                     userId={viewingProfileId}

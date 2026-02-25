@@ -6,10 +6,11 @@ import { X, User, Mail, Phone, Clock, CheckCircle, XCircle, IndianRupee, Message
 import { getUserOwnApplication } from '@/lib/auth'
 import { useTheme } from 'next-themes'
 import { useAuth } from '@/context/AuthContext'
-import ChatModal from './ChatModal'
 import { doc, getDoc } from 'firebase/firestore'
 import { db } from '@/lib/firebase'
 import { respondToRenegotiation } from '@/lib/renegotiation'
+import { useModalHistory } from '@/hooks/useModalHistory'
+import { useRouter } from 'next/navigation'
 
 interface ViewMyApplicationModalProps {
     jobId: string
@@ -32,11 +33,14 @@ export default function ViewMyApplicationModal({
 }: ViewMyApplicationModalProps) {
     const { user } = useAuth()
     const { theme, systemTheme } = useTheme()
+    const router = useRouter()
     const [application, setApplication] = useState<any | null>(null)
     const [loading, setLoading] = useState(true)
     const [mounted, setMounted] = useState(false)
-    const [showChat, setShowChat] = useState(false)
     const [jobPosterPhone, setJobPosterPhone] = useState<string | undefined>(undefined)
+
+    // Back button closes modal
+    useModalHistory(true, onClose)
 
     // Renegotiation state
     const [isNegotiating, setIsNegotiating] = useState(false)
@@ -268,7 +272,7 @@ export default function ViewMyApplicationModal({
                                         </div>
                                     </div>
                                     <button
-                                        onClick={() => setShowChat(true)}
+                                        onClick={() => router.push(`/dashboard/chat?jobId=${encodeURIComponent(jobId)}&jobTitle=${encodeURIComponent(jobTitle)}&otherUserId=${encodeURIComponent(jobPosterId)}&otherUserName=${encodeURIComponent(jobPosterName)}&otherUserEmail=${encodeURIComponent(jobPosterEmail)}&otherUserPhone=${encodeURIComponent(jobPosterPhone || '')}`)}
                                         className="flex-shrink-0 px-4 py-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:shadow-lg text-white font-semibold rounded-xl transition-all flex items-center gap-2"
                                     >
                                         <MessageCircle className="w-4 h-4" />
@@ -542,17 +546,6 @@ export default function ViewMyApplicationModal({
     return (
         <>
             {createPortal(modalContent, document.body)}
-            {showChat && (
-                <ChatModal
-                    jobId={jobId}
-                    jobTitle={jobTitle}
-                    otherUserId={jobPosterId}
-                    otherUserName={jobPosterName}
-                    otherUserEmail={jobPosterEmail}
-                    otherUserPhone={jobPosterPhone}
-                    onClose={() => setShowChat(false)}
-                />
-            )}
         </>
     )
 }
