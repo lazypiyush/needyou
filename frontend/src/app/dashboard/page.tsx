@@ -3,12 +3,13 @@
 import { useEffect, useState, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/context/AuthContext'
-import { Loader2, MapPin, Search, Filter, Home, Plus, Bell, User, Briefcase, Edit, Trash2, Check, CheckCircle, RotateCw } from 'lucide-react'
+import { Loader2, MapPin, Search, Filter, Home, Plus, Bell, User, Briefcase, Edit, Trash2, Check, CheckCircle, RotateCw, Send } from 'lucide-react'
 import CreateJobInline from '@/components/CreateJobInline'
 import ThemeToggle from '@/components/ThemeToggle'
 import { useTheme } from 'next-themes'
-import { getJobs, Job, Notification } from '@/lib/auth'
+import { getJobs, Job, Notification, getUserAppliedJobs } from '@/lib/auth'
 import JobCard from '@/components/JobCard'
+import ViewMyApplicationModal from '@/components/ViewMyApplicationModal'
 import { filterJobsByDistance, filterJobsByCity, addDistanceToJobs } from '@/lib/distance'
 import { db } from '@/lib/firebase'
 import { doc, getDoc } from 'firebase/firestore'
@@ -42,6 +43,11 @@ export default function DashboardPage() {
     const [displayedMyJobsCount, setDisplayedMyJobsCount] = useState(12) // Show 12 my jobs initially
     const [notificationJobId, setNotificationJobId] = useState<string | null>(null) // Track job from notification
     const [showBatteryBanner, setShowBatteryBanner] = useState(false)
+    // My Jobs sub-tab
+    const [myJobsSubTab, setMyJobsSubTab] = useState<'posted' | 'applied'>('posted')
+    const [appliedJobs, setAppliedJobs] = useState<Array<Job & { application: any }>>([])
+    const [loadingApplied, setLoadingApplied] = useState(false)
+    const [selectedAppliedJob, setSelectedAppliedJob] = useState<(Job & { application: any }) | null>(null)
 
     // Swipe navigation — use ref to avoid stale closure issues with useState
     const touchStartXRef = useRef<number | null>(null)
@@ -215,6 +221,16 @@ export default function DashboardPage() {
             fetchJobs()
         }
     }, [user, locationChecked, userLocation])
+
+    // Fetch applied jobs whenever the user is known or the sub-tab is switched to 'applied'
+    useEffect(() => {
+        if (!user?.uid) return
+        if (activeTab !== 'jobs' || myJobsSubTab !== 'applied') return
+        setLoadingApplied(true)
+        getUserAppliedJobs(user.uid)
+            .then(setAppliedJobs)
+            .finally(() => setLoadingApplied(false))
+    }, [user?.uid, activeTab, myJobsSubTab])
 
     // Apply filters whenever jobs, search, or distance filter changes
     useEffect(() => {
@@ -769,45 +785,61 @@ export default function DashboardPage() {
                     )}
                     {activeTab === 'jobs' && (
                         <div>
-                            <h1 className="text-2xl font-bold mb-6" style={{ color: mounted && isDark ? '#ffffff' : '#111827' }}>
-                                My Jobs
-                            </h1>
-                            {loadingJobs ? (
-                                <div className="flex items-center justify-center py-12">
-                                    <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
+                            {/* Header + sub-tab toggle */}
+                            <div className="flex items-center justify-between mb-6">
+                                <h1 className="text-2xl font-bold" style={{ color: mounted && isDark ? '#ffffff' : '#111827' }}>
+                                    My Jobs
+                                </h1>
+                                <div className="flex rounded-xl overflow-hidden border"
+                                    style={{ borderColor: isDark ? '#2a2a2a' : '#e5e7eb' }}>
+                                    {(['posted', 'applied'] as const).map((tab) => (
+                                        <button
+                                            key={tab}
+                                            onClick={() => setMyJobsSubTab(tab)}
+                                            className="px-4 py-2 text-sm font-semibold transition-all flex items-center gap-1.5"
+                                            style={{
+                                                background: myJobsSubTab === tab
+                                                    ? 'linear-gradient(135deg, #1E5EFF, #6366f1)'
+                                                    : (isDark ? '#1a1a1a' : '#f9fafb'),
+                                                color: myJobsSubTab === tab ? '#fff' : (isDark ? '#9ca3af' : '#6b7280'),
+                                            }}
+                                        >
+                                            {tab === 'posted'
+                                                ? <><Briefcase className="w-4 h-4" /> Posted</>
+                                                : <><Send className="w-4 h-4" /> Applied</>}
+                                        </button>
+                                    ))}
                                 </div>
-                            ) : jobs.filter(j => j.userId === user?.uid).length === 0 ? (
-                                <div className="text-center py-12">
-                                    <Briefcase className="w-16 h-16 mx-auto mb-4 text-gray-400" />
-                                    <p className="text-gray-500 dark:text-gray-400 mb-4">You haven't created any jobs yet</p>
-                                    <button
-                                        onClick={() => setActiveTab('create')}
-                                        className="px-6 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-bold rounded-xl hover:shadow-lg transition-all"
-                                    >
-                                        Create Your First Job
-                                    </button>
-                                </div>
-                            ) : (() => {
+                            </div>
+
+                            {/* ── POSTED JOBS ──────────────────────────────────── */}
+                            {myJobsSubTab === 'posted' && (() => {
                                 const myJobs = jobs.filter(j =>
                                     j.userId === user?.uid &&
                                     (!searchQuery || j.caption?.toLowerCase().includes(searchQuery.toLowerCase()))
-                                );
-                                return myJobs.length === 0 ? (
-                                    <div className="text-center py-12">
-                                        <Briefcase className="w-16 h-16 mx-auto mb-4 text-gray-400" />
-                                        <p className="text-gray-500 dark:text-gray-400 mb-4">
-                                            {searchQuery ? `No jobs matching "${searchQuery}"` : "You haven't created any jobs yet"}
+                                )
+                                if (loadingJobs) return (
+                                    <div className="flex items-center justify-center py-16">
+                                        <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
+                                    </div>
+                                )
+                                if (myJobs.length === 0) return (
+                                    <div className="text-center py-16 space-y-4">
+                                        <Briefcase className="w-16 h-16 mx-auto text-gray-400" />
+                                        <p className="text-gray-500 dark:text-gray-400">
+                                            {searchQuery ? `No jobs matching "${searchQuery}"` : "You haven't posted any jobs yet"}
                                         </p>
                                         {!searchQuery && (
                                             <button
                                                 onClick={() => setActiveTab('create')}
                                                 className="px-6 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-bold rounded-xl hover:shadow-lg transition-all"
                                             >
-                                                Create Your First Job
+                                                Post Your First Job
                                             </button>
                                         )}
                                     </div>
-                                ) : (
+                                )
+                                return (
                                     <>
                                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                                             {myJobs.slice(0, displayedMyJobsCount).map((job) => (
@@ -815,17 +847,14 @@ export default function DashboardPage() {
                                                     key={job.id}
                                                     job={job}
                                                     highlightJobId={notificationJobId}
-                                                    onDelete={() => {
-                                                        fetchJobs()
-                                                        setNotificationJobId(null)
-                                                    }}
+                                                    onDelete={() => { fetchJobs(); setNotificationJobId(null) }}
                                                 />
                                             ))}
                                         </div>
                                         {myJobs.length > displayedMyJobsCount && (
                                             <div className="flex justify-center mt-8">
                                                 <button
-                                                    onClick={() => setDisplayedMyJobsCount(prev => prev + 12)}
+                                                    onClick={() => setDisplayedMyJobsCount(p => p + 12)}
                                                     className="px-6 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-bold rounded-xl hover:shadow-lg transition-all"
                                                 >
                                                     Load More ({myJobs.length - displayedMyJobsCount} remaining)
@@ -833,10 +862,132 @@ export default function DashboardPage() {
                                             </div>
                                         )}
                                     </>
-                                );
-                            })()
-                            }
+                                )
+                            })()}
+
+                            {/* ── APPLIED JOBS ─────────────────────────────────── */}
+                            {myJobsSubTab === 'applied' && (
+                                loadingApplied ? (
+                                    <div className="flex items-center justify-center py-16">
+                                        <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
+                                    </div>
+                                ) : appliedJobs.length === 0 ? (
+                                    <div className="text-center py-16 space-y-3">
+                                        <CheckCircle className="w-16 h-16 mx-auto text-gray-400" />
+                                        <p className="text-gray-500 dark:text-gray-400">You haven't applied to any jobs yet</p>
+                                        <button
+                                            onClick={() => setActiveTab('home')}
+                                            className="px-6 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-bold rounded-xl hover:shadow-lg transition-all"
+                                        >
+                                            Browse Jobs
+                                        </button>
+                                    </div>
+                                ) : (
+                                    <div className="space-y-4">
+                                        {appliedJobs.map((job) => {
+                                            const app = job.application
+                                            const statusConfig: Record<string, { label: string; bg: string; color: string }> = {
+                                                pending: { label: 'Pending', bg: isDark ? 'rgba(234,179,8,0.15)' : '#fef9c3', color: '#ca8a04' },
+                                                negotiating: { label: 'Negotiating', bg: isDark ? 'rgba(59,130,246,0.15)' : '#dbeafe', color: '#2563eb' },
+                                                accepted: { label: 'Accepted', bg: isDark ? 'rgba(34,197,94,0.15)' : '#dcfce7', color: '#16a34a' },
+                                                rejected: { label: 'Rejected', bg: isDark ? 'rgba(239,68,68,0.15)' : '#fee2e2', color: '#dc2626' },
+                                            }
+                                            const st = statusConfig[app.status] ?? statusConfig.pending
+                                            const timeAgo = (() => {
+                                                const diff = Date.now() - app.appliedAt
+                                                const d = Math.floor(diff / 86400000)
+                                                const h = Math.floor(diff / 3600000)
+                                                const m = Math.floor(diff / 60000)
+                                                if (d > 0) return `${d}d ago`
+                                                if (h > 0) return `${h}h ago`
+                                                return `${m}m ago`
+                                            })()
+                                            return (
+                                                <button
+                                                    key={app.id}
+                                                    onClick={() => setSelectedAppliedJob(job)}
+                                                    className="w-full text-left rounded-2xl border p-4 transition-all active:scale-[0.98]"
+                                                    style={{
+                                                        backgroundColor: isDark ? '#1e1e1e' : '#ffffff',
+                                                        borderColor: isDark ? '#333' : '#e5e7eb',
+                                                        boxShadow: isDark
+                                                            ? '0 0 0 1px rgba(255,255,255,0.06), 0 4px 16px rgba(255,255,255,0.06)'
+                                                            : '0 1px 4px rgba(0,0,0,0.06)',
+                                                    }}
+                                                >
+                                                    <div className="flex items-start justify-between gap-3 mb-2">
+                                                        <div className="flex-1 min-w-0">
+                                                            <p className="font-semibold text-base truncate"
+                                                                style={{ color: isDark ? '#fff' : '#111827' }}>
+                                                                {job.caption}
+                                                            </p>
+                                                            <p className="text-sm mt-0.5"
+                                                                style={{ color: isDark ? '#6b7280' : '#9ca3af' }}>
+                                                                {job.location?.city}, {job.location?.state} · {timeAgo}
+                                                            </p>
+                                                        </div>
+                                                        {/* Status chip */}
+                                                        <span
+                                                            className="flex-shrink-0 text-xs font-bold px-3 py-1 rounded-full"
+                                                            style={{ background: st.bg, color: st.color }}
+                                                        >
+                                                            {st.label}
+                                                        </span>
+                                                    </div>
+
+                                                    {/* Budget / offer row */}
+                                                    <div className="flex flex-wrap items-center gap-3 mt-3">
+                                                        {job.budget && (
+                                                            <span className="text-sm" style={{ color: isDark ? '#9ca3af' : '#6b7280' }}>
+                                                                Job budget: <strong style={{ color: isDark ? '#fff' : '#111827' }}>₹{job.budget.toLocaleString()}</strong>
+                                                            </span>
+                                                        )}
+                                                        {app.counterOffer && (
+                                                            <span className="text-sm" style={{ color: isDark ? '#9ca3af' : '#6b7280' }}>
+                                                                Your offer: <strong className="text-green-500">₹{app.counterOffer.toLocaleString()}</strong>
+                                                            </span>
+                                                        )}
+                                                        {app.budgetSatisfied && !app.counterOffer && (
+                                                            <span className="text-xs font-medium px-2 py-0.5 rounded-full"
+                                                                style={{ background: isDark ? 'rgba(34,197,94,0.15)' : '#dcfce7', color: '#16a34a' }}>
+                                                                Accepted budget
+                                                            </span>
+                                                        )}
+                                                    </div>
+
+                                                    {/* Category badge */}
+                                                    {job.category && (
+                                                        <div className="mt-3">
+                                                            <span className="text-xs px-2 py-0.5 rounded-full font-medium"
+                                                                style={{ background: isDark ? 'rgba(99,102,241,0.15)' : '#ede9fe', color: '#7c3aed' }}>
+                                                                {job.category}
+                                                            </span>
+                                                        </div>
+                                                    )}
+                                                    {/* Tap hint */}
+                                                    <p className="text-xs mt-3" style={{ color: isDark ? '#4b5563' : '#d1d5db' }}>
+                                                        Tap to view your application
+                                                    </p>
+                                                </button>
+                                            )
+                                        })}
+                                    </div>
+                                )
+                            )}
                         </div>
+                    )}
+
+                    {/* ViewMyApplication modal — opened from Applied tab */}
+                    {selectedAppliedJob && (
+                        <ViewMyApplicationModal
+                            jobId={selectedAppliedJob.id}
+                            jobTitle={selectedAppliedJob.caption}
+                            jobBudget={selectedAppliedJob.budget}
+                            jobPosterName={selectedAppliedJob.userName}
+                            jobPosterId={selectedAppliedJob.userId}
+                            jobPosterEmail={selectedAppliedJob.userEmail ?? ''}
+                            onClose={() => setSelectedAppliedJob(null)}
+                        />
                     )}
 
 

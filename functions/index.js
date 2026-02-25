@@ -49,38 +49,36 @@ exports.sendFCMOnNotification = functions.firestore
                 return;
             }
 
+            // ── Data-only message (WhatsApp-style) ──────────────────────────
+            // Sending as data-only (no "notification" field) means FCM bypasses
+            // Doze / battery-optimisation and always calls onMessageReceived()
+            // in MyFirebaseMessagingService, which posts the notification itself.
             const fcmMessage = {
                 token: fcmToken,
-                notification: {
+                // NO "notification" block — data-only so OS doesn't intercept it
+                data: {
                     title: title,
                     body: message || '',
-                },
-                android: {
-                    priority: 'high',
-                    notification: {
-                        sound: 'default',
-                        channelId: 'needyou_notifications',
-                        icon: 'ic_stat_notification',
-                        color: '#1E5EFF',
-                        notificationPriority: 'PRIORITY_MAX',
-                        defaultVibrateTimings: true,
-                    },
-                },
-                data: {
                     userId: userId,
                     notifId: context.params.notifId,
-                    ...(notification.jobId ? { jobId: notification.jobId } : {}),
-                    ...(notification.type ? { type: notification.type } : {}),
+                    ...(notification.jobId ? { jobId: String(notification.jobId) } : {}),
+                    ...(notification.type ? { type: String(notification.type) } : {}),
+                },
+                android: {
+                    // HIGH priority wakes the device even in Doze/deep sleep
+                    priority: 'high',
+                    ttl: 60 * 60 * 24, // 24 h time-to-live
                 },
             };
 
             await admin.messaging().send(fcmMessage);
-            console.log(`[FCM] ✅ Notification sent to ${userId}`);
+            console.log(`[FCM] ✅ Data-only push sent to user ${userId}`);
 
         } catch (error) {
             console.error('[FCM] ❌ Error sending notification:', error);
         }
     });
+
 
 // ─── 2. Nearby job notifier — triggered when a new job doc is created ────────
 const NEARBY_RADIUS_KM = 20;

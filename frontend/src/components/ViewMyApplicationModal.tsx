@@ -252,24 +252,24 @@ export default function ViewMyApplicationModal({
                                 <h3 className="text-sm font-semibold mb-3" style={{ color: isDark ? '#ffffff' : '#111827' }}>
                                     Job Posted By
                                 </h3>
-                                <div className="flex items-center justify-between">
-                                    <div className="space-y-1">
+                                <div className="flex flex-wrap items-center justify-between gap-3">
+                                    <div className="space-y-1 min-w-0">
                                         <div className="flex items-center gap-2">
-                                            <User className="w-4 h-4 text-blue-600" />
-                                            <span className="font-medium" style={{ color: isDark ? '#ffffff' : '#111827' }}>
+                                            <User className="w-4 h-4 text-blue-600 flex-shrink-0" />
+                                            <span className="font-medium truncate" style={{ color: isDark ? '#ffffff' : '#111827' }}>
                                                 {jobPosterName}
                                             </span>
                                         </div>
                                         <div className="flex items-center gap-2">
-                                            <Mail className="w-4 h-4" style={{ color: isDark ? '#6b7280' : '#9ca3af' }} />
-                                            <span className="text-sm" style={{ color: isDark ? '#9ca3af' : '#6b7280' }}>
+                                            <Mail className="w-4 h-4 flex-shrink-0" style={{ color: isDark ? '#6b7280' : '#9ca3af' }} />
+                                            <span className="text-sm truncate" style={{ color: isDark ? '#9ca3af' : '#6b7280' }}>
                                                 {jobPosterEmail}
                                             </span>
                                         </div>
                                     </div>
                                     <button
                                         onClick={() => setShowChat(true)}
-                                        className="px-4 py-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:shadow-lg text-white font-semibold rounded-xl transition-all flex items-center gap-2"
+                                        className="flex-shrink-0 px-4 py-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:shadow-lg text-white font-semibold rounded-xl transition-all flex items-center gap-2"
                                     >
                                         <MessageCircle className="w-4 h-4" />
                                         Chat

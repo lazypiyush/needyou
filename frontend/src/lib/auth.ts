@@ -1588,6 +1588,40 @@ export const getUserOwnApplication = async (jobId: string, userId: string): Prom
   }
 }
 
+// Get all jobs a user has applied to, with their application details attached
+export const getUserAppliedJobs = async (userId: string): Promise<Array<Job & { application: any }>> => {
+  try {
+    const applicationsQuery = query(
+      collection(db, 'job_applications'),
+      where('userId', '==', userId),
+      orderBy('appliedAt', 'desc')
+    )
+    const snapshot = await getDocs(applicationsQuery)
+    if (snapshot.empty) return []
+
+    // Fetch each corresponding job doc in parallel
+    const results = await Promise.all(
+      snapshot.docs.map(async (appDoc) => {
+        const application = { id: appDoc.id, ...appDoc.data() }
+        try {
+          const jobDoc = await getDoc(doc(db, 'jobs', (application as any).jobId))
+          if (!jobDoc.exists()) return null
+          return {
+            ...(jobDoc.data() as Job),
+            id: jobDoc.id,
+            application,
+          }
+        } catch {
+          return null
+        }
+      })
+    )
+    return results.filter(Boolean) as Array<Job & { application: any }>
+  } catch (error: any) {
+    console.error('❌ Get Applied Jobs Error:', error)
+    return []
+  }
+}
 
 // Upload media file to Cloudinary (instead of Firebase Storage)
 export const uploadChatMedia = async (

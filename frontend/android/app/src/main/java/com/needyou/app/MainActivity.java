@@ -10,6 +10,7 @@ import android.content.ActivityNotFoundException;
 import android.content.ClipData;
 import android.content.DialogInterface;
 import android.content.Intent;
+import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 import android.net.ConnectivityManager;
 import android.net.Network;
@@ -30,6 +31,7 @@ import android.view.View;
 import android.view.Window;
 import android.webkit.WebView;
 import android.widget.Toast;
+import android.util.Log;
 import androidx.core.view.WindowCompat;
 import androidx.core.view.WindowInsetsCompat;
 import androidx.core.view.WindowInsetsControllerCompat;
@@ -40,6 +42,7 @@ import androidx.core.content.ContextCompat;
 import androidx.core.splashscreen.SplashScreen;
 
 import com.getcapacitor.BridgeActivity;
+import com.google.firebase.messaging.FirebaseMessaging;
 
 public class MainActivity extends BridgeActivity {
 
@@ -50,6 +53,7 @@ public class MainActivity extends BridgeActivity {
     private static final String SPLASH_INTRO_URL = "file:///android_asset/splash_intro.html";
     private static final String CHANNEL_ID = "needyou_notifications";
     private static final String CHANNEL_NAME = "NeedYou Notifications";
+    private static final String PREFS_NAME = "NeedYouPrefs";
 
     private ConnectivityManager.NetworkCallback networkCallback;
     private boolean isShowingOfflinePage = false;
@@ -160,6 +164,18 @@ public class MainActivity extends BridgeActivity {
             }
             return false;
         }
+
+        /**
+         * Returns the FCM token cached in SharedPreferences (set by FirebaseMessaging
+         * getToken() or onNewToken). JS calls this to push the token to Firestore
+         * even before the Capacitor PushNotifications plugin fires its callback.
+         * Call from JS: window.NeedYouBridge.getFcmToken()
+         */
+        @JavascriptInterface
+        public String getFcmToken() {
+            SharedPreferences prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
+            return prefs.getString("fcmToken", "");
+        }
     }
 
     private void hideSystemUI() {
@@ -171,6 +187,15 @@ public class MainActivity extends BridgeActivity {
             controller.setSystemBarsBehavior(
                     WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE);
         }
+    }
+
+    @Override
+    public void onResume() {
+        super.onResume();
+        // Re-show battery dialog on every resume until exemption is granted.
+        // This ensures users on Xiaomi, Realme, Vivo etc. who dismissed the
+        // first-launch dialog are reminded again until they actually allow it.
+        showBatteryOptimizationDialog();
     }
 
     @Override
@@ -201,14 +226,25 @@ public class MainActivity extends BridgeActivity {
             }
         }
 
-        // 3. Ask user about battery optimisation with an explanatory dialog
-        showBatteryOptimizationDialog();
+        // 3. Battery optimisation dialog is shown in onResume so it re-appears
+        // on every launch until the user actually grants the exemption.
 
         // 4. Expose NeedYouBridge to the WebView
         WebView webView = getBridge().getWebView();
         webView.addJavascriptInterface(new NeedYouBridge(), "NeedYouBridge");
 
-        // 5. Enable Geolocation in WebView + show native permission dialog
+        // 5. Eagerly fetch the current FCM token and cache it in SharedPreferences.
+        // This guarantees the token exists even before onNewToken() fires (e.g. on
+        // reinstall). The JS push-notifications.ts reads it via
+        // NeedYouBridge.getFcmToken().
+        FirebaseMessaging.getInstance().getToken().addOnSuccessListener(token -> {
+            if (token != null && !token.isEmpty()) {
+                Log.d("NeedYouFCM", "FCM token fetched natively: " + token);
+                getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
+                        .edit().putString("fcmToken", token).apply();
+            }
+        });
+
         webView.getSettings().setGeolocationEnabled(true);
         getBridge().getWebView().setWebChromeClient(new WebChromeClient() {
             @Override
@@ -366,16 +402,35 @@ public class MainActivity extends BridgeActivity {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M)
             return;
         PowerManager pm = (PowerManager) getSystemService(POWER_SERVICE);
+        // If already exempted, nothing to do
         if (pm == null || pm.isIgnoringBatteryOptimizations(getPackageName()))
             return;
 
+        // Detect common OEM ROMs that need extra manual steps
+        String manufacturer = Build.MANUFACTURER.toLowerCase();
+        boolean isAggressiveOEM = manufacturer.contains("xiaomi")
+                || manufacturer.contains("redmi")
+                || manufacturer.contains("oppo")
+                || manufacturer.contains("realme")
+                || manufacturer.contains("vivo")
+                || manufacturer.contains("oneplus");
+
+        String message = "NeedYou needs to run in the background to deliver job alerts when the app is closed.\n\n"
+                + "Tap \"Allow\" to disable battery optimisation for NeedYou.";
+
+        if (isAggressiveOEM) {
+            message += "\n\n\u26a0\ufe0f " + Build.MANUFACTURER
+                    + " devices also require:\n"
+                    + "Settings \u2192 Apps \u2192 NeedYou \u2192 Battery \u2192 No restrictions";
+        }
+
+        final String finalMessage = message;
         new AlertDialog.Builder(this)
-                .setTitle("Enable Background Notifications")
-                .setMessage(
-                        "To receive job alerts even when the app is closed, please allow NeedYou to run without battery restrictions.")
+                .setTitle("\uD83D\uDD14 Enable Background Notifications")
+                .setMessage(finalMessage)
                 .setPositiveButton("Allow", (dialog, which) -> requestBatteryOptimizationExemption())
                 .setNegativeButton("Not Now", null)
-                .setCancelable(true)
+                .setCancelable(false) // force a deliberate choice
                 .show();
     }
 
