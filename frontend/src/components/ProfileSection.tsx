@@ -123,6 +123,14 @@ export default function ProfileSection({ user, isDark }: Props) {
         load()
     }, [user.uid, user.displayName])
 
+    // ── Real-time wallet balance listener ────────────────────────────────────
+    useEffect(() => {
+        const unsub = onSnapshot(doc(db, 'users', user.uid), snap => {
+            if (snap.exists()) setWalletBalance(snap.data().walletBalance || 0)
+        })
+        return () => unsub()
+    }, [user.uid])
+
     // ── Fetch reviews ────────────────────────────────────────────────────────
     useEffect(() => {
         const load = async () => {
