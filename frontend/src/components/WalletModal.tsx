@@ -4,7 +4,7 @@ import { useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
     X, Wallet, Plus, Pencil, Trash2, CreditCard,
-    Smartphone, ChevronDown, Check, Loader2, Building2, AlertCircle
+    Smartphone, ChevronDown, Check, Loader2, Building2, AlertCircle, Eye, EyeOff
 } from 'lucide-react'
 
 // ── Indian Banks ──────────────────────────────────────────────────────────────
@@ -173,89 +173,13 @@ export default function WalletModal({ isDark, onClose, balance = 0 }: WalletModa
     const [confirmAccount, setConfirmAccount] = useState('')
     const [ifsc, setIfsc] = useState('')
     const [savingBank, setSavingBank] = useState(false)
+    const [showAccountNumber, setShowAccountNumber] = useState(false)
 
     // UPI form
     const [upiId, setUpiId] = useState('')
-    const [upiName, setUpiName] = useState('')
     const [savingUpi, setSavingUpi] = useState(false)
-    // UPI verification
-    const [upiVerifying, setUpiVerifying] = useState(false)
-    const [upiVerified, setUpiVerified] = useState<boolean | null>(null)
-    const [upiOwnerName, setUpiOwnerName] = useState('')
-    const [upiVerifyError, setUpiVerifyError] = useState('')
 
     const [formError, setFormError] = useState('')
-
-    // ── Razorpay ₹1 UPI verification ──────────────────────────────────────────
-    const handleVerifyUpi = async () => {
-        setUpiVerified(null)
-        setUpiOwnerName('')
-        setUpiVerifyError('')
-        setUpiVerifying(true)
-
-        try {
-            // Create ₹1 order
-            const orderRes = await fetch('/api/create-order', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-            })
-            const orderData = await orderRes.json()
-            if (!orderData.orderId) throw new Error(orderData.error || 'Failed to create order')
-
-            // Load Razorpay script
-            await new Promise<void>((resolve, reject) => {
-                if ((window as any).Razorpay) return resolve()
-                const script = document.createElement('script')
-                script.src = 'https://checkout.razorpay.com/v1/checkout.js'
-                script.onload = () => resolve()
-                script.onerror = () => reject(new Error('Failed to load Razorpay'))
-                document.body.appendChild(script)
-            })
-
-            setUpiVerifying(false)
-
-            // Open checkout — handler MUST be synchronous
-            const paymentId = await new Promise<string>((resolve, reject) => {
-                const rzp = new (window as any).Razorpay({
-                    key: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID,
-                    amount: orderData.amount,
-                    currency: orderData.currency,
-                    order_id: orderData.orderId,
-                    name: 'NeedYou',
-                    description: 'Pay ₹1 to verify your UPI ID',
-                    method: { upi: true, card: false, netbanking: false, wallet: false, emi: false },
-                    prefill: { vpa: upiId },
-                    theme: { color: '#6d28d9' },
-                    handler: (response: any) => resolve(response.razorpay_payment_id),
-                    modal: { ondismiss: () => reject(new Error('dismissed')) },
-                })
-                rzp.open()
-            })
-
-            // Fetch payment details to get owner name + VPA
-            setUpiVerifying(true)
-            try {
-                const payRes = await fetch('/api/fetch-payment', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ paymentId }),
-                })
-                const payData = await payRes.json()
-                if (payData.vpa) setUpiId(payData.vpa)
-                if (payData.customerName) setUpiOwnerName(payData.customerName)
-                else if (payData.email) setUpiOwnerName(payData.email)
-            } catch { /* non-critical */ }
-            setUpiVerified(true)
-            setUpiVerifying(false)
-
-        } catch (err: any) {
-            if (err?.message !== 'dismissed') {
-                setUpiVerifyError(err?.message || 'Verification failed')
-                setUpiVerified(false)
-            }
-            setUpiVerifying(false)
-        }
-    }
 
 
     const bg = isDark ? '#111114' : '#fff'
@@ -306,8 +230,6 @@ export default function WalletModal({ isDark, onClose, balance = 0 }: WalletModa
         setFormError('')
         if (!upiId.trim()) return setFormError('UPI ID is required.')
         if (!/^[a-zA-Z0-9.\-_]+@[a-zA-Z]+$/.test(upiId.trim())) return setFormError('Enter a valid UPI ID (e.g. name@upi).')
-        if (upiVerified === false) return setFormError('Please enter a valid, verified UPI ID.')
-        if (!upiVerified) return setFormError('Wait for UPI verification to complete.')
 
         setSavingUpi(true)
         await new Promise(r => setTimeout(r, 600))
@@ -316,7 +238,7 @@ export default function WalletModal({ isDark, onClose, balance = 0 }: WalletModa
             id: Date.now().toString(),
             type: 'upi',
             upiId: upiId.trim(),
-            name: upiOwnerName || upiId.trim(),
+            name: upiId.trim(),
         }
         setMethods(prev => {
             if (editingMethod) return prev.map(m => m.id === editingMethod.id ? newMethod : m)
@@ -329,7 +251,7 @@ export default function WalletModal({ isDark, onClose, balance = 0 }: WalletModa
     }
 
     const resetBankForm = () => { setBankId(''); setHolderName(''); setAccountNumber(''); setConfirmAccount(''); setIfsc(''); setEditingMethod(null); setFormError('') }
-    const resetUpiForm = () => { setUpiId(''); setUpiName(''); setEditingMethod(null); setFormError(''); setUpiVerified(null); setUpiOwnerName(''); setUpiVerifyError(''); setUpiVerifying(false) }
+    const resetUpiForm = () => { setUpiId(''); setEditingMethod(null); setFormError('') }
 
     const handleEditMethod = (m: PaymentMethod) => {
         setEditingMethod(m)
@@ -338,7 +260,7 @@ export default function WalletModal({ isDark, onClose, balance = 0 }: WalletModa
             setAccountNumber(m.accountNumber); setConfirmAccount(m.accountNumber); setIfsc(m.ifsc)
             setTab('addBank')
         } else {
-            setUpiId(m.upiId); setUpiName(m.name)
+            setUpiId(m.upiId)
             setTab('addUpi')
         }
     }
@@ -538,11 +460,20 @@ export default function WalletModal({ isDark, onClose, balance = 0 }: WalletModa
 
                                 <div>
                                     <label className={labelCls}>Account Number</label>
-                                    <input
-                                        type="password" value={accountNumber}
-                                        onChange={e => setAccountNumber(e.target.value.replace(/\D/g, ''))}
-                                        placeholder="Enter account number" className={inputCls}
-                                    />
+                                    <div className="relative">
+                                        <input
+                                            type={showAccountNumber ? 'text' : 'password'} value={accountNumber}
+                                            onChange={e => setAccountNumber(e.target.value.replace(/\D/g, ''))}
+                                            placeholder="Enter account number" className={inputCls}
+                                            style={{ paddingRight: '2.75rem' }}
+                                        />
+                                        <button
+                                            type="button" onClick={() => setShowAccountNumber(p => !p)}
+                                            className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                                        >
+                                            {showAccountNumber ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                                        </button>
+                                    </div>
                                 </div>
 
                                 <div>
@@ -633,51 +564,22 @@ export default function WalletModal({ isDark, onClose, balance = 0 }: WalletModa
                                     <label className={labelCls}>UPI ID</label>
                                     <input
                                         type="text" value={upiId}
-                                        onChange={e => { setUpiId(e.target.value.toLowerCase()); setUpiVerified(null) }}
+                                        onChange={e => setUpiId(e.target.value.toLowerCase())}
                                         placeholder="yourname@upi" className={inputCls}
                                     />
-                                    {/* Live verification status */}
-                                    {upiId && /^[a-zA-Z0-9.\-_]+@[a-zA-Z]+$/.test(upiId) && (
-                                        <p className={`text-xs mt-1.5 font-medium flex items-center gap-1.5 ${upiVerifying ? 'text-blue-500' :
-                                            upiVerified === true ? 'text-green-600 dark:text-green-400' :
-                                                upiVerified === false ? 'text-red-500' : ''
-                                            }`}>
-                                            {upiVerifying && <Loader2 className="w-3 h-3 animate-spin" />}
-                                            {upiVerifying && 'Verifying UPI ID…'}
-                                            {!upiVerifying && upiVerified === true && (
-                                                <><span className="text-green-500">✓</span> Verified{upiOwnerName ? ` · ${upiOwnerName}` : ''}</>
-                                            )}
-                                            {!upiVerifying && upiVerified === false && (
-                                                <><span>✗</span> {upiVerifyError || 'UPI ID not found'}</>
-                                            )}
-                                        </p>
-                                    )}
                                 </div>
 
                                 <div className="flex gap-3 pt-1">
                                     <button onClick={goBack} className="flex-1 py-3 rounded-xl border font-semibold text-sm" style={{ borderColor: border, color: textSec }}>
                                         Cancel
                                     </button>
-                                    {/* Show Verify button until verified */}
-                                    {upiVerified !== true && (
-                                        <button
-                                            onClick={handleVerifyUpi}
-                                            disabled={upiVerifying || !upiId}
-                                            className="flex-1 py-3 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-bold text-sm flex items-center justify-center gap-2 disabled:opacity-50"
-                                        >
-                                            {upiVerifying ? <><Loader2 className="w-4 h-4 animate-spin" /> Processing…</> : <><Smartphone className="w-4 h-4" /> Verify UPI ID (₹1)</>}
-                                        </button>
-                                    )}
-                                    {/* Show Save only after successful verification */}
-                                    {upiVerified === true && (
-                                        <button
-                                            onClick={handleSaveUpi}
-                                            disabled={savingUpi}
-                                            className="flex-1 py-3 rounded-xl bg-gradient-to-r from-purple-600 to-pink-600 text-white font-bold text-sm flex items-center justify-center gap-2"
-                                        >
-                                            {savingUpi ? <><Loader2 className="w-4 h-4 animate-spin" /> Saving…</> : <><Smartphone className="w-4 h-4" /> {editingMethod ? 'Update' : 'Save'} UPI ID</>}
-                                        </button>
-                                    )}
+                                    <button
+                                        onClick={handleSaveUpi}
+                                        disabled={savingUpi}
+                                        className="flex-1 py-3 rounded-xl bg-gradient-to-r from-purple-600 to-pink-600 text-white font-bold text-sm flex items-center justify-center gap-2"
+                                    >
+                                        {savingUpi ? <><Loader2 className="w-4 h-4 animate-spin" /> Saving…</> : <><Smartphone className="w-4 h-4" /> {editingMethod ? 'Update' : 'Save'} UPI ID</>}
+                                    </button>
                                 </div>
                             </motion.div>
                         )}
