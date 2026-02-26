@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import {
     Camera, Star, GraduationCap, Briefcase, Building2,
     Calendar, LogOut, Save, Loader2, Check, AlertCircle,
-    User, Mail, MapPin, Edit3, X, Award
+    User, Mail, MapPin, Edit3, X, Award, Wallet
 } from 'lucide-react'
 import { auth, db } from '@/lib/firebase'
 import { signOut } from 'firebase/auth'
@@ -16,6 +16,8 @@ import {
 } from '@/lib/auth'
 import { uploadToCloudinary, getCompressedImageUrl } from '@/lib/cloudinary'
 import ImageViewerModal from '@/components/ImageViewerModal'
+import WalletModal from '@/components/WalletModal'
+import { AnimatePresence } from 'framer-motion'
 import { Maximize2 } from 'lucide-react'
 
 interface Props {
@@ -80,6 +82,7 @@ export default function ProfileSection({ user, isDark }: Props) {
     const [signingOut, setSigningOut] = useState(false)
     const [error, setError] = useState('')
     const [showPhotoViewer, setShowPhotoViewer] = useState(false)
+    const [showWallet, setShowWallet] = useState(false)
 
     const needsCompany = ['Employed', 'Self-Employed'].includes(employmentStatus)
 
@@ -229,7 +232,24 @@ export default function ProfileSection({ user, isDark }: Props) {
             )}
 
             {/* ── Avatar + Header ── */}
-            <div className="rounded-2xl border p-6 flex flex-col items-center gap-3 text-center" style={card}>
+            <div className="rounded-2xl border p-6 flex flex-col items-center gap-3 text-center relative" style={card}>
+                {/* Wallet Button — top right */}
+                <button
+                    onClick={() => setShowWallet(true)}
+                    className="absolute top-4 right-4 flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-sm font-bold transition-all hover:scale-105 active:scale-95"
+                    style={{
+                        backgroundColor: isDark ? '#1a2a1a' : '#f0fdf4',
+                        borderColor: isDark ? '#166534' : '#86efac',
+                        color: isDark ? '#4ade80' : '#16a34a',
+                        boxShadow: isDark
+                            ? '0 2px 10px rgba(74, 222, 128, 0.2), 0 1px 3px rgba(0,0,0,0.4)'
+                            : '0 2px 10px rgba(22, 163, 74, 0.15), 0 1px 3px rgba(0,0,0,0.08)',
+                    }}
+                    title="Open Wallet"
+                >
+                    <span className="text-base leading-none">₹</span>
+                    <span>0.00</span>
+                </button>
                 {/* Avatar */}
                 <div className="relative">
                     <div
@@ -495,6 +515,17 @@ export default function ProfileSection({ user, isDark }: Props) {
                     onClose={() => setShowPhotoViewer(false)}
                 />
             )}
+
+            {/* Wallet Modal */}
+            <AnimatePresence>
+                {showWallet && (
+                    <WalletModal
+                        isDark={isDark}
+                        onClose={() => setShowWallet(false)}
+                        balance={0}
+                    />
+                )}
+            </AnimatePresence>
         </div>
     )
 }
