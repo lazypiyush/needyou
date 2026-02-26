@@ -1441,7 +1441,7 @@ export default function DashboardPage() {
                                 </div>
 
                                 {/* Add New Address Button */}
-                                < button
+                                <button
                                     onClick={() => {
                                         setShowLocationModal(false)
                                         router.push('/onboarding/location')

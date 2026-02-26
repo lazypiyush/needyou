@@ -114,14 +114,18 @@ function LocationContent() {
         }
     }, [user, authLoading, router])
 
-    // Check if education/employment is completed
+    // Check if education/employment is completed.
+    // Skip entirely if the user has already completed onboarding
+    // (they're adding a new address from the dashboard).
     useEffect(() => {
         const checkStatus = async () => {
             if (user) {
                 const status = await checkOnboardingStatus(user.uid)
-                // Only redirect if education/employment is not completed
-                // Allow users with completed onboarding to edit location
-                if (!status?.education || !status?.employment) {
+                // If onboardingComplete flag is set, let the user through unconditionally.
+                // Also skip if status fetch failed (null) to avoid false redirects.
+                if (status === null || status.onboardingComplete) return
+                // For users still in the onboarding flow, require education + employment first.
+                if (!status.education || !status.employment) {
                     router.push('/onboarding/education')
                 }
             }

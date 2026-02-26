@@ -178,15 +178,50 @@ public class MainActivity extends BridgeActivity {
         }
     }
 
+    /**
+     * Returns true for OEM ROMs (Vivo, Xiaomi, Redmi, Oppo, Realme, Samsung)
+     * that intercept or drop touch events when the navigation bar is hidden
+     * by the app — causing back/home/gesture navigation to stop working.
+     * On stock-like devices (Google, Motorola, Nokia, Sony) hiding the nav bar
+     * works correctly, so we allow full immersive there.
+     */
+    private boolean isAggressiveOemRom() {
+        String m = Build.MANUFACTURER.toLowerCase();
+        return m.contains("vivo")
+                || m.contains("xiaomi")
+                || m.contains("redmi")
+                || m.contains("oppo")
+                || m.contains("realme")
+                || m.contains("samsung")
+                || m.contains("tecno")
+                || m.contains("infinix")
+                || m.contains("itel");
+    }
+
     private void hideSystemUI() {
         Window window = getWindow();
+        // Allow content to draw behind system bars (edge-to-edge).
         WindowCompat.setDecorFitsSystemWindows(window, false);
+
         WindowInsetsControllerCompat controller = WindowCompat.getInsetsController(window, window.getDecorView());
-        if (controller != null) {
-            controller.hide(WindowInsetsCompat.Type.navigationBars());
-            controller.setSystemBarsBehavior(
-                    WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE);
+        if (controller == null)
+            return;
+
+        if (isAggressiveOemRom()) {
+            // On aggressive OEM ROMs (Vivo, Xiaomi, Oppo, Realme, Samsung, etc.)
+            // hiding the navigation bar causes the back/home buttons and gesture
+            // navigation to stop responding. Only hide the status bar here so
+            // that navigation stays fully functional on those devices.
+            controller.hide(WindowInsetsCompat.Type.statusBars());
+        } else {
+            // On stock-like devices (Motorola, Google Pixel, Nokia, Sony, OnePlus)
+            // full immersive mode works correctly — hide both bars.
+            controller.hide(WindowInsetsCompat.Type.systemBars());
         }
+
+        // Swipe from edge to reveal bars transiently on all devices.
+        controller.setSystemBarsBehavior(
+                WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE);
     }
 
     @Override
