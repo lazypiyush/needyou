@@ -7,7 +7,7 @@ import {
     Smartphone, ChevronDown, Check, Loader2, Building2, AlertCircle, Eye, EyeOff, ArrowDownToLine
 } from 'lucide-react'
 import { db } from '@/lib/firebase'
-import { collection, addDoc, serverTimestamp } from 'firebase/firestore'
+import { collection, addDoc, serverTimestamp, doc, updateDoc, increment } from 'firebase/firestore'
 
 // ── Indian Banks ──────────────────────────────────────────────────────────────
 const INDIAN_BANKS = [
@@ -232,6 +232,8 @@ export default function WalletModal({ isDark, onClose, balance = 0, uid = '', us
                 status: 'pending',
                 createdAt: serverTimestamp(),
             })
+            // Deduct from user's wallet immediately
+            if (uid) await updateDoc(doc(db, 'users', uid), { walletBalance: increment(-amt) })
             setWithdrawDone(true)
             setWithdrawAmount('')
             setWithdrawMethod(null)
