@@ -41,6 +41,8 @@ export default function ViewMyApplicationModal({
     const [jobPosterPhone, setJobPosterPhone] = useState<string | undefined>(undefined)
     const [jobPosterAvatar, setJobPosterAvatar] = useState<string | null>(null)
     const [viewingProfileId, setViewingProfileId] = useState<string | null>(null)
+    const [selfAvatar, setSelfAvatar] = useState<string | null>(null)
+    const [selfName, setSelfName] = useState<string>('')
 
     // Back button closes modal
     useModalHistory(true, onClose)
@@ -84,7 +86,7 @@ export default function ViewMyApplicationModal({
         fetchApplication()
     }, [jobId, user?.uid])
 
-    // Fetch job poster's phone number
+    // Fetch job poster's phone number + avatar
     useEffect(() => {
         const fetchJobPosterPhone = async () => {
             if (!jobPosterId) return
@@ -94,7 +96,6 @@ export default function ViewMyApplicationModal({
                 if (userDoc.exists()) {
                     const userData = userDoc.data()
                     setJobPosterPhone(userData?.phoneNumber)
-                    // Fetch compressed avatar
                     if (userData?.photoURL) {
                         setJobPosterAvatar(getCompressedImageUrl(userData.photoURL))
                     }
@@ -103,9 +104,28 @@ export default function ViewMyApplicationModal({
                 console.error('Error fetching job poster details:', error)
             }
         }
-
         fetchJobPosterPhone()
     }, [jobPosterId])
+
+    // Fetch current user's own avatar + name
+    useEffect(() => {
+        const fetchSelf = async () => {
+            if (!user?.uid || !db) return
+            try {
+                const userDoc = await getDoc(doc(db, 'users', user.uid))
+                if (userDoc.exists()) {
+                    const userData = userDoc.data()
+                    setSelfName(userData?.name || user.displayName || '')
+                    if (userData?.photoURL) {
+                        setSelfAvatar(getCompressedImageUrl(userData.photoURL))
+                    }
+                }
+            } catch (error) {
+                console.error('Error fetching self profile:', error)
+            }
+        }
+        fetchSelf()
+    }, [user?.uid])
 
     const formatTimeAgo = (timestamp: number) => {
         const now = Date.now()
@@ -538,6 +558,34 @@ export default function ViewMyApplicationModal({
                                 <h3 className="text-sm font-semibold mb-3" style={{ color: isDark ? '#ffffff' : '#111827' }}>
                                     Your Contact Information
                                 </h3>
+                                {/* Self Avatar + Name */}
+                                <button
+                                    type="button"
+                                    onClick={() => user?.uid && setViewingProfileId(user.uid)}
+                                    className="flex items-center gap-3 mb-3 hover:opacity-80 transition-opacity"
+                                >
+                                    {selfAvatar ? (
+                                        <img
+                                            src={selfAvatar}
+                                            alt={selfName}
+                                            className="w-10 h-10 rounded-full object-cover flex-shrink-0"
+                                            style={{ border: `2px solid ${isDark ? '#3a3a3a' : '#e5e7eb'}` }}
+                                        />
+                                    ) : (
+                                        <div
+                                            className="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 text-sm font-bold"
+                                            style={{ backgroundColor: isDark ? '#3a3a3a' : '#e5e7eb', color: isDark ? '#ffffff' : '#374151' }}
+                                        >
+                                            {(selfName || application.userEmail || '?')[0]?.toUpperCase()}
+                                        </div>
+                                    )}
+                                    <div className="text-left">
+                                        <p className="font-semibold text-sm" style={{ color: isDark ? '#ffffff' : '#111827' }}>
+                                            {selfName || 'You'}
+                                        </p>
+                                        <p className="text-xs" style={{ color: isDark ? '#6b7280' : '#9ca3af' }}>Tap to view profile</p>
+                                    </div>
+                                </button>
                                 <div className="space-y-2">
                                     {application.userEmail && (
                                         <div className="flex items-center gap-2">

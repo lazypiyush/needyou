@@ -1,12 +1,15 @@
 'use client'
 
 import { useState, useEffect, useRef, useCallback } from 'react'
+import { useRouter } from 'next/navigation'
 import { useAuth } from '@/context/AuthContext'
 import { createJob, CreateJobData } from '@/lib/auth'
 import { uploadToCloudinary, getVideoThumbnailUrl } from '@/lib/cloudinary'
-import { Loader2, Upload, X, Video, MapPin, ChevronLeft, ChevronRight } from 'lucide-react'
+import { Loader2, Upload, X, Video, MapPin, ChevronLeft, ChevronRight, Plus, Edit2 } from 'lucide-react'
 import { useTheme } from 'next-themes'
 import Image from 'next/image'
+
+const DRAFT_KEY = 'needyou_job_draft'
 
 interface CreateJobInlineProps {
     onSuccess: () => void
@@ -14,6 +17,7 @@ interface CreateJobInlineProps {
 
 export default function CreateJobInline({ onSuccess }: CreateJobInlineProps) {
     const { user } = useAuth()
+    const router = useRouter()
     const { theme, resolvedTheme } = useTheme()
     const isDark = resolvedTheme === 'dark'
 
@@ -36,6 +40,27 @@ export default function CreateJobInline({ onSuccess }: CreateJobInlineProps) {
     const [dragOverIndex, setDragOverIndex] = useState<number | null>(null)
 
     // ── Effects ───────────────────────────────────────────────────────────────
+
+    // Restore draft on mount (caption, budget, address selection)
+    useEffect(() => {
+        try {
+            const saved = localStorage.getItem(DRAFT_KEY)
+            if (saved) {
+                const draft = JSON.parse(saved)
+                if (draft.caption) setCaption(draft.caption)
+                if (draft.budget) setBudget(draft.budget)
+                if (typeof draft.budgetNotSet === 'boolean') setBudgetNotSet(draft.budgetNotSet)
+            }
+        } catch { }
+    }, [])
+
+    // Auto-save draft whenever form fields change
+    useEffect(() => {
+        try {
+            localStorage.setItem(DRAFT_KEY, JSON.stringify({ caption, budget, budgetNotSet, selectedAddressId }))
+        } catch { }
+    }, [caption, budget, budgetNotSet, selectedAddressId])
+
     useEffect(() => {
         if (!user) return
         const fetchAddresses = async () => {
@@ -43,8 +68,15 @@ export default function CreateJobInline({ onSuccess }: CreateJobInlineProps) {
                 const { getUserAddresses } = await import('@/lib/auth')
                 const addresses = await getUserAddresses(user.uid)
                 setSavedAddresses(addresses)
+                // Prefer draft address, then default, then first
+                let draftAddressId: string | null = null
+                try {
+                    const saved = localStorage.getItem(DRAFT_KEY)
+                    if (saved) draftAddressId = JSON.parse(saved).selectedAddressId || null
+                } catch { }
                 const defaultAddr = addresses.find((addr: any) => addr.isDefault)
-                const first = defaultAddr || addresses[0]
+                const draftAddr = draftAddressId ? addresses.find((addr: any) => addr.id === draftAddressId) : null
+                const first = draftAddr || defaultAddr || addresses[0]
                 if (first) {
                     setSelectedAddressId(first.id)
                     setSelectedAddress(first)
@@ -56,6 +88,14 @@ export default function CreateJobInline({ onSuccess }: CreateJobInlineProps) {
         }
         fetchAddresses()
     }, [user])
+
+    // Helper: save draft and navigate (addresses edit/add)
+    const navigateWithDraft = (url: string) => {
+        try {
+            localStorage.setItem(DRAFT_KEY, JSON.stringify({ caption, budget, budgetNotSet, selectedAddressId }))
+        } catch { }
+        router.push(url)
+    }
 
     // ── Handlers ─────────────────────────────────────────────────────────────
     const handleAddressChange = (addressId: string) => {
@@ -163,6 +203,7 @@ export default function CreateJobInline({ onSuccess }: CreateJobInlineProps) {
             }
 
             await createJob(user!.uid, jobData)
+            try { localStorage.removeItem(DRAFT_KEY) } catch { }
             onSuccess()
 
         } catch (err: any) {
@@ -279,7 +320,7 @@ export default function CreateJobInline({ onSuccess }: CreateJobInlineProps) {
                                         }}
                                         onDragEnd={() => { setDragIndex(null); setDragOverIndex(null) }}
                                         className={`relative group rounded-xl overflow-hidden outline-none transition-all cursor-grab active:cursor-grabbing ${focusedMediaIndex === index ? 'ring-2 ring-blue-500 ring-offset-1' :
-                                                dragOverIndex === index ? 'ring-2 ring-blue-400 ring-dashed' : ''
+                                            dragOverIndex === index ? 'ring-2 ring-blue-400 ring-dashed' : ''
                                             }`}
                                         style={{ opacity: dragIndex === index ? 0.5 : 1 }}
                                     >
@@ -329,50 +370,91 @@ export default function CreateJobInline({ onSuccess }: CreateJobInlineProps) {
                     </div>
 
                     {/* Location Selector */}
-                    {savedAddresses.length > 0 && (
-                        <div className="mb-6">
-                            <label className="block text-sm font-medium mb-3" style={{ color: isDark ? '#ffffff' : '#111827' }}>
-                                Job Location <span className="text-red-500">*</span>
-                            </label>
-                            <div className="space-y-3">
-                                {savedAddresses.map(addr => (
-                                    <div key={addr.id} onClick={() => handleAddressChange(addr.id)}
-                                        className={`p-4 rounded-xl border-2 cursor-pointer transition-all ${selectedAddressId === addr.id
-                                            ? 'border-blue-600'
-                                            : 'border-gray-300 dark:border-gray-600 hover:border-blue-400'}`}
-                                        style={{
-                                            backgroundColor: selectedAddressId === addr.id
-                                                ? (isDark ? 'rgba(37,99,235,0.1)' : 'rgba(219,234,254,1)')
-                                                : (isDark ? '#2a2a2a' : '#ffffff')
-                                        }}>
-                                        <div className="flex items-start gap-3">
-                                            <MapPin className={`w-5 h-5 mt-0.5 flex-shrink-0 ${selectedAddressId === addr.id ? 'text-blue-600' : 'text-gray-400'}`} />
-                                            <div className="flex-1 min-w-0">
-                                                <div className="flex items-center gap-2 mb-1">
-                                                    <span className="font-semibold text-base capitalize" style={{ color: isDark ? '#ffffff' : '#111827' }}>
-                                                        {addr.label || addr.type}
-                                                    </span>
-                                                    {addr.isDefault && (
-                                                        <span className="px-2 py-0.5 bg-blue-600 text-white text-xs font-bold rounded-full">DEFAULT</span>
-                                                    )}
-                                                </div>
-                                                <p className="text-sm" style={{ color: isDark ? '#e5e7eb' : '#374151' }}>
-                                                    {addr.houseNumber}, {addr.detailedAddress}
-                                                </p>
-                                            </div>
-                                            {selectedAddressId === addr.id && (
-                                                <div className="w-6 h-6 bg-blue-600 rounded-full flex items-center justify-center flex-shrink-0">
-                                                    <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                                                    </svg>
-                                                </div>
-                                            )}
-                                        </div>
-                                    </div>
-                                ))}
+                    <div className="mb-6">
+                        <label className="block text-sm font-medium mb-3" style={{ color: isDark ? '#ffffff' : '#111827' }}>
+                            Job Location <span className="text-red-500">*</span>
+                        </label>
+
+                        {savedAddresses.length === 0 ? (
+                            <div className="p-4 rounded-xl border-2 border-dashed text-center"
+                                style={{ borderColor: isDark ? '#374151' : '#d1d5db', backgroundColor: isDark ? '#1a1a1a' : '#f9fafb' }}>
+                                <MapPin className="w-8 h-8 mx-auto mb-2 text-gray-400" />
+                                <p className="text-sm mb-3" style={{ color: isDark ? '#9ca3af' : '#6b7280' }}>No saved addresses yet</p>
+                                <button type="button"
+                                    onClick={() => navigateWithDraft('/onboarding/location')}
+                                    className="px-4 py-2 bg-gradient-to-r from-blue-600 to-indigo-600 text-white text-sm font-bold rounded-xl flex items-center gap-2 mx-auto">
+                                    <Plus className="w-4 h-4" /> Add Address
+                                </button>
                             </div>
-                        </div>
-                    )}
+                        ) : (
+                            <>
+                                <div className="space-y-3">
+                                    {savedAddresses.map(addr => (
+                                        <div key={addr.id} onClick={() => handleAddressChange(addr.id)}
+                                            className={`p-4 rounded-xl border-2 cursor-pointer transition-all ${selectedAddressId === addr.id
+                                                ? 'border-blue-600'
+                                                : 'border-gray-300 dark:border-gray-600 hover:border-blue-400'}`}
+                                            style={{
+                                                backgroundColor: selectedAddressId === addr.id
+                                                    ? (isDark ? 'rgba(37,99,235,0.1)' : 'rgba(219,234,254,1)')
+                                                    : (isDark ? '#2a2a2a' : '#ffffff')
+                                            }}>
+                                            <div className="flex items-start gap-3">
+                                                <MapPin className={`w-5 h-5 mt-0.5 flex-shrink-0 ${selectedAddressId === addr.id ? 'text-blue-600' : 'text-gray-400'}`} />
+                                                <div className="flex-1 min-w-0">
+                                                    <div className="flex items-center gap-2 mb-1">
+                                                        <span className="font-semibold text-base capitalize" style={{ color: isDark ? '#ffffff' : '#111827' }}>
+                                                            {addr.label || addr.type}
+                                                        </span>
+                                                        {addr.isDefault && (
+                                                            <span className="px-2 py-0.5 bg-blue-600 text-white text-xs font-bold rounded-full">DEFAULT</span>
+                                                        )}
+                                                    </div>
+                                                    <p className="text-sm" style={{ color: isDark ? '#e5e7eb' : '#374151' }}>
+                                                        {addr.houseNumber}, {addr.detailedAddress}
+                                                    </p>
+                                                </div>
+                                                {selectedAddressId === addr.id && (
+                                                    <div className="w-6 h-6 bg-blue-600 rounded-full flex items-center justify-center flex-shrink-0">
+                                                        <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                                                        </svg>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+
+                                {/* Edit selected address / Add new */}
+                                <div className="flex gap-2 mt-3">
+                                    <button type="button"
+                                        onClick={() => {
+                                            const addr = savedAddresses.find((a: any) => a.id === selectedAddressId)
+                                            if (!addr) return
+                                            const params = new URLSearchParams({
+                                                edit: addr.id, type: addr.type, label: addr.label || '',
+                                                houseNumber: addr.houseNumber, detailedAddress: addr.detailedAddress,
+                                                lat: addr.location.latitude.toString(), lng: addr.location.longitude.toString(),
+                                                city: addr.location.city, state: addr.location.state,
+                                                country: addr.location.country, area: addr.location.area || '',
+                                                isDefault: addr.isDefault.toString()
+                                            })
+                                            navigateWithDraft(`/onboarding/location?${params.toString()}`)
+                                        }}
+                                        className="flex-1 py-2 rounded-xl border-2 text-sm font-semibold flex items-center justify-center gap-1.5 transition-all hover:border-blue-500"
+                                        style={{ borderColor: isDark ? '#3a3a3a' : '#e5e7eb', color: isDark ? '#9ca3af' : '#6b7280', backgroundColor: isDark ? '#1a1a1a' : '#ffffff' }}>
+                                        <Edit2 className="w-3.5 h-3.5" /> Edit Address
+                                    </button>
+                                    <button type="button"
+                                        onClick={() => navigateWithDraft('/onboarding/location')}
+                                        className="flex-1 py-2 rounded-xl border-2 border-blue-500 text-blue-600 dark:text-blue-400 text-sm font-semibold flex items-center justify-center gap-1.5 transition-all hover:bg-blue-50 dark:hover:bg-blue-900/20">
+                                        <Plus className="w-3.5 h-3.5" /> Add New
+                                    </button>
+                                </div>
+                            </>
+                        )}
+                    </div>
 
                     {/* Upload Progress */}
                     {uploading && (

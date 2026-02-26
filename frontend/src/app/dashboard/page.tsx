@@ -1343,7 +1343,7 @@ export default function DashboardPage() {
                                 <button
                                     onClick={() => {
                                         setShowLocationModal(false)
-                                        router.push('/onboarding/location')
+                                        setTimeout(() => router.push('/onboarding/location'), 50)
                                     }}
                                     className="px-6 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-bold rounded-xl hover:shadow-lg transition-all"
                                 >
@@ -1412,7 +1412,7 @@ export default function DashboardPage() {
                                                                 isDefault: address.isDefault.toString()
                                                             })
                                                             setShowLocationModal(false)
-                                                            router.push(`/onboarding/location?${params.toString()}`)
+                                                            setTimeout(() => router.push(`/onboarding/location?${params.toString()}`), 50)
                                                         }}
                                                         className="p-2 rounded-lg hover:bg-blue-100 dark:hover:bg-blue-900/30 transition-colors"
                                                         title="Edit address"
@@ -1444,7 +1444,7 @@ export default function DashboardPage() {
                                 <button
                                     onClick={() => {
                                         setShowLocationModal(false)
-                                        router.push('/onboarding/location')
+                                        setTimeout(() => router.push('/onboarding/location'), 50)
                                     }}
                                     className="w-full py-3 bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-bold rounded-xl hover:shadow-lg transition-all flex items-center justify-center gap-2"
                                 >
