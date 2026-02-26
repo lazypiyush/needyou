@@ -515,12 +515,21 @@ export default function WalletModal({ isDark, onClose, balance = 0 }: WalletModa
                                             <Loader2 className="w-3 h-3 animate-spin" /> Looking up branch…
                                         </p>
                                     )}
-                                    {!ifscLoading && ifscBranch && (
-                                        <p className="text-xs mt-1.5 font-medium text-green-600 dark:text-green-400 flex items-center gap-1">
-                                            <Check className="w-3 h-3" />
-                                            {ifscBranch.BRANCH} — {ifscBranch.CITY}
-                                        </p>
-                                    )}
+                                    {!ifscLoading && ifscBranch && (() => {
+                                        const selBank = INDIAN_BANKS.find(b => b.id === bankId)
+                                        const bankMatches = !selBank || ifsc.toUpperCase().startsWith(selBank.ifscPrefix)
+                                        return bankMatches ? (
+                                            <p className="text-xs mt-1.5 font-medium text-green-600 dark:text-green-400 flex items-center gap-1">
+                                                <Check className="w-3 h-3" />
+                                                {ifscBranch.BRANCH} — {ifscBranch.CITY}
+                                            </p>
+                                        ) : (
+                                            <p className="text-xs mt-1.5 font-medium text-orange-500 flex items-center gap-1">
+                                                <AlertCircle className="w-3 h-3" />
+                                                Bank & IFSC code don't match
+                                            </p>
+                                        )
+                                    })()}
                                     {!ifscLoading && ifsc.length === 11 && !ifscBranch && (
                                         <p className="text-xs mt-1.5 text-red-500">Invalid IFSC code</p>
                                     )}
@@ -532,8 +541,8 @@ export default function WalletModal({ isDark, onClose, balance = 0 }: WalletModa
                                     </button>
                                     <button
                                         onClick={handleSaveBank}
-                                        disabled={savingBank}
-                                        className="flex-1 py-3 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-bold text-sm flex items-center justify-center gap-2"
+                                        disabled={savingBank || !ifscBranch || ifscLoading || (!!bankId && !ifsc.toUpperCase().startsWith(INDIAN_BANKS.find(b => b.id === bankId)?.ifscPrefix ?? ''))}
+                                        className="flex-1 py-3 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-bold text-sm flex items-center justify-center gap-2 disabled:opacity-40"
                                     >
                                         {savingBank ? <><Loader2 className="w-4 h-4 animate-spin" /> Saving…</> : <><CreditCard className="w-4 h-4" /> {editingMethod ? 'Update' : 'Save'} Account</>}
                                     </button>
