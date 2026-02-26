@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
     X, Wallet, Plus, Pencil, Trash2, CreditCard,
@@ -172,8 +172,23 @@ export default function WalletModal({ isDark, onClose, balance = 0 }: WalletModa
     const [accountNumber, setAccountNumber] = useState('')
     const [confirmAccount, setConfirmAccount] = useState('')
     const [ifsc, setIfsc] = useState('')
+    const [ifscBranch, setIfscBranch] = useState<{ BRANCH: string; BANK: string; CITY: string } | null>(null)
+    const [ifscLoading, setIfscLoading] = useState(false)
     const [savingBank, setSavingBank] = useState(false)
     const [showAccountNumber, setShowAccountNumber] = useState(false)
+
+    // Live IFSC branch lookup
+    useEffect(() => {
+        setIfscBranch(null)
+        const code = ifsc.trim().toUpperCase()
+        if (code.length !== 11) return
+        setIfscLoading(true)
+        fetch(`https://ifsc.razorpay.com/${code}`)
+            .then(r => r.ok ? r.json() : null)
+            .then(data => setIfscBranch(data ? { BRANCH: data.BRANCH, BANK: data.BANK, CITY: data.CITY } : null))
+            .catch(() => setIfscBranch(null))
+            .finally(() => setIfscLoading(false))
+    }, [ifsc])
 
     // UPI form
     const [upiId, setUpiId] = useState('')
@@ -201,7 +216,7 @@ export default function WalletModal({ isDark, onClose, balance = 0 }: WalletModa
         if (!/^[A-Z]{4}0[A-Z0-9]{6}$/.test(ifsc.toUpperCase())) return setFormError('Enter a valid IFSC code (e.g. SBIN0001234).')
         const selectedBank = INDIAN_BANKS.find(b => b.id === bankId)
         if (selectedBank && !ifsc.toUpperCase().startsWith(selectedBank.ifscPrefix)) {
-            return setFormError(`IFSC code for ${selectedBank.name} must start with "${selectedBank.ifscPrefix}" (e.g. ${selectedBank.ifscPrefix}0001234).`)
+            return setFormError(`IFSC code & Bank didn't match.`)
         }
 
         setSavingBank(true)
@@ -495,30 +510,20 @@ export default function WalletModal({ isDark, onClose, balance = 0 }: WalletModa
                                         onChange={e => setIfsc(e.target.value.toUpperCase())}
                                         maxLength={11} placeholder="e.g. SBIN0001234" className={inputCls}
                                     />
-                                    {/* Live prefix validation */}
-                                    {bankId && ifsc.length >= 4 && (() => {
-                                        const selBank = INDIAN_BANKS.find(b => b.id === bankId)
-                                        const prefixOk = selBank && ifsc.toUpperCase().startsWith(selBank.ifscPrefix)
-                                        return (
-                                            <p className={`text-xs mt-1 font-medium flex items-center gap-1 ${prefixOk ? 'text-green-600 dark:text-green-400' : 'text-red-500'
-                                                }`}>
-                                                {prefixOk ? '✓' : '✗'}
-                                                {prefixOk
-                                                    ? `Valid prefix for ${selBank!.name}`
-                                                    : `${selBank?.name} IFSC must start with "${selBank?.ifscPrefix}"`
-                                                }
-                                            </p>
-                                        )
-                                    })()}
-                                    {/* Hint when bank is selected but IFSC not yet typed */}
-                                    {bankId && ifsc.length < 4 && (() => {
-                                        const selBank = INDIAN_BANKS.find(b => b.id === bankId)
-                                        return selBank ? (
-                                            <p className="text-xs mt-1" style={{ color: isDark ? '#6b7280' : '#9ca3af' }}>
-                                                Starts with <span className="font-mono font-bold">{selBank.ifscPrefix}</span> for {selBank.name}
-                                            </p>
-                                        ) : null
-                                    })()}
+                                    {ifscLoading && (
+                                        <p className="text-xs mt-1.5 text-blue-500 flex items-center gap-1">
+                                            <Loader2 className="w-3 h-3 animate-spin" /> Looking up branch…
+                                        </p>
+                                    )}
+                                    {!ifscLoading && ifscBranch && (
+                                        <p className="text-xs mt-1.5 font-medium text-green-600 dark:text-green-400 flex items-center gap-1">
+                                            <Check className="w-3 h-3" />
+                                            {ifscBranch.BRANCH} — {ifscBranch.CITY}
+                                        </p>
+                                    )}
+                                    {!ifscLoading && ifsc.length === 11 && !ifscBranch && (
+                                        <p className="text-xs mt-1.5 text-red-500">Invalid IFSC code</p>
+                                    )}
                                 </div>
 
                                 <div className="flex gap-3 pt-1">
