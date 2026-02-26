@@ -163,8 +163,17 @@ export default function WalletModal({ isDark, onClose, balance = 0 }: WalletModa
     const [tab, setTab] = useState<'methods' | 'addBank' | 'addUpi'>('methods')
     const [editingMethod, setEditingMethod] = useState<PaymentMethod | null>(null)
 
-    // Saved methods (will be fetched from Firestore later)
-    const [methods, setMethods] = useState<PaymentMethod[]>([])
+    // Saved methods — persisted to localStorage (will move to Firestore later)
+    const [methods, setMethods] = useState<PaymentMethod[]>(() => {
+        try {
+            const stored = localStorage.getItem('wallet_methods')
+            return stored ? JSON.parse(stored) : []
+        } catch { return [] }
+    })
+
+    useEffect(() => {
+        try { localStorage.setItem('wallet_methods', JSON.stringify(methods)) } catch { }
+    }, [methods])
 
     // Bank form
     const [bankId, setBankId] = useState('')
