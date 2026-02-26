@@ -419,7 +419,7 @@ export default function WalletModal({ isDark, onClose, balance = 0, uid = '', us
 
                         {/* ── Methods List ── */}
                         {tab === 'methods' && (
-                            <motion.div key="methods" initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 20 }} className="p-5 space-y-4">
+                            <motion.div key="methods" initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 20 }} className="p-5 pb-12 md:pb-5 space-y-4">
 
                                 {/* Balance Card */}
                                 <div
@@ -550,7 +550,7 @@ export default function WalletModal({ isDark, onClose, balance = 0, uid = '', us
 
                         {/* ── Add Bank Account ── */}
                         {tab === 'addBank' && (
-                            <motion.div key="addBank" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="p-5 space-y-4">
+                            <motion.div key="addBank" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="p-5 pb-12 md:pb-5 space-y-4">
                                 {formError && (
                                     <div className="flex items-start gap-2 p-3 rounded-xl bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800">
                                         <AlertCircle className="w-4 h-4 text-red-500 flex-shrink-0 mt-0.5" />
@@ -650,7 +650,7 @@ export default function WalletModal({ isDark, onClose, balance = 0, uid = '', us
 
                         {/* ── Add UPI ── */}
                         {tab === 'addUpi' && (
-                            <motion.div key="addUpi" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="p-5 space-y-4">
+                            <motion.div key="addUpi" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="p-5 pb-12 md:pb-5 space-y-4">
                                 {formError && (
                                     <div className="flex items-start gap-2 p-3 rounded-xl bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800">
                                         <AlertCircle className="w-4 h-4 text-red-500 flex-shrink-0 mt-0.5" />
@@ -698,7 +698,7 @@ export default function WalletModal({ isDark, onClose, balance = 0, uid = '', us
 
                         {/* ── Withdraw ── */}
                         {tab === 'withdraw' && (
-                            <motion.div key="withdraw" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="p-5 space-y-5">
+                            <motion.div key="withdraw" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="p-5 pb-12 md:pb-5 space-y-5">
                                 {/* Balance */}
                                 <div className="rounded-2xl p-4 text-center" style={{ background: 'linear-gradient(135deg, #10b981, #059669)' }}>
                                     <p className="text-green-100 text-xs font-semibold uppercase tracking-wide mb-1">Available Balance</p>
@@ -780,7 +780,7 @@ export default function WalletModal({ isDark, onClose, balance = 0, uid = '', us
 
                         {/* ── History ── */}
                         {tab === 'history' && (
-                            <motion.div key="history" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="p-5 space-y-4">
+                            <motion.div key="history" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="p-5 pb-12 md:pb-5 space-y-4">
                                 {historyRequests.length === 0 ? (
                                     <div className="text-center py-10 space-y-2">
                                         <Clock className="w-10 h-10 mx-auto opacity-20" style={{ color: textSec }} />
