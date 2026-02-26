@@ -186,35 +186,87 @@ export default function WalletModal({ isDark, onClose, balance = 0 }: WalletModa
 
     const [formError, setFormError] = useState('')
 
-    // ── Manual UPI verification ────────────────────────────────────────────────
+    // ── Razorpay ₹1 UPI verification ──────────────────────────────────────────
     const handleVerifyUpi = async () => {
         setUpiVerified(null)
         setUpiOwnerName('')
         setUpiVerifyError('')
-        if (!upiId || !/^[a-zA-Z0-9.\-_]+@[a-zA-Z]+$/.test(upiId)) {
-            setUpiVerifyError('Enter a valid UPI ID first.')
-            setUpiVerified(false)
-            return
-        }
         setUpiVerifying(true)
+
         try {
-            const res = await fetch('/api/verify-upi', {
+            // Step 1: Create ₹1 order on server
+            const orderRes = await fetch('/api/create-order', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ vpa: upiId }),
             })
-            const data = await res.json()
-            if (data.success) {
-                setUpiVerified(true)
-                setUpiOwnerName(data.customerName || '')
-            } else {
+            const orderData = await orderRes.json()
+            if (!orderData.orderId) throw new Error(orderData.error || 'Failed to create order')
+
+            // Step 2: Load Razorpay checkout script
+            await new Promise<void>((resolve, reject) => {
+                if ((window as any).Razorpay) return resolve()
+                const script = document.createElement('script')
+                script.src = 'https://checkout.razorpay.com/v1/checkout.js'
+                script.onload = () => resolve()
+                script.onerror = () => reject(new Error('Failed to load Razorpay'))
+                document.body.appendChild(script)
+            })
+
+            setUpiVerifying(false)
+
+            // Step 3: Open Razorpay checkout
+            await new Promise<void>((resolve, reject) => {
+                const rzp = new (window as any).Razorpay({
+                    key: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID,
+                    amount: orderData.amount,
+                    currency: orderData.currency,
+                    order_id: orderData.orderId,
+                    name: 'UPI Verification',
+                    description: 'Pay ₹1 to verify your UPI ID',
+                    method: { upi: true, card: false, netbanking: false, wallet: false, emi: false },
+                    prefill: { vpa: upiId },
+                    theme: { color: '#6d28d9' },
+                    handler: async (response: any) => {
+                        setUpiVerifying(true)
+                        try {
+                            // Step 4: Fetch payment details to get actual VPA used
+                            const payRes = await fetch('/api/fetch-payment', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ paymentId: response.razorpay_payment_id }),
+                            })
+                            const payData = await payRes.json()
+                            if (payData.vpa) {
+                                setUpiId(payData.vpa)
+                                setUpiOwnerName(payData.email || '')
+                                setUpiVerified(true)
+                            } else {
+                                // Payment succeeded but VPA not returned — still mark verified
+                                setUpiVerified(true)
+                            }
+                        } catch {
+                            setUpiVerified(true) // payment succeeded, count as verified
+                        } finally {
+                            setUpiVerifying(false)
+                        }
+                        resolve()
+                    },
+                    modal: {
+                        ondismiss: () => {
+                            setUpiVerifying(false)
+                            setUpiVerifyError('Payment cancelled. Please try again.')
+                            setUpiVerified(false)
+                            reject(new Error('dismissed'))
+                        },
+                    },
+                })
+                rzp.open()
+            })
+        } catch (err: any) {
+            if (err?.message !== 'dismissed') {
+                setUpiVerifyError(err?.message || 'Verification failed')
                 setUpiVerified(false)
-                setUpiVerifyError(data.error || 'UPI ID not found')
             }
-        } catch {
-            setUpiVerified(false)
-            setUpiVerifyError('Verification failed, try again')
-        } finally {
             setUpiVerifying(false)
         }
     }
