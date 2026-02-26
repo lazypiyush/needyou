@@ -4,10 +4,11 @@ import { useState, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
     X, Wallet, Plus, Pencil, Trash2, CreditCard,
-    Smartphone, ChevronDown, Check, Loader2, Building2, AlertCircle, Eye, EyeOff, ArrowDownToLine
+    Smartphone, ChevronDown, Check, Loader2, Building2, AlertCircle, Eye, EyeOff, ArrowDownToLine,
+    Clock, History, Ban, IndianRupee
 } from 'lucide-react'
 import { db } from '@/lib/firebase'
-import { collection, addDoc, serverTimestamp, doc, updateDoc, increment } from 'firebase/firestore'
+import { collection, addDoc, serverTimestamp, doc, updateDoc, increment, query, where, orderBy, onSnapshot, writeBatch, Timestamp } from 'firebase/firestore'
 
 // ── Indian Banks ──────────────────────────────────────────────────────────────
 const INDIAN_BANKS = [
@@ -164,7 +165,7 @@ function BankDropdown({ value, onChange, isDark }: { value: string; onChange: (v
 
 // ── Main Modal ────────────────────────────────────────────────────────────────
 export default function WalletModal({ isDark, onClose, balance = 0, uid = '', userName = '' }: WalletModalProps) {
-    const [tab, setTab] = useState<'methods' | 'addBank' | 'addUpi' | 'withdraw'>('methods')
+    const [tab, setTab] = useState<'methods' | 'addBank' | 'addUpi' | 'withdraw' | 'history'>('methods')
     const [editingMethod, setEditingMethod] = useState<PaymentMethod | null>(null)
 
     // Saved methods — persisted to localStorage (will move to Firestore later)
@@ -216,13 +217,22 @@ export default function WalletModal({ isDark, onClose, balance = 0, uid = '', us
 
     const handleWithdraw = async () => {
         setWithdrawError('')
-        const amt = parseFloat(withdrawAmount)
+        const amt = Math.floor(parseFloat(withdrawAmount)) // integers only
         if (!withdrawMethod) return setWithdrawError('Please select a payment method.')
         if (!amt || amt <= 0) return setWithdrawError('Enter a valid amount.')
-        if (amt > balance) return setWithdrawError(`Amount exceeds your balance of ₹${balance}.`)
+        if (amt < 50) return setWithdrawError('Minimum withdrawal amount is ₹50.')
+        if (amt > balance) return setWithdrawError(`Amount exceeds your balance of ₹${balance.toLocaleString('en-IN')}.`)
+        // Block if a pending request already exists
+        const hasPending = historyRequests.some((r: any) => r.status === 'pending')
+        if (hasPending) return setWithdrawError('You already have a pending withdrawal request. Please wait for it to be processed.')
+
+        if (!uid) return setWithdrawError('User not identified. Please re-open the wallet.')
         setWithdrawing(true)
         try {
-            await addDoc(collection(db, 'withdrawalRequests'), {
+            // Atomic batch: create request + deduct wallet in one commit
+            const batch = writeBatch(db)
+            const reqRef = doc(collection(db, 'withdrawalRequests'))
+            batch.set(reqRef, {
                 uid,
                 userName,
                 amount: amt,
@@ -230,10 +240,10 @@ export default function WalletModal({ isDark, onClose, balance = 0, uid = '', us
                     ? { type: 'bank', bankId: withdrawMethod.bankId, accountHolderName: withdrawMethod.accountHolderName, accountNumber: withdrawMethod.accountNumber, ifsc: withdrawMethod.ifsc }
                     : { type: 'upi', upiId: withdrawMethod.upiId },
                 status: 'pending',
-                createdAt: serverTimestamp(),
+                createdAt: Timestamp.now(), // client-side timestamp — immediately visible in orderBy queries
             })
-            // Deduct from user's wallet immediately
-            if (uid) await updateDoc(doc(db, 'users', uid), { walletBalance: increment(-amt) })
+            batch.update(doc(db, 'users', uid), { walletBalance: increment(-amt) })
+            await batch.commit() // both writes succeed or both fail — no partial state
             setWithdrawDone(true)
             setWithdrawAmount('')
             setWithdrawMethod(null)
@@ -243,6 +253,20 @@ export default function WalletModal({ isDark, onClose, balance = 0, uid = '', us
             setWithdrawing(false)
         }
     }
+
+    // History — real-time withdrawal requests for this user
+    const [historyRequests, setHistoryRequests] = useState<any[]>([])
+    useEffect(() => {
+        if (!uid) return
+        const q = query(
+            collection(db, 'withdrawalRequests'),
+            where('uid', '==', uid),
+            orderBy('createdAt', 'desc')
+        )
+        return onSnapshot(q, snap => {
+            setHistoryRequests(snap.docs.map(d => ({ id: d.id, ...d.data() })))
+        })
+    }, [uid])
 
     // UPI logo
     const UPI_LOGO = 'https://upload.wikimedia.org/wikipedia/commons/thumb/e/e1/UPI-Logo-vector.svg/2560px-UPI-Logo-vector.svg.png'
@@ -342,7 +366,7 @@ export default function WalletModal({ isDark, onClose, balance = 0, uid = '', us
     }
 
     return (
-        <div className="fixed inset-0 z-50 flex items-end md:items-center justify-center" data-modal="true">
+        <div className="fixed inset-0 z-50 flex items-end md:items-center justify-center pb-16 md:pb-0" data-modal="true">
             {/* Backdrop */}
             <motion.div
                 initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
@@ -357,7 +381,7 @@ export default function WalletModal({ isDark, onClose, balance = 0, uid = '', us
                 exit={{ opacity: 0, y: 60 }}
                 transition={{ type: 'spring', damping: 26, stiffness: 320 }}
                 className="relative w-full md:max-w-md rounded-t-3xl md:rounded-3xl shadow-2xl overflow-hidden flex flex-col"
-                style={{ backgroundColor: bg, maxHeight: '92vh', border: `1px solid ${border}` }}
+                style={{ backgroundColor: bg, maxHeight: '85dvh', border: `1px solid ${border}` }}
             >
                 {/* Header */}
                 <div
@@ -375,7 +399,11 @@ export default function WalletModal({ isDark, onClose, balance = 0, uid = '', us
                         </div>
                         <div>
                             <h2 className="font-bold text-base leading-tight" style={{ color: textPri }}>
-                                {tab === 'methods' ? 'My Wallet' : tab === 'addBank' ? (editingMethod ? 'Edit Bank Account' : 'Add Bank Account') : (editingMethod ? 'Edit UPI ID' : 'Add UPI ID')}
+                                {tab === 'methods' ? 'My Wallet'
+                                    : tab === 'addBank' ? (editingMethod ? 'Edit Bank Account' : 'Add Bank Account')
+                                        : tab === 'addUpi' ? (editingMethod ? 'Edit UPI ID' : 'Add UPI ID')
+                                            : tab === 'withdraw' ? 'Withdraw Funds'
+                                                : 'Transaction History'}
                             </h2>
                             {tab === 'methods' && <p className="text-xs" style={{ color: textSec }}>Manage your payment methods</p>}
                         </div>
@@ -420,7 +448,7 @@ export default function WalletModal({ isDark, onClose, balance = 0, uid = '', us
                                             <p className="text-xs" style={{ color: isDark ? '#4b5563' : '#9ca3af' }}>Add a bank account or UPI ID to receive payments</p>
                                         </div>
                                     ) : (
-                                        <div className="space-y-3">
+                                        <div className="space-y-3 max-h-40 overflow-y-auto pr-1">
                                             {methods.map(m => (
                                                 <motion.div
                                                     key={m.id}
@@ -499,14 +527,23 @@ export default function WalletModal({ isDark, onClose, balance = 0, uid = '', us
                                     </button>
                                 </div>
 
-                                {/* Withdraw button — only if methods exist */}
+                                {/* Withdraw + History buttons */}
                                 {methods.length > 0 && (
-                                    <button
-                                        onClick={() => { setWithdrawDone(false); setWithdrawError(''); setWithdrawAmount(''); setWithdrawMethod(null); setTab('withdraw') }}
-                                        className="w-full flex items-center justify-center gap-2 py-3 rounded-2xl font-bold text-sm bg-gradient-to-r from-green-500 to-emerald-500 text-white shadow-md hover:shadow-lg transition-all"
-                                    >
-                                        <ArrowDownToLine className="w-4 h-4" /> Withdraw
-                                    </button>
+                                    <div className="grid grid-cols-2 gap-3">
+                                        <button
+                                            onClick={() => { setWithdrawDone(false); setWithdrawError(''); setWithdrawAmount(''); setWithdrawMethod(null); setTab('withdraw') }}
+                                            className="flex items-center justify-center gap-2 py-3 rounded-2xl font-bold text-sm bg-gradient-to-r from-green-500 to-emerald-500 text-white shadow-md hover:shadow-lg transition-all"
+                                        >
+                                            <ArrowDownToLine className="w-4 h-4" /> Withdraw
+                                        </button>
+                                        <button
+                                            onClick={() => setTab('history')}
+                                            className="flex items-center justify-center gap-2 py-3 rounded-2xl font-bold text-sm border-2 transition-all"
+                                            style={{ borderColor: border, color: textPri }}
+                                        >
+                                            <History className="w-4 h-4" /> History
+                                        </button>
+                                    </div>
                                 )}
                             </motion.div>
                         )}
@@ -713,27 +750,90 @@ export default function WalletModal({ isDark, onClose, balance = 0, uid = '', us
                                         <div>
                                             <label className={labelCls}>Amount (₹)</label>
                                             <input
-                                                type="number" min="1" max={balance}
+                                                type="number" min="50" max={balance} step="1"
                                                 value={withdrawAmount}
-                                                onChange={e => setWithdrawAmount(e.target.value)}
-                                                placeholder="Enter amount to withdraw"
+                                                onChange={e => setWithdrawAmount(e.target.value ? String(Math.floor(Number(e.target.value))) : '')}
+                                                placeholder="Enter whole amount (e.g. 500)"
                                                 className={inputCls}
                                             />
+                                            <p className="text-xs mt-1.5" style={{ color: textSec }}>
+                                                Min ₹50 · Max ₹{balance.toLocaleString('en-IN')} · Whole rupees only
+                                            </p>
                                         </div>
                                         {withdrawError && (
                                             <p className="text-sm text-red-500 flex items-center gap-1"><AlertCircle className="w-4 h-4" /> {withdrawError}</p>
                                         )}
-                                        <div className="flex gap-3 pt-1">
-                                            <button onClick={() => setTab('methods')} className="flex-1 py-3 rounded-xl border font-semibold text-sm" style={{ borderColor: border, color: textSec }}>Cancel</button>
+                                        <div className="flex flex-col sm:flex-row gap-3 pt-1">
+                                            <button onClick={() => setTab('methods')} className="sm:flex-1 py-3 rounded-xl border font-semibold text-sm" style={{ borderColor: border, color: textSec }}>Cancel</button>
                                             <button
                                                 onClick={handleWithdraw}
                                                 disabled={withdrawing || !withdrawMethod || !withdrawAmount}
-                                                className="flex-1 py-3 rounded-xl bg-gradient-to-r from-green-500 to-emerald-600 text-white font-bold text-sm flex items-center justify-center gap-2 disabled:opacity-40"
+                                                className="sm:flex-1 py-3 rounded-xl bg-gradient-to-r from-green-500 to-emerald-600 text-white font-bold text-sm flex items-center justify-center gap-2 disabled:opacity-40"
                                             >
                                                 {withdrawing ? <><Loader2 className="w-4 h-4 animate-spin" /> Submitting…</> : <><ArrowDownToLine className="w-4 h-4" /> Submit Request</>}
                                             </button>
                                         </div>
                                     </>
+                                )}
+                            </motion.div>
+                        )}
+
+                        {/* ── History ── */}
+                        {tab === 'history' && (
+                            <motion.div key="history" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="p-5 space-y-4">
+                                {historyRequests.length === 0 ? (
+                                    <div className="text-center py-10 space-y-2">
+                                        <Clock className="w-10 h-10 mx-auto opacity-20" style={{ color: textSec }} />
+                                        <p className="text-sm font-medium" style={{ color: textSec }}>No withdrawal requests yet</p>
+                                    </div>
+                                ) : (
+                                    historyRequests.map((req: any) => {
+                                        const methodLabel = req.method?.type === 'bank'
+                                            ? `${INDIAN_BANKS.find((b: any) => b.id === req.method?.bankId)?.name || 'Bank'} ••••${(req.method?.accountNumber || '').slice(-4)}`
+                                            : req.method?.upiId || 'UPI'
+                                        const date = req.createdAt?.toDate?.()?.toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' }) || ''
+                                        return (
+                                            <motion.div key={req.id} layout initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}
+                                                className="rounded-2xl border overflow-hidden"
+                                                style={{ backgroundColor: cardBg, borderColor: border }}>
+                                                <div className="flex items-center justify-between px-4 py-3 border-b" style={{ borderColor: border }}>
+                                                    <div>
+                                                        <p className="font-bold text-sm" style={{ color: textPri }}>₹{req.amount?.toLocaleString('en-IN')}</p>
+                                                        <p className="text-xs" style={{ color: textSec }}>{date}</p>
+                                                    </div>
+                                                    <span className={`text-xs font-bold px-2.5 py-1 rounded-full ${req.status === 'approved' ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' : req.status === 'rejected' ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400' : 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400'}`}>
+                                                        {req.status === 'approved' ? 'Approved' : req.status === 'rejected' ? 'Rejected' : 'Pending'}
+                                                    </span>
+                                                </div>
+                                                <div className="px-4 py-3 space-y-2">
+                                                    <p className="text-xs" style={{ color: textSec }}>To: <span className="font-semibold" style={{ color: textPri }}>{methodLabel}</span></p>
+                                                    {req.status === 'pending' && (<div className="flex items-center gap-1.5 text-xs text-yellow-600 dark:text-yellow-400"><Clock className="w-3.5 h-3.5" /> Waiting for accountant review</div>)}
+                                                    {req.status === 'approved' && (
+                                                        <div className="space-y-1">
+                                                            <div className="flex items-center gap-1.5 text-xs text-green-600 dark:text-green-400"><Check className="w-3.5 h-3.5" /> Payment sent to your {req.method?.type === 'bank' ? 'bank account' : 'UPI ID'}</div>
+                                                            {req.txnId && <p className="text-xs font-mono" style={{ color: textSec }}>TXN: {req.txnId}</p>}
+                                                        </div>
+                                                    )}
+                                                    {req.status === 'rejected' && (
+                                                        <div className="space-y-2">
+                                                            <div className="flex items-center gap-1.5 text-xs text-red-500"><Ban className="w-3.5 h-3.5" /> Request rejected</div>
+                                                            {req.rejectionReason && (
+                                                                <div className="p-2.5 rounded-xl" style={{ backgroundColor: isDark ? 'rgba(239,68,68,0.1)' : '#fff5f5', border: `1px solid ${isDark ? 'rgba(239,68,68,0.2)' : '#fca5a5'}` }}>
+                                                                    <p className="text-xs font-semibold text-red-600 dark:text-red-400 mb-0.5">Reason</p>
+                                                                    <p className="text-xs" style={{ color: textPri }}>{req.rejectionReason}</p>
+                                                                </div>
+                                                            )}
+                                                            {req.rejectionImageUrl && (
+                                                                <a href={req.rejectionImageUrl} target="_blank" rel="noreferrer" className="flex items-center gap-1.5 text-xs text-blue-500 hover:underline">
+                                                                    <IndianRupee className="w-3 h-3" /> View attached image
+                                                                </a>
+                                                            )}
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            </motion.div>
+                                        )
+                                    })
                                 )}
                             </motion.div>
                         )}

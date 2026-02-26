@@ -15,7 +15,7 @@ import { useTheme } from 'next-themes'
 import { db, storage } from '@/lib/firebase'
 import {
     collection, query, orderBy, onSnapshot,
-    doc, updateDoc, serverTimestamp
+    doc, updateDoc, serverTimestamp, getDocs, where, increment
 } from 'firebase/firestore'
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage'
 
@@ -37,6 +37,8 @@ interface WithdrawalRequest {
     processedAt?: any
     paymentProofUrl?: string
     txnId?: string
+    rejectionReason?: string
+    rejectionImageUrl?: string
 }
 
 const PLATFORM_FEE_PCT = 5
@@ -64,13 +66,18 @@ function StatusBadge({ status }: { status: string }) {
     )
 }
 
-function RequestCard({ r, isDark }: { r: WithdrawalRequest; isDark: boolean }) {
-    const [innerTab, setInnerTab] = useState<'request' | 'payment'>('request')
+function RequestCard({ r, isDark, photoURL }: { r: WithdrawalRequest; isDark: boolean; photoURL?: string }) {
+    const [expanded, setExpanded] = useState(false)
     const [processing, setProcessing] = useState(false)
     const [uploading, setUploading] = useState(false)
     const [proofUrl, setProofUrl] = useState(r.paymentProofUrl || '')
     const [txnId, setTxnId] = useState(r.txnId || '')
+    const [showRejectForm, setShowRejectForm] = useState(false)
+    const [rejectReason, setRejectReason] = useState('')
+    const [rejectImgUrl, setRejectImgUrl] = useState('')
+    const [uploadingRejectImg, setUploadingRejectImg] = useState(false)
     const fileRef = useRef<HTMLInputElement>(null)
+    const rejectImgRef = useRef<HTMLInputElement>(null)
 
     const fee = +(r.amount * PLATFORM_FEE_PCT / 100).toFixed(2)
     const payout = +(r.amount - fee).toFixed(2)
@@ -79,10 +86,12 @@ function RequestCard({ r, isDark }: { r: WithdrawalRequest; isDark: boolean }) {
     const border = isDark ? 'rgba(255,255,255,0.08)' : '#e5e7eb'
     const textPri = isDark ? '#fff' : '#111827'
     const textSec = isDark ? '#9ca3af' : '#6b7280'
-    const tabActive = isDark ? 'bg-white/10 text-white' : 'bg-gray-900 text-white'
-    const tabInactive = isDark ? 'text-gray-400 hover:text-white' : 'text-gray-500 hover:text-gray-900'
 
     const handleStatus = async (status: 'approved' | 'rejected') => {
+        if (status === 'rejected' && !showRejectForm) {
+            setShowRejectForm(true)
+            return
+        }
         setProcessing(true)
         try {
             await updateDoc(doc(db, 'withdrawalRequests', r.id), {
@@ -90,9 +99,26 @@ function RequestCard({ r, isDark }: { r: WithdrawalRequest; isDark: boolean }) {
                 processedAt: serverTimestamp(),
                 ...(proofUrl ? { paymentProofUrl: proofUrl } : {}),
                 ...(txnId.trim() ? { txnId: txnId.trim() } : {}),
+                ...(status === 'rejected' ? { rejectionReason: rejectReason.trim(), rejectionImageUrl: rejectImgUrl } : {}),
             })
+            // Refund wallet on rejection
+            if (status === 'rejected') {
+                await updateDoc(doc(db, 'users', r.uid), { walletBalance: increment(r.amount) })
+            }
+            setShowRejectForm(false)
         } finally {
             setProcessing(false)
+        }
+    }
+
+    const handleRejectImageUpload = async (file: File) => {
+        setUploadingRejectImg(true)
+        try {
+            const storageRef = ref(storage, `rejectionImages/${r.id}_${Date.now()}`)
+            await uploadBytes(storageRef, file)
+            setRejectImgUrl(await getDownloadURL(storageRef))
+        } finally {
+            setUploadingRejectImg(false)
         }
     }
 
@@ -115,12 +141,20 @@ function RequestCard({ r, isDark }: { r: WithdrawalRequest; isDark: boolean }) {
             className="rounded-2xl border overflow-hidden shadow-sm"
             style={{ backgroundColor: cardBg, borderColor: border }}
         >
-            {/* Card header */}
-            <div className="flex items-center justify-between px-4 py-3 border-b" style={{ borderColor: border }}>
+            {/* Card header — click to expand/collapse */}
+            <button
+                onClick={() => setExpanded(e => !e)}
+                className="w-full flex items-center justify-between px-4 py-3 text-left"
+                style={{ borderBottom: expanded ? `1px solid ${border}` : 'none' }}
+            >
                 <div className="flex items-center gap-2">
-                    <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center text-white font-bold text-sm">
-                        {(r.userName || r.uid).charAt(0).toUpperCase()}
-                    </div>
+                    {photoURL ? (
+                        <img src={photoURL} alt={r.userName} className="w-8 h-8 rounded-full object-cover flex-shrink-0 border border-white/20" />
+                    ) : (
+                        <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center text-white font-bold text-sm flex-shrink-0">
+                            {(r.userName || r.uid).charAt(0).toUpperCase()}
+                        </div>
+                    )}
                     <div>
                         <p className="font-bold text-sm" style={{ color: textPri }}>{r.userName || r.uid}</p>
                         {r.createdAt?.toDate && (
@@ -130,51 +164,62 @@ function RequestCard({ r, isDark }: { r: WithdrawalRequest; isDark: boolean }) {
                         )}
                     </div>
                 </div>
-                <div className="flex items-center gap-2">
-                    <p className="text-xl font-black" style={{ color: textPri }}>₹{r.amount.toLocaleString('en-IN')}</p>
+                <div className="flex items-center gap-2 flex-shrink-0">
+                    <p className="text-base font-black" style={{ color: textPri }}>₹{r.amount.toLocaleString('en-IN')}</p>
                     <StatusBadge status={r.status} />
+                    <motion.div animate={{ rotate: expanded ? 180 : 0 }} transition={{ duration: 0.2 }}>
+                        <ChevronDown className="w-4 h-4" style={{ color: textSec }} />
+                    </motion.div>
                 </div>
-            </div>
+            </button>
 
-            {/* Inner tabs */}
-            <div className="flex border-b" style={{ borderColor: border }}>
-                {([['request', <FileText className="w-3.5 h-3.5" />, 'Request Details'], ['payment', <Receipt className="w-3.5 h-3.5" />, 'Payment & Fees']] as const).map(([t, icon, label]) => (
-                    <button key={t} onClick={() => setInnerTab(t as 'request' | 'payment')}
-                        className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 text-xs font-bold transition-all ${innerTab === t ? tabActive : tabInactive}`}>
-                        {icon}{label}
-                    </button>
-                ))}
-            </div>
+            <AnimatePresence initial={false}>
+                {expanded && (
+                    <motion.div
+                        key="body"
+                        initial={{ height: 0, opacity: 0 }}
+                        animate={{ height: 'auto', opacity: 1 }}
+                        exit={{ height: 0, opacity: 0 }}
+                        transition={{ duration: 0.22, ease: 'easeInOut' }}
+                        style={{ overflow: 'hidden' }}
+                    >
 
-            <div className="p-4">
-                <AnimatePresence mode="wait">
-                    {innerTab === 'request' ? (
-                        <motion.div key="req" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="space-y-3">
-                            {r.method.type === 'bank' ? (
-                                <div className="space-y-3">
-                                    <InfoRow label="Bank" value={BANK_NAMES[r.method.bankId || ''] || r.method.bankId || '—'} textSec={textSec} textPri={textPri} />
-                                    <InfoRow label="Account Holder" value={r.method.accountHolderName || '—'} textSec={textSec} textPri={textPri} />
-                                    <InfoRow label="Account Number" value={r.method.accountNumber || '—'} textSec={textSec} textPri={textPri} mono />
-                                    <InfoRow label="IFSC Code" value={r.method.ifsc || '—'} textSec={textSec} textPri={textPri} mono />
-                                </div>
-                            ) : (
-                                <InfoRow label="UPI ID" value={r.method.upiId || '—'} textSec={textSec} textPri={textPri} mono />
-                            )}
-                        </motion.div>
-                    ) : (
-                        <motion.div key="pay" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="space-y-3">
+                        <div className="p-4 space-y-4">
+
+                            {/* Payment details */}
+                            <div className="space-y-3">
+                                <p className="text-xs font-semibold uppercase tracking-wide" style={{ color: textSec }}>Payment Details</p>
+                                {r.method.type === 'bank' ? (
+                                    <div className="space-y-3">
+                                        <InfoRow label="Bank" value={BANK_NAMES[r.method.bankId || ''] || r.method.bankId || '—'} textSec={textSec} textPri={textPri} />
+                                        <InfoRow label="Account Holder" value={r.method.accountHolderName || '—'} textSec={textSec} textPri={textPri} />
+                                        <InfoRow label="Account Number" value={r.method.accountNumber || '—'} textSec={textSec} textPri={textPri} mono />
+                                        <InfoRow label="IFSC Code" value={r.method.ifsc || '—'} textSec={textSec} textPri={textPri} mono />
+                                    </div>
+                                ) : (
+                                    <InfoRow label="UPI ID" value={r.method.upiId || '—'} textSec={textSec} textPri={textPri} mono />
+                                )}
+                            </div>
+
+                            <div className="border-t" style={{ borderColor: border }} />
+
                             {/* Fee breakdown */}
-                            <div className="rounded-xl p-3 space-y-2" style={{ backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : '#f9fafb', border: `1px solid ${border}` }}>
-                                <FeeRow label="Requested Amount" value={`₹${r.amount.toLocaleString('en-IN')}`} textSec={textSec} textPri={textPri} />
-                                <FeeRow label={`Platform Fee (${PLATFORM_FEE_PCT}%)`} value={`- ₹${fee}`} textSec={textSec} textPri="text-red-500" />
-                                <div className="border-t pt-2" style={{ borderColor: border }}>
-                                    <FeeRow label="Final Payout" value={`₹${payout.toLocaleString('en-IN')}`} textSec={textSec} textPri="#10b981" bold />
+                            <div>
+                                <p className="text-xs font-semibold uppercase tracking-wide mb-3" style={{ color: textSec }}>Amount & Fees</p>
+                                <div className="rounded-xl p-3 space-y-2" style={{ backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : '#f9fafb', border: `1px solid ${border}` }}>
+                                    <FeeRow label="Requested Amount" value={`₹${r.amount.toLocaleString('en-IN')}`} textSec={textSec} textPri={textPri} />
+                                    <FeeRow label={`Platform Fee (${PLATFORM_FEE_PCT}%)`} value={`− ₹${fee}`} textSec={textSec} textPri="#ef4444" />
+                                    <div className="border-t pt-2" style={{ borderColor: border }}>
+                                        <FeeRow label="Final Payout" value={`₹${payout.toLocaleString('en-IN')}`} textSec={textSec} textPri="#10b981" bold />
+                                    </div>
                                 </div>
                             </div>
 
+                            <div className="border-t" style={{ borderColor: border }} />
+
                             {/* TXN ID */}
                             <div>
-                                <p className="text-xs font-semibold mb-2" style={{ color: textSec }}>TRANSACTION ID</p>
+                                <p className="text-xs font-semibold uppercase tracking-wide mb-2" style={{ color: textSec }}>Transaction ID <span className="text-red-500">*</span></p>
                                 <input
                                     type="text" value={txnId}
                                     onChange={e => setTxnId(e.target.value)}
@@ -189,15 +234,14 @@ function RequestCard({ r, isDark }: { r: WithdrawalRequest; isDark: boolean }) {
 
                             {/* Payment proof */}
                             <div>
-                                <p className="text-xs font-semibold mb-2" style={{ color: textSec }}>PAYMENT PROOF</p>
+                                <p className="text-xs font-semibold uppercase tracking-wide mb-2" style={{ color: textSec }}>Payment Proof <span className="text-red-500">*</span></p>
                                 {proofUrl ? (
                                     <a href={proofUrl} target="_blank" rel="noreferrer"
                                         className="flex items-center gap-2 text-blue-500 text-sm font-medium hover:underline">
                                         <FileText className="w-4 h-4" /> View Uploaded Proof
                                     </a>
                                 ) : (
-                                    <button onClick={() => fileRef.current?.click()}
-                                        disabled={uploading}
+                                    <button onClick={() => fileRef.current?.click()} disabled={uploading}
                                         className="flex items-center gap-2 px-3 py-2 rounded-xl border-2 border-dashed text-sm font-semibold transition-all hover:border-blue-400 disabled:opacity-50"
                                         style={{ borderColor: border, color: textSec }}>
                                         {uploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
@@ -207,24 +251,63 @@ function RequestCard({ r, isDark }: { r: WithdrawalRequest; isDark: boolean }) {
                                 <input ref={fileRef} type="file" accept="image/*,application/pdf" className="hidden"
                                     onChange={e => { if (e.target.files?.[0]) handleProofUpload(e.target.files[0]) }} />
                             </div>
-                        </motion.div>
-                    )}
-                </AnimatePresence>
 
-                {/* Actions */}
-                {r.status === 'pending' && (
-                    <div className="flex gap-2 mt-4 pt-3 border-t" style={{ borderColor: border }}>
-                        <button onClick={() => handleStatus('rejected')} disabled={processing}
-                            className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl bg-red-500 hover:bg-red-600 text-white text-sm font-bold transition-colors disabled:opacity-50">
-                            {processing ? <Loader2 className="w-3 h-3 animate-spin" /> : <X className="w-3 h-3" />} Reject
-                        </button>
-                        <button onClick={() => handleStatus('approved')} disabled={processing}
-                            className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl bg-green-500 hover:bg-green-600 text-white text-sm font-bold transition-colors disabled:opacity-50">
-                            {processing ? <Loader2 className="w-3 h-3 animate-spin" /> : <Check className="w-3 h-3" />} Approve
-                        </button>
-                    </div>
+                            {/* Reject reason inline form */}
+                            {showRejectForm && (
+                                <div className="mx-4 mb-4 p-4 rounded-2xl border-2 border-red-300 dark:border-red-800 space-y-3" style={{ backgroundColor: isDark ? 'rgba(239,68,68,0.08)' : '#fff5f5' }}>
+                                    <p className="text-sm font-bold text-red-600 dark:text-red-400">Rejection Reason</p>
+                                    <textarea
+                                        value={rejectReason} onChange={e => setRejectReason(e.target.value)}
+                                        placeholder="Explain why this request is being rejected…"
+                                        rows={3}
+                                        className="w-full px-3 py-2 rounded-xl border text-sm outline-none focus:ring-2 focus:ring-red-400 resize-none"
+                                        style={{ backgroundColor: isDark ? 'rgba(255,255,255,0.07)' : '#fff', borderColor: isDark ? 'rgba(239,68,68,0.3)' : '#fca5a5', color: textPri }}
+                                    />
+                                    <div>
+                                        <p className="text-xs font-semibold mb-2" style={{ color: textSec }}>Attach Image (optional)</p>
+                                        {rejectImgUrl ? (
+                                            <a href={rejectImgUrl} target="_blank" rel="noreferrer" className="flex items-center gap-2 text-blue-500 text-sm hover:underline">
+                                                <FileText className="w-4 h-4" /> View Attached Image
+                                            </a>
+                                        ) : (
+                                            <button onClick={() => rejectImgRef.current?.click()} disabled={uploadingRejectImg}
+                                                className="flex items-center gap-2 px-3 py-2 rounded-xl border-2 border-dashed text-sm transition-all hover:border-red-400 disabled:opacity-50"
+                                                style={{ borderColor: isDark ? 'rgba(239,68,68,0.3)' : '#fca5a5', color: textSec }}>
+                                                {uploadingRejectImg ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
+                                                {uploadingRejectImg ? 'Uploading…' : 'Attach Image'}
+                                            </button>
+                                        )}
+                                        <input ref={rejectImgRef} type="file" accept="image/*" className="hidden"
+                                            onChange={e => { if (e.target.files?.[0]) handleRejectImageUpload(e.target.files[0]) }} />
+                                    </div>
+                                    <div className="flex gap-2">
+                                        <button onClick={() => setShowRejectForm(false)} className="flex-1 py-2 rounded-xl border text-sm font-bold" style={{ borderColor: isDark ? '#333' : '#e5e7eb', color: textSec }}>Cancel</button>
+                                        <button onClick={() => handleStatus('rejected')} disabled={processing || !rejectReason.trim()}
+                                            className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl bg-red-500 hover:bg-red-600 text-white text-sm font-bold disabled:opacity-50">
+                                            {processing ? <Loader2 className="w-3 h-3 animate-spin" /> : <X className="w-3 h-3" />} Confirm Reject
+                                        </button>
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Actions */}
+                            {r.status === 'pending' && (
+                                <div className="flex gap-2 pt-2 border-t" style={{ borderColor: border }}>
+                                    <button onClick={() => handleStatus('rejected')} disabled={processing}
+                                        className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl bg-red-500 hover:bg-red-600 text-white text-sm font-bold transition-colors disabled:opacity-50">
+                                        {processing ? <Loader2 className="w-3 h-3 animate-spin" /> : <X className="w-3 h-3" />} Reject
+                                    </button>
+                                    <button onClick={() => handleStatus('approved')} disabled={processing || !txnId.trim() || !proofUrl}
+                                        title={!txnId.trim() || !proofUrl ? 'Add TXN ID and payment proof first' : ''}
+                                        className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl bg-green-500 hover:bg-green-600 text-white text-sm font-bold transition-colors disabled:opacity-40 disabled:cursor-not-allowed">
+                                        {processing ? <Loader2 className="w-3 h-3 animate-spin" /> : <Check className="w-3 h-3" />} Approve
+                                    </button>
+                                </div>
+                            )}
+                        </div>
+                    </motion.div>
                 )}
-            </div>
+            </AnimatePresence>
         </motion.div>
     )
 }
@@ -252,7 +335,8 @@ export default function AccountantDashboardPage() {
     const [username, setUsername] = useState('')
     const [mounted, setMounted] = useState(false)
     const [requests, setRequests] = useState<WithdrawalRequest[]>([])
-    const [filterUser, setFilterUser] = useState('all')
+    const [userProfiles, setUserProfiles] = useState<Record<string, { email?: string; phone?: string; photoURL?: string }>>({})
+    const [searchQuery, setSearchQuery] = useState('')
     const [mainTab, setMainTab] = useState<'pending' | 'history'>('pending')
     const router = useRouter()
     const { theme } = useTheme()
@@ -272,8 +356,21 @@ export default function AccountantDashboardPage() {
     useEffect(() => {
         if (!mounted) return
         const q = query(collection(db, 'withdrawalRequests'), orderBy('createdAt', 'desc'))
-        return onSnapshot(q, snap => {
-            setRequests(snap.docs.map(d => ({ id: d.id, ...d.data() } as WithdrawalRequest)))
+        return onSnapshot(q, async snap => {
+            const reqs = snap.docs.map(d => ({ id: d.id, ...d.data() } as WithdrawalRequest))
+            setRequests(reqs)
+            // Batch-load user profiles for all unique uids
+            const uids = [...new Set(reqs.map(r => r.uid))].filter(Boolean)
+            if (uids.length === 0) return
+            // Firestore 'in' query supports up to 30 items
+            const chunks: string[][] = []
+            for (let i = 0; i < uids.length; i += 30) chunks.push(uids.slice(i, i + 30))
+            const profiles: Record<string, { email?: string; phone?: string; photoURL?: string }> = {}
+            await Promise.all(chunks.map(async chunk => {
+                const snap2 = await getDocs(query(collection(db, 'users'), where('__name__', 'in', chunk)))
+                snap2.forEach(d => { profiles[d.id] = { email: d.data().email, phone: d.data().phoneNumber, photoURL: d.data().photoURL } })
+            }))
+            setUserProfiles(profiles)
         })
     }, [mounted])
 
@@ -293,7 +390,14 @@ export default function AccountantDashboardPage() {
     const uniqueUsers = Array.from(new Map(requests.map(r => [r.uid, r.userName || r.uid])).entries())
 
     const filtered = requests.filter(r => {
-        const matchUser = filterUser === 'all' || r.uid === filterUser
+        const q = searchQuery.trim().toLowerCase()
+        const profile = userProfiles[r.uid] || {}
+        const matchUser = !q || (
+            (r.userName || '').toLowerCase().includes(q) ||
+            r.uid.toLowerCase().includes(q) ||
+            (profile.email || '').toLowerCase().includes(q) ||
+            (profile.phone || '').toLowerCase().includes(q)
+        )
         const matchTab = mainTab === 'pending' ? r.status === 'pending' : r.status !== 'pending'
         return matchUser && matchTab
     })
@@ -367,17 +471,16 @@ export default function AccountantDashboardPage() {
                         ))}
                     </div>
 
-                    {/* User filter */}
+                    {/* User search */}
                     <div className="flex-1 relative">
-                        <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4" style={{ color: textSec }} />
-                        <select value={filterUser} onChange={e => setFilterUser(e.target.value)}
-                            className="w-full pl-9 pr-3 py-2 text-sm font-semibold rounded-xl border outline-none appearance-none"
-                            style={{ backgroundColor: isDark ? '#1c1c1c' : '#fff', borderColor: border, color: textPri }}>
-                            <option value="all">All Users</option>
-                            {uniqueUsers.map(([uid, uname]) => (
-                                <option key={uid} value={uid}>{uname}</option>
-                            ))}
-                        </select>
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4" style={{ color: textSec }} />
+                        <input
+                            type="text" value={searchQuery}
+                            onChange={e => setSearchQuery(e.target.value)}
+                            placeholder="Search by name, email or phone…"
+                            className="w-full pl-9 pr-3 py-2 text-sm rounded-xl border outline-none"
+                            style={{ backgroundColor: isDark ? '#1c1c1c' : '#fff', borderColor: border, color: textPri }}
+                        />
                     </div>
                 </div>
 
@@ -393,7 +496,7 @@ export default function AccountantDashboardPage() {
                         </motion.div>
                     ) : (
                         <div className="space-y-4">
-                            {filtered.map(r => <RequestCard key={r.id} r={r} isDark={isDark} />)}
+                            {filtered.map(r => <RequestCard key={r.id} r={r} isDark={isDark} photoURL={userProfiles[r.uid]?.photoURL} />)}
                         </div>
                     )}
                 </AnimatePresence>

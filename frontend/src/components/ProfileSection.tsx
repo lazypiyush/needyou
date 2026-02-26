@@ -84,6 +84,7 @@ export default function ProfileSection({ user, isDark }: Props) {
     const [showPhotoViewer, setShowPhotoViewer] = useState(false)
     const [showWallet, setShowWallet] = useState(false)
     const [walletBalance, setWalletBalance] = useState(0)
+    const [phone, setPhone] = useState('')
 
     const needsCompany = ['Employed', 'Self-Employed'].includes(employmentStatus)
 
@@ -100,6 +101,7 @@ export default function ProfileSection({ user, isDark }: Props) {
                     setAboutDraft(d.aboutMe || '')
                     setMemberSince(d.createdAt || null)
                     setWalletBalance(d.walletBalance || 0)
+                    setPhone(d.phoneNumber || '')
 
                     // Pre-fill education
                     if (d.education) {
@@ -303,6 +305,11 @@ export default function ProfileSection({ user, isDark }: Props) {
                 <div>
                     <h2 className="text-xl font-bold" style={{ color: textPri }}>{displayName || 'No Name'}</h2>
                     <p className="text-sm mt-0.5" style={{ color: textSec }}>{user.email}</p>
+                    {phone && (
+                        <p className="text-sm" style={{ color: textSec }}>
+                            {phone.startsWith('+91') ? `+91 ${phone.slice(3)}` : phone}
+                        </p>
+                    )}
                     {memberSince && (
                         <p className="text-xs mt-1" style={{ color: textSec }}>
                             Member since {new Date(memberSince).toLocaleDateString('en-IN', { month: 'long', year: 'numeric' })}
