@@ -257,8 +257,8 @@ export default function ProfileSection({ user, isDark }: Props) {
                     }}
                     title="Open Wallet"
                 >
-                    <span className="text-base leading-none">₹</span>
-                    <span>0.00</span>
+                    <Wallet className="w-3.5 h-3.5" />
+                    <span>₹{walletBalance.toLocaleString('en-IN')}</span>
                 </button>
                 {/* Avatar */}
                 <div className="relative">

@@ -6,7 +6,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import {
     Calculator, LogOut, Sparkles, Check, X, Loader2, Clock,
     CreditCard, Upload, IndianRupee, TrendingUp, FileText,
-    ChevronDown, Search, User
+    ChevronDown, Search, User, History, Receipt
 } from 'lucide-react'
 import Image from 'next/image'
 import Link from 'next/link'
@@ -36,6 +36,7 @@ interface WithdrawalRequest {
     createdAt: any
     processedAt?: any
     paymentProofUrl?: string
+    txnId?: string
 }
 
 const PLATFORM_FEE_PCT = 5
@@ -68,6 +69,7 @@ function RequestCard({ r, isDark }: { r: WithdrawalRequest; isDark: boolean }) {
     const [processing, setProcessing] = useState(false)
     const [uploading, setUploading] = useState(false)
     const [proofUrl, setProofUrl] = useState(r.paymentProofUrl || '')
+    const [txnId, setTxnId] = useState(r.txnId || '')
     const fileRef = useRef<HTMLInputElement>(null)
 
     const fee = +(r.amount * PLATFORM_FEE_PCT / 100).toFixed(2)
@@ -86,7 +88,8 @@ function RequestCard({ r, isDark }: { r: WithdrawalRequest; isDark: boolean }) {
             await updateDoc(doc(db, 'withdrawalRequests', r.id), {
                 status,
                 processedAt: serverTimestamp(),
-                ...(status === 'approved' && proofUrl ? { paymentProofUrl: proofUrl } : {})
+                ...(proofUrl ? { paymentProofUrl: proofUrl } : {}),
+                ...(txnId.trim() ? { txnId: txnId.trim() } : {}),
             })
         } finally {
             setProcessing(false)
@@ -135,10 +138,10 @@ function RequestCard({ r, isDark }: { r: WithdrawalRequest; isDark: boolean }) {
 
             {/* Inner tabs */}
             <div className="flex border-b" style={{ borderColor: border }}>
-                {(['request', 'payment'] as const).map(t => (
-                    <button key={t} onClick={() => setInnerTab(t)}
-                        className={`flex-1 py-2 text-xs font-bold capitalize transition-all ${innerTab === t ? tabActive : tabInactive}`}>
-                        {t === 'request' ? '📋 Request Details' : '💳 Payment & Fees'}
+                {([['request', <FileText className="w-3.5 h-3.5" />, 'Request Details'], ['payment', <Receipt className="w-3.5 h-3.5" />, 'Payment & Fees']] as const).map(([t, icon, label]) => (
+                    <button key={t} onClick={() => setInnerTab(t as 'request' | 'payment')}
+                        className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 text-xs font-bold transition-all ${innerTab === t ? tabActive : tabInactive}`}>
+                        {icon}{label}
                     </button>
                 ))}
             </div>
@@ -148,7 +151,7 @@ function RequestCard({ r, isDark }: { r: WithdrawalRequest; isDark: boolean }) {
                     {innerTab === 'request' ? (
                         <motion.div key="req" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="space-y-3">
                             {r.method.type === 'bank' ? (
-                                <div className="grid grid-cols-2 gap-3">
+                                <div className="space-y-3">
                                     <InfoRow label="Bank" value={BANK_NAMES[r.method.bankId || ''] || r.method.bankId || '—'} textSec={textSec} textPri={textPri} />
                                     <InfoRow label="Account Holder" value={r.method.accountHolderName || '—'} textSec={textSec} textPri={textPri} />
                                     <InfoRow label="Account Number" value={r.method.accountNumber || '—'} textSec={textSec} textPri={textPri} mono />
@@ -167,6 +170,21 @@ function RequestCard({ r, isDark }: { r: WithdrawalRequest; isDark: boolean }) {
                                 <div className="border-t pt-2" style={{ borderColor: border }}>
                                     <FeeRow label="Final Payout" value={`₹${payout.toLocaleString('en-IN')}`} textSec={textSec} textPri="#10b981" bold />
                                 </div>
+                            </div>
+
+                            {/* TXN ID */}
+                            <div>
+                                <p className="text-xs font-semibold mb-2" style={{ color: textSec }}>TRANSACTION ID</p>
+                                <input
+                                    type="text" value={txnId}
+                                    onChange={e => setTxnId(e.target.value)}
+                                    onBlur={async () => {
+                                        if (txnId.trim()) await updateDoc(doc(db, 'withdrawalRequests', r.id), { txnId: txnId.trim() })
+                                    }}
+                                    placeholder="Enter TXN / UTR reference…"
+                                    className="w-full px-3 py-2 rounded-xl border text-sm font-mono outline-none focus:ring-2 focus:ring-blue-500"
+                                    style={{ backgroundColor: isDark ? 'rgba(255,255,255,0.07)' : '#f9fafb', borderColor: border, color: textSec }}
+                                />
                             </div>
 
                             {/* Payment proof */}
@@ -338,12 +356,13 @@ export default function AccountantDashboardPage() {
                 <div className="flex items-center gap-3">
                     {/* Main tabs */}
                     <div className="flex rounded-xl overflow-hidden border" style={{ borderColor: border }}>
-                        {(['pending', 'history'] as const).map(t => (
-                            <button key={t} onClick={() => setMainTab(t)}
-                                className={`px-4 py-2 text-sm font-bold capitalize transition-all ${mainTab === t
+                        {([['pending', <Clock className="w-4 h-4" />, 'Pending'], ['history', <History className="w-4 h-4" />, 'History']] as const).map(([t, icon, label]) => (
+                            <button key={t} onClick={() => setMainTab(t as 'pending' | 'history')}
+                                className={`flex items-center gap-1.5 px-4 py-2 text-sm font-bold transition-all ${mainTab === t
                                     ? 'bg-blue-600 text-white'
-                                    : isDark ? 'bg-[#1c1c1c] text-gray-400' : 'bg-white text-gray-500'}`}>
-                                {t === 'pending' ? '⏳ Pending' : '📁 History'}
+                                    : isDark ? 'bg-[#1c1c1c] text-gray-400' : 'bg-white text-gray-500'
+                                    }`}>
+                                {icon}{label}
                             </button>
                         ))}
                     </div>
