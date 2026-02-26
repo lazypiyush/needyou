@@ -214,54 +214,44 @@ export default function WalletModal({ isDark, onClose, balance = 0 }: WalletModa
 
             setUpiVerifying(false)
 
-            // Step 3: Open Razorpay checkout
-            await new Promise<void>((resolve, reject) => {
+            // Step 3: Open Razorpay checkout (handler must be synchronous)
+            const paymentId = await new Promise<string>((resolve, reject) => {
                 const rzp = new (window as any).Razorpay({
                     key: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID,
                     amount: orderData.amount,
                     currency: orderData.currency,
                     order_id: orderData.orderId,
-                    name: 'UPI Verification',
+                    name: 'NeedYou',
                     description: 'Pay ₹1 to verify your UPI ID',
                     method: { upi: true, card: false, netbanking: false, wallet: false, emi: false },
                     prefill: { vpa: upiId },
                     theme: { color: '#6d28d9' },
-                    handler: async (response: any) => {
-                        setUpiVerifying(true)
-                        try {
-                            // Step 4: Fetch payment details to get actual VPA used
-                            const payRes = await fetch('/api/fetch-payment', {
-                                method: 'POST',
-                                headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({ paymentId: response.razorpay_payment_id }),
-                            })
-                            const payData = await payRes.json()
-                            if (payData.vpa) {
-                                setUpiId(payData.vpa)
-                                setUpiOwnerName(payData.email || '')
-                                setUpiVerified(true)
-                            } else {
-                                // Payment succeeded but VPA not returned — still mark verified
-                                setUpiVerified(true)
-                            }
-                        } catch {
-                            setUpiVerified(true) // payment succeeded, count as verified
-                        } finally {
-                            setUpiVerifying(false)
-                        }
-                        resolve()
+                    handler: (response: any) => {
+                        // MUST be synchronous — resolve with payment ID
+                        resolve(response.razorpay_payment_id)
                     },
                     modal: {
-                        ondismiss: () => {
-                            setUpiVerifying(false)
-                            setUpiVerifyError('Payment cancelled. Please try again.')
-                            setUpiVerified(false)
-                            reject(new Error('dismissed'))
-                        },
+                        ondismiss: () => reject(new Error('dismissed')),
                     },
                 })
                 rzp.open()
             })
+
+            // Step 4: Payment succeeded — fetch VPA from payment details
+            setUpiVerifying(true)
+            try {
+                const payRes = await fetch('/api/fetch-payment', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ paymentId }),
+                })
+                const payData = await payRes.json()
+                if (payData.vpa) setUpiId(payData.vpa)
+                setUpiOwnerName(payData.email || '')
+            } catch { /* non-critical — payment still succeeded */ }
+            setUpiVerified(true)
+            setUpiVerifying(false)
+
         } catch (err: any) {
             if (err?.message !== 'dismissed') {
                 setUpiVerifyError(err?.message || 'Verification failed')
