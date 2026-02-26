@@ -77,6 +77,7 @@ export default function ProfileSection({ user, isDark }: Props) {
     const [savingAbout, setSavingAbout] = useState(false)
     const [savingForm, setSavingForm] = useState(false)
     const [formSuccess, setFormSuccess] = useState(false)
+    const [signingOut, setSigningOut] = useState(false)
     const [error, setError] = useState('')
     const [showPhotoViewer, setShowPhotoViewer] = useState(false)
 
@@ -193,11 +194,14 @@ export default function ProfileSection({ user, isDark }: Props) {
 
     // ── Logout ───────────────────────────────────────────────────────────────
     const handleLogout = async () => {
+        setSigningOut(true)
+        setError('')
         try {
             await signOut(auth)
             router.replace('/signin')
         } catch (err: any) {
             setError(err.message || 'Failed to sign out')
+            setSigningOut(false)
         }
     }
 
@@ -472,10 +476,15 @@ export default function ProfileSection({ user, isDark }: Props) {
             {/* Logout */}
             <button
                 onClick={handleLogout}
-                className="w-full py-3.5 rounded-2xl border-2 border-red-500/40 font-semibold flex items-center justify-center gap-2 transition-all hover:bg-red-50 dark:hover:bg-red-900/10 active:scale-[0.98]"
+                disabled={signingOut}
+                className="w-full py-3.5 rounded-2xl border-2 border-red-500/40 font-semibold flex items-center justify-center gap-2 transition-all hover:bg-red-50 dark:hover:bg-red-900/10 active:scale-[0.98] disabled:opacity-60 disabled:cursor-not-allowed"
                 style={{ color: '#ef4444' }}
             >
-                <LogOut className="w-5 h-5" /> Sign Out
+                {signingOut ? (
+                    <><Loader2 className="w-5 h-5 animate-spin" /> Signing out…</>
+                ) : (
+                    <><LogOut className="w-5 h-5" /> Sign Out</>
+                )}
             </button>
 
             {/* Full-res profile photo viewer */}
