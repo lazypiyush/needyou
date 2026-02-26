@@ -186,78 +186,52 @@ export default function WalletModal({ isDark, onClose, balance = 0 }: WalletModa
 
     const [formError, setFormError] = useState('')
 
-    // ── Razorpay ₹1 UPI verification ──────────────────────────────────────────
-    const handleVerifyUpi = async () => {
+    // ── UPI handle map ─────────────────────────────────────────────────────────
+    const UPI_HANDLES: Record<string, string> = {
+        ybl: 'PhonePe', ibl: 'PhonePe', axl: 'PhonePe', barodampay: 'PhonePe',
+        paytm: 'Paytm', ptyes: 'Paytm', pthdfc: 'Paytm', ptaxis: 'Paytm',
+        okhdfcbank: 'Google Pay', okaxis: 'Google Pay', okicici: 'Google Pay', oksbi: 'Google Pay',
+        upi: 'BHIM / Any UPI', rajgovhdfcbank: 'BHIM',
+        apl: 'Amazon Pay', yapl: 'Amazon Pay',
+        jupiteraxis: 'Jupiter', juspay: 'JusPay',
+        naviaxis: 'Navi', slice: 'Slice', fam: 'FamPay',
+        icici: 'ICICI Bank', hdfcbank: 'HDFC Bank', sbi: 'SBI',
+        axisbank: 'Axis Bank', kotak: 'Kotak', federal: 'Federal Bank',
+        indus: 'IndusInd Bank', pnb: 'PNB', bob: 'Bank of Baroda',
+        citi: 'Citibank', hsbc: 'HSBC', scb: 'Standard Chartered',
+        dbs: 'DBS Bank', idbi: 'IDBI', idfcbank: 'IDFC First',
+        rbl: 'RBL Bank', unionbank: 'Union Bank', cnrb: 'Canara Bank',
+        uco: 'UCO Bank', boi: 'Bank of India', mahb: 'Bank of Maharashtra',
+        centralbank: 'Central Bank', indianbank: 'Indian Bank',
+        aubank: 'AU Small Finance', equitas: 'Equitas Bank',
+        fino: 'Fino Payments Bank', airtel: 'Airtel Payments Bank',
+        jio: 'Jio Payments Bank', postbank: 'India Post Payments',
+    }
+
+    // ── UPI validation (instant, no payment) ──────────────────────────────────
+    const handleVerifyUpi = () => {
         setUpiVerified(null)
         setUpiOwnerName('')
         setUpiVerifyError('')
-        setUpiVerifying(true)
 
-        try {
-            // Step 1: Create ₹1 order on server
-            const orderRes = await fetch('/api/create-order', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-            })
-            const orderData = await orderRes.json()
-            if (!orderData.orderId) throw new Error(orderData.error || 'Failed to create order')
+        const trimmed = upiId.trim().toLowerCase()
+        if (!trimmed || !/^[a-zA-Z0-9.\-_]+@[a-zA-Z]+$/.test(trimmed)) {
+            setUpiVerifyError('Enter a valid UPI ID (e.g. name@ybl)')
+            setUpiVerified(false)
+            return
+        }
 
-            // Step 2: Load Razorpay checkout script
-            await new Promise<void>((resolve, reject) => {
-                if ((window as any).Razorpay) return resolve()
-                const script = document.createElement('script')
-                script.src = 'https://checkout.razorpay.com/v1/checkout.js'
-                script.onload = () => resolve()
-                script.onerror = () => reject(new Error('Failed to load Razorpay'))
-                document.body.appendChild(script)
-            })
+        const handle = trimmed.split('@')[1]
+        const appName = UPI_HANDLES[handle]
 
-            setUpiVerifying(false)
-
-            // Step 3: Open Razorpay checkout (handler must be synchronous)
-            const paymentId = await new Promise<string>((resolve, reject) => {
-                const rzp = new (window as any).Razorpay({
-                    key: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID,
-                    amount: orderData.amount,
-                    currency: orderData.currency,
-                    order_id: orderData.orderId,
-                    name: 'NeedYou',
-                    description: 'Pay ₹1 to verify your UPI ID',
-                    method: { upi: true, card: false, netbanking: false, wallet: false, emi: false },
-                    prefill: { vpa: upiId },
-                    theme: { color: '#6d28d9' },
-                    handler: (response: any) => {
-                        // MUST be synchronous — resolve with payment ID
-                        resolve(response.razorpay_payment_id)
-                    },
-                    modal: {
-                        ondismiss: () => reject(new Error('dismissed')),
-                    },
-                })
-                rzp.open()
-            })
-
-            // Step 4: Payment succeeded — fetch VPA from payment details
-            setUpiVerifying(true)
-            try {
-                const payRes = await fetch('/api/fetch-payment', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ paymentId }),
-                })
-                const payData = await payRes.json()
-                if (payData.vpa) setUpiId(payData.vpa)
-                setUpiOwnerName(payData.email || '')
-            } catch { /* non-critical — payment still succeeded */ }
+        if (appName) {
+            setUpiOwnerName(appName)
             setUpiVerified(true)
-            setUpiVerifying(false)
-
-        } catch (err: any) {
-            if (err?.message !== 'dismissed') {
-                setUpiVerifyError(err?.message || 'Verification failed')
-                setUpiVerified(false)
-            }
-            setUpiVerifying(false)
+        } else {
+            // Unknown handle — still structurally valid, warn but allow
+            setUpiOwnerName('')
+            setUpiVerified(true)
+            setUpiVerifyError(`Unknown handle @${handle} — double-check your UPI ID`)
         }
     }
 
@@ -665,10 +639,10 @@ export default function WalletModal({ isDark, onClose, balance = 0 }: WalletModa
                                     {upiVerified !== true && (
                                         <button
                                             onClick={handleVerifyUpi}
-                                            disabled={upiVerifying || !upiId}
+                                            disabled={!upiId}
                                             className="flex-1 py-3 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-bold text-sm flex items-center justify-center gap-2 disabled:opacity-50"
                                         >
-                                            {upiVerifying ? <><Loader2 className="w-4 h-4 animate-spin" /> Verifying…</> : <><Smartphone className="w-4 h-4" /> Verify UPI ID</>}
+                                            <Smartphone className="w-4 h-4" /> Verify UPI ID
                                         </button>
                                     )}
                                     {/* Show Save only after successful verification */}
