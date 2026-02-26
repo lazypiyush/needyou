@@ -4,8 +4,10 @@ import { useState, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
     X, Wallet, Plus, Pencil, Trash2, CreditCard,
-    Smartphone, ChevronDown, Check, Loader2, Building2, AlertCircle, Eye, EyeOff
+    Smartphone, ChevronDown, Check, Loader2, Building2, AlertCircle, Eye, EyeOff, ArrowDownToLine
 } from 'lucide-react'
+import { db } from '@/lib/firebase'
+import { collection, addDoc, serverTimestamp } from 'firebase/firestore'
 
 // ── Indian Banks ──────────────────────────────────────────────────────────────
 const INDIAN_BANKS = [
@@ -58,6 +60,8 @@ interface WalletModalProps {
     isDark: boolean
     onClose: () => void
     balance?: number
+    uid?: string
+    userName?: string
 }
 
 // ── Bank Logo Badge ───────────────────────────────────────────────────────────
@@ -159,8 +163,8 @@ function BankDropdown({ value, onChange, isDark }: { value: string; onChange: (v
 }
 
 // ── Main Modal ────────────────────────────────────────────────────────────────
-export default function WalletModal({ isDark, onClose, balance = 0 }: WalletModalProps) {
-    const [tab, setTab] = useState<'methods' | 'addBank' | 'addUpi'>('methods')
+export default function WalletModal({ isDark, onClose, balance = 0, uid = '', userName = '' }: WalletModalProps) {
+    const [tab, setTab] = useState<'methods' | 'addBank' | 'addUpi' | 'withdraw'>('methods')
     const [editingMethod, setEditingMethod] = useState<PaymentMethod | null>(null)
 
     // Saved methods — persisted to localStorage (will move to Firestore later)
@@ -203,8 +207,44 @@ export default function WalletModal({ isDark, onClose, balance = 0 }: WalletModa
     const [upiId, setUpiId] = useState('')
     const [savingUpi, setSavingUpi] = useState(false)
 
-    const [formError, setFormError] = useState('')
+    // Withdraw form
+    const [withdrawMethod, setWithdrawMethod] = useState<PaymentMethod | null>(null)
+    const [withdrawAmount, setWithdrawAmount] = useState('')
+    const [withdrawing, setWithdrawing] = useState(false)
+    const [withdrawDone, setWithdrawDone] = useState(false)
+    const [withdrawError, setWithdrawError] = useState('')
 
+    const handleWithdraw = async () => {
+        setWithdrawError('')
+        const amt = parseFloat(withdrawAmount)
+        if (!withdrawMethod) return setWithdrawError('Please select a payment method.')
+        if (!amt || amt <= 0) return setWithdrawError('Enter a valid amount.')
+        if (amt > balance) return setWithdrawError(`Amount exceeds your balance of ₹${balance}.`)
+        setWithdrawing(true)
+        try {
+            await addDoc(collection(db, 'withdrawalRequests'), {
+                uid,
+                userName,
+                amount: amt,
+                method: withdrawMethod.type === 'bank'
+                    ? { type: 'bank', bankId: withdrawMethod.bankId, accountHolderName: withdrawMethod.accountHolderName, accountNumber: withdrawMethod.accountNumber, ifsc: withdrawMethod.ifsc }
+                    : { type: 'upi', upiId: withdrawMethod.upiId },
+                status: 'pending',
+                createdAt: serverTimestamp(),
+            })
+            setWithdrawDone(true)
+            setWithdrawAmount('')
+            setWithdrawMethod(null)
+        } catch (err: any) {
+            setWithdrawError('Failed to submit request. Please try again.')
+        } finally {
+            setWithdrawing(false)
+        }
+    }
+
+    // UPI logo
+    const UPI_LOGO = 'https://upload.wikimedia.org/wikipedia/commons/thumb/e/e1/UPI-Logo-vector.svg/2560px-UPI-Logo-vector.svg.png'
+    const [formError, setFormError] = useState('')
 
     const bg = isDark ? '#111114' : '#fff'
     const cardBg = isDark ? '#1a1a1e' : '#f9fafb'
@@ -392,8 +432,8 @@ export default function WalletModal({ isDark, onClose, balance = 0 }: WalletModa
                                                     {m.type === 'bank' ? (
                                                         <BankBadge bankId={m.bankId} size="md" />
                                                     ) : (
-                                                        <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center flex-shrink-0 shadow-sm">
-                                                            <Smartphone className="w-5 h-5 text-white" />
+                                                        <div className="w-10 h-10 rounded-xl bg-white border border-gray-200 flex items-center justify-center flex-shrink-0 shadow-sm overflow-hidden">
+                                                            <img src={UPI_LOGO} alt="UPI" className="w-8 object-contain" />
                                                         </div>
                                                     )}
                                                     <div className="flex-1 min-w-0">
@@ -447,8 +487,8 @@ export default function WalletModal({ isDark, onClose, balance = 0 }: WalletModa
                                         className="flex flex-col items-center gap-2 p-4 rounded-2xl border-2 border-dashed transition-all hover:border-purple-400 hover:bg-purple-50/50 dark:hover:bg-purple-900/10 group"
                                         style={{ borderColor: isDark ? '#2a2a30' : '#e5e7eb' }}
                                     >
-                                        <div className="w-10 h-10 rounded-xl bg-purple-100 dark:bg-purple-900/30 flex items-center justify-center group-hover:scale-110 transition-transform">
-                                            <Smartphone className="w-5 h-5 text-purple-600 dark:text-purple-400" />
+                                        <div className="w-10 h-10 rounded-xl bg-white border border-gray-200 dark:bg-purple-900/30 flex items-center justify-center group-hover:scale-110 transition-transform overflow-hidden">
+                                            <img src={UPI_LOGO} alt="UPI" className="w-8 object-contain" />
                                         </div>
                                         <div className="text-center">
                                             <p className="text-sm font-semibold" style={{ color: textPri }}>UPI ID</p>
@@ -456,6 +496,16 @@ export default function WalletModal({ isDark, onClose, balance = 0 }: WalletModa
                                         </div>
                                     </button>
                                 </div>
+
+                                {/* Withdraw button — only if methods exist */}
+                                {methods.length > 0 && (
+                                    <button
+                                        onClick={() => { setWithdrawDone(false); setWithdrawError(''); setWithdrawAmount(''); setWithdrawMethod(null); setTab('withdraw') }}
+                                        className="w-full flex items-center justify-center gap-2 py-3 rounded-2xl font-bold text-sm bg-gradient-to-r from-green-500 to-emerald-500 text-white shadow-md hover:shadow-lg transition-all"
+                                    >
+                                        <ArrowDownToLine className="w-4 h-4" /> Withdraw
+                                    </button>
+                                )}
                             </motion.div>
                         )}
 
@@ -604,6 +654,85 @@ export default function WalletModal({ isDark, onClose, balance = 0 }: WalletModa
                                         {savingUpi ? <><Loader2 className="w-4 h-4 animate-spin" /> Saving…</> : <><Smartphone className="w-4 h-4" /> {editingMethod ? 'Update' : 'Save'} UPI ID</>}
                                     </button>
                                 </div>
+                            </motion.div>
+                        )}
+
+                        {/* ── Withdraw ── */}
+                        {tab === 'withdraw' && (
+                            <motion.div key="withdraw" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="p-5 space-y-5">
+                                {/* Balance */}
+                                <div className="rounded-2xl p-4 text-center" style={{ background: 'linear-gradient(135deg, #10b981, #059669)' }}>
+                                    <p className="text-green-100 text-xs font-semibold uppercase tracking-wide mb-1">Available Balance</p>
+                                    <p className="text-white text-3xl font-black">₹{balance.toLocaleString('en-IN')}</p>
+                                </div>
+                                {withdrawDone ? (
+                                    <div className="text-center py-6 space-y-3">
+                                        <div className="w-14 h-14 rounded-full bg-green-100 dark:bg-green-900/30 flex items-center justify-center mx-auto">
+                                            <Check className="w-8 h-8 text-green-500" />
+                                        </div>
+                                        <p className="font-bold text-lg" style={{ color: textPri }}>Request Submitted!</p>
+                                        <p className="text-sm" style={{ color: textSec }}>Your withdrawal request has been sent to the accountant for processing.</p>
+                                        <button onClick={() => { setWithdrawDone(false); setTab('methods') }} className="mt-2 px-6 py-2 rounded-xl bg-green-500 text-white font-semibold text-sm">Done</button>
+                                    </div>
+                                ) : (
+                                    <>
+                                        <div>
+                                            <label className={labelCls}>Select Payment Method</label>
+                                            <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
+                                                {methods.map(m => (
+                                                    <button
+                                                        key={m.id}
+                                                        onClick={() => setWithdrawMethod(m)}
+                                                        className="w-full flex items-center gap-3 p-3 rounded-xl border-2 transition-all text-left"
+                                                        style={{ backgroundColor: withdrawMethod?.id === m.id ? (isDark ? '#052e16' : '#f0fdf4') : cardBg, borderColor: withdrawMethod?.id === m.id ? '#10b981' : border }}
+                                                    >
+                                                        {m.type === 'bank' ? (
+                                                            <BankBadge bankId={m.bankId} size="sm" />
+                                                        ) : (
+                                                            <div className="w-8 h-8 rounded-lg bg-white border border-gray-200 flex items-center justify-center flex-shrink-0 overflow-hidden">
+                                                                <img src={UPI_LOGO} alt="UPI" className="w-6 object-contain" />
+                                                            </div>
+                                                        )}
+                                                        <div className="flex-1 min-w-0">
+                                                            {m.type === 'bank' ? (
+                                                                <>
+                                                                    <p className="text-sm font-semibold truncate" style={{ color: textPri }}>{INDIAN_BANKS.find(b => b.id === m.bankId)?.name}</p>
+                                                                    <p className="text-xs" style={{ color: textSec }}>••••{m.accountNumber.slice(-4)} · {m.accountHolderName}</p>
+                                                                </>
+                                                            ) : (
+                                                                <p className="text-sm font-semibold truncate" style={{ color: textPri }}>{m.upiId}</p>
+                                                            )}
+                                                        </div>
+                                                        {withdrawMethod?.id === m.id && <Check className="w-4 h-4 text-green-500 flex-shrink-0" />}
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        </div>
+                                        <div>
+                                            <label className={labelCls}>Amount (₹)</label>
+                                            <input
+                                                type="number" min="1" max={balance}
+                                                value={withdrawAmount}
+                                                onChange={e => setWithdrawAmount(e.target.value)}
+                                                placeholder="Enter amount to withdraw"
+                                                className={inputCls}
+                                            />
+                                        </div>
+                                        {withdrawError && (
+                                            <p className="text-sm text-red-500 flex items-center gap-1"><AlertCircle className="w-4 h-4" /> {withdrawError}</p>
+                                        )}
+                                        <div className="flex gap-3 pt-1">
+                                            <button onClick={() => setTab('methods')} className="flex-1 py-3 rounded-xl border font-semibold text-sm" style={{ borderColor: border, color: textSec }}>Cancel</button>
+                                            <button
+                                                onClick={handleWithdraw}
+                                                disabled={withdrawing || !withdrawMethod || !withdrawAmount}
+                                                className="flex-1 py-3 rounded-xl bg-gradient-to-r from-green-500 to-emerald-600 text-white font-bold text-sm flex items-center justify-center gap-2 disabled:opacity-40"
+                                            >
+                                                {withdrawing ? <><Loader2 className="w-4 h-4 animate-spin" /> Submitting…</> : <><ArrowDownToLine className="w-4 h-4" /> Submit Request</>}
+                                            </button>
+                                        </div>
+                                    </>
+                                )}
                             </motion.div>
                         )}
 

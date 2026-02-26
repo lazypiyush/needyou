@@ -523,6 +523,8 @@ export default function ProfileSection({ user, isDark }: Props) {
                         isDark={isDark}
                         onClose={() => setShowWallet(false)}
                         balance={0}
+                        uid={user.uid}
+                        userName={user.displayName || user.email || ''}
                     />
                 )}
             </AnimatePresence>
