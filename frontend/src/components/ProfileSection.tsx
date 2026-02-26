@@ -9,7 +9,7 @@ import {
 } from 'lucide-react'
 import { auth, db } from '@/lib/firebase'
 import { signOut } from 'firebase/auth'
-import { doc, getDoc } from 'firebase/firestore'
+import { doc, getDoc, onSnapshot } from 'firebase/firestore'
 import {
     updateUserProfile, getUserReviews, Review,
     updateUserEducation, updateUserEmployment
@@ -83,6 +83,7 @@ export default function ProfileSection({ user, isDark }: Props) {
     const [error, setError] = useState('')
     const [showPhotoViewer, setShowPhotoViewer] = useState(false)
     const [showWallet, setShowWallet] = useState(false)
+    const [walletBalance, setWalletBalance] = useState(0)
 
     const needsCompany = ['Employed', 'Self-Employed'].includes(employmentStatus)
 
@@ -98,6 +99,7 @@ export default function ProfileSection({ user, isDark }: Props) {
                     setAboutMe(d.aboutMe || '')
                     setAboutDraft(d.aboutMe || '')
                     setMemberSince(d.createdAt || null)
+                    setWalletBalance(d.walletBalance || 0)
 
                     // Pre-fill education
                     if (d.education) {
@@ -522,7 +524,7 @@ export default function ProfileSection({ user, isDark }: Props) {
                     <WalletModal
                         isDark={isDark}
                         onClose={() => setShowWallet(false)}
-                        balance={0}
+                        balance={walletBalance}
                         uid={user.uid}
                         userName={user.displayName || user.email || ''}
                     />

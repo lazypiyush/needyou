@@ -13,7 +13,8 @@ import ThemeToggle from '@/components/ThemeToggle'
 import { useTheme } from 'next-themes'
 import { db } from '@/lib/firebase'
 import {
-    collection, addDoc, getDocs, deleteDoc, doc, query, orderBy, serverTimestamp
+    collection, addDoc, getDocs, deleteDoc, doc, query, orderBy,
+    serverTimestamp, where, updateDoc, increment, getDoc
 } from 'firebase/firestore'
 
 interface Accountant {
@@ -34,6 +35,14 @@ export default function AdminDashboardPage() {
     const [success, setSuccess] = useState('')
     const [deletingId, setDeletingId] = useState<string | null>(null)
     const [mounted, setMounted] = useState(false)
+
+    // Wallet top-up
+    const [walletEmail, setWalletEmail] = useState('')
+    const [walletAmount, setWalletAmount] = useState('')
+    const [walletUser, setWalletUser] = useState<{ uid: string; name: string; email: string; balance: number } | null>(null)
+    const [walletSearching, setWalletSearching] = useState(false)
+    const [walletAdding, setWalletAdding] = useState(false)
+    const [walletMsg, setWalletMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
     const router = useRouter()
     const { theme } = useTheme()
 
@@ -110,6 +119,47 @@ export default function AdminDashboardPage() {
     const handleLogout = () => {
         sessionStorage.removeItem('admin_authenticated')
         router.push('/admin')
+    }
+
+    const handleWalletSearch = async () => {
+        setWalletMsg(null)
+        setWalletUser(null)
+        if (!walletEmail.trim()) return
+        setWalletSearching(true)
+        try {
+            const q = query(collection(db, 'users'), where('email', '==', walletEmail.trim().toLowerCase()))
+            const snap = await getDocs(q)
+            if (snap.empty) {
+                setWalletMsg({ type: 'error', text: 'No user found with that email.' })
+            } else {
+                const d = snap.docs[0]
+                const data = d.data()
+                setWalletUser({ uid: d.id, name: data.name || data.displayName || 'User', email: data.email, balance: data.walletBalance || 0 })
+            }
+        } catch {
+            setWalletMsg({ type: 'error', text: 'Search failed. Please try again.' })
+        } finally {
+            setWalletSearching(false)
+        }
+    }
+
+    const handleAddBalance = async () => {
+        if (!walletUser) return
+        const amt = parseFloat(walletAmount)
+        if (!amt || amt <= 0) return setWalletMsg({ type: 'error', text: 'Enter a valid amount.' })
+        setWalletAdding(true)
+        setWalletMsg(null)
+        try {
+            await updateDoc(doc(db, 'users', walletUser.uid), { walletBalance: increment(amt) })
+            const newBal = walletUser.balance + amt
+            setWalletUser(prev => prev ? { ...prev, balance: newBal } : null)
+            setWalletAmount('')
+            setWalletMsg({ type: 'success', text: `✅ Added ₹${amt} to ${walletUser.name}'s wallet. New balance: ₹${newBal}` })
+        } catch {
+            setWalletMsg({ type: 'error', text: 'Failed to add balance. Please try again.' })
+        } finally {
+            setWalletAdding(false)
+        }
     }
 
     return (
@@ -244,6 +294,70 @@ export default function AdminDashboardPage() {
                                 {loading ? <><Loader2 className="w-5 h-5 animate-spin" />Assigning...</> : <><Plus className="w-5 h-5" />Assign Accountant</>}
                             </motion.button>
                         </form>
+                    </motion.div>
+
+                    {/* Wallet Top-Up */}
+                    <motion.div
+                        initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4, delay: 0.2 }}
+                        className="bg-white/80 dark:bg-[#1c1c1c]/80 backdrop-blur-xl p-6 rounded-3xl shadow-xl border border-gray-200 dark:border-gray-700"
+                    >
+                        <div className="flex items-center gap-3 mb-5">
+                            <div className="w-10 h-10 bg-gradient-to-br from-green-500 to-emerald-600 rounded-xl flex items-center justify-center shadow-lg">
+                                <ShieldCheck className="w-5 h-5 text-white" />
+                            </div>
+                            <div>
+                                <h2 className="text-lg font-bold text-gray-900 dark:text-white">Wallet Top-Up</h2>
+                                <p className="text-gray-500 dark:text-gray-400 text-sm">Search user by email and add wallet balance</p>
+                            </div>
+                        </div>
+
+                        <div className="flex gap-2 mb-4">
+                            <input
+                                type="email" value={walletEmail}
+                                onChange={e => { setWalletEmail(e.target.value); setWalletUser(null); setWalletMsg(null) }}
+                                onKeyDown={e => e.key === 'Enter' && handleWalletSearch()}
+                                placeholder="User email address"
+                                className="flex-1 px-4 py-3 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-xl focus:ring-2 focus:ring-green-500 outline-none text-gray-900 dark:text-white text-sm"
+                            />
+                            <button onClick={handleWalletSearch} disabled={walletSearching || !walletEmail.trim()}
+                                className="px-4 py-3 bg-gradient-to-r from-green-500 to-emerald-600 text-white font-bold rounded-xl disabled:opacity-50 flex items-center gap-2 text-sm">
+                                {walletSearching ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Search'}
+                            </button>
+                        </div>
+
+                        {walletUser && (
+                            <div className="space-y-3 p-4 rounded-2xl bg-gray-50 dark:bg-gray-700/50 border border-gray-200 dark:border-gray-600">
+                                <div className="flex items-center justify-between">
+                                    <div>
+                                        <p className="font-bold text-gray-900 dark:text-white">{walletUser.name}</p>
+                                        <p className="text-sm text-gray-500 dark:text-gray-400">{walletUser.email}</p>
+                                    </div>
+                                    <div className="text-right">
+                                        <p className="text-xs text-gray-500 dark:text-gray-400">Current Balance</p>
+                                        <p className="text-xl font-black text-green-600 dark:text-green-400">₹{walletUser.balance.toLocaleString('en-IN')}</p>
+                                    </div>
+                                </div>
+                                <div className="flex gap-2">
+                                    <input
+                                        type="number" min="1" value={walletAmount}
+                                        onChange={e => setWalletAmount(e.target.value)}
+                                        placeholder="Amount to add (₹)"
+                                        className="flex-1 px-4 py-2.5 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-xl focus:ring-2 focus:ring-green-500 outline-none text-gray-900 dark:text-white text-sm"
+                                    />
+                                    <button onClick={handleAddBalance} disabled={walletAdding || !walletAmount}
+                                        className="px-4 py-2.5 bg-gradient-to-r from-green-500 to-emerald-600 text-white font-bold rounded-xl disabled:opacity-50 flex items-center gap-2 text-sm">
+                                        {walletAdding ? <Loader2 className="w-4 h-4 animate-spin" /> : '+ Add'}
+                                    </button>
+                                </div>
+                            </div>
+                        )}
+
+                        {walletMsg && (
+                            <div className={`mt-3 p-3 rounded-xl text-sm font-medium ${walletMsg.type === 'success'
+                                    ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300 border border-green-300 dark:border-green-700'
+                                    : 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300 border border-red-300 dark:border-red-700'
+                                }`}>{walletMsg.text}</div>
+                        )}
                     </motion.div>
 
                     {/* Accountants List */}
