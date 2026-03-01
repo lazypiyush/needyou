@@ -347,14 +347,13 @@ public class MainActivity extends BridgeActivity {
             }
 
             // ── DigiLocker / any window.open() popup ─────────────────────────
-            // Use an in-app full-screen WebView dialog instead of Chrome so that
-            // the DigiLocker SDK's postMessage / onSuccess callback can reach the
-            // main WebView. If we send the popup to Chrome the callback is lost.
+            // Open popups inside the app — NOT Chrome — so that window.opener.postMessage()
+            // from the DigiLocker OAuth popup reaches the main WebView's SDK listener.
+            // (Sending to Chrome breaks the postMessage bridge → onSuccess never fires.)
             @Override
             public boolean onCreateWindow(WebView view, boolean isDialog,
                     boolean isUserGesture, android.os.Message resultMsg) {
 
-                // Build a full-screen dialog housing a child WebView
                 final Dialog popup = new Dialog(MainActivity.this,
                         android.R.style.Theme_Black_NoTitleBar_Fullscreen);
                 final WebView popupView = new WebView(MainActivity.this);
@@ -362,23 +361,9 @@ public class MainActivity extends BridgeActivity {
                 popupView.getSettings().setDomStorageEnabled(true);
                 popupView.getSettings().setSupportMultipleWindows(true);
 
-                popupView.setWebViewClient(new WebViewClient() {
-                    @Override
-                    public boolean shouldOverrideUrlLoading(
-                            WebView v, android.webkit.WebResourceRequest req) {
-                        String url = req.getUrl().toString();
-                        // When DigiLocker redirects back to our domain, close the
-                        // popup and load the callback URL in the main WebView so
-                        // the SDK's onSuccess handler fires correctly.
-                        if (url.startsWith("https://need-you.xyz") ||
-                                url.startsWith("https://www.need-you.xyz")) {
-                            popup.dismiss();
-                            runOnUiThread(() -> getBridge().getWebView().loadUrl(url));
-                            return true;
-                        }
-                        return false;
-                    }
-                });
+                // Plain WebViewClient — let all URLs load inside the popup so
+                // postMessage flows back to the parent (main WebView) via window.opener.
+                popupView.setWebViewClient(new WebViewClient());
 
                 popupView.setWebChromeClient(new WebChromeClient() {
                     @Override
@@ -390,7 +375,6 @@ public class MainActivity extends BridgeActivity {
                 popup.setContentView(popupView);
                 popup.show();
 
-                // Wire the new WebView into the WebView window-open transport
                 WebView.WebViewTransport transport = (WebView.WebViewTransport) resultMsg.obj;
                 transport.setWebView(popupView);
                 resultMsg.sendToTarget();

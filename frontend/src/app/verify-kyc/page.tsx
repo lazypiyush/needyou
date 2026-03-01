@@ -113,6 +113,28 @@ function VerifyKycContent() {
         load()
     }, [user, router])
 
+    // ─── APK fallback: re-check KYC when user returns from DigiLocker in Chrome ─
+    // When DigiLocker opens in an external browser on Android, the onSuccess callback
+    // never fires in the WebView. When the user returns to the app, this listener
+    // polls Firestore and advances the phase if kycVerified is now true.
+    useEffect(() => {
+        const handleVisibility = async () => {
+            if (document.visibilityState !== 'visible') return
+            if (phase !== 'digilocker' || !user) return
+            try {
+                const status = await getUserKycStatus(user.uid)
+                if (status?.kycVerified) {
+                    setPhase('complete')
+                } else if (status?.livenessVerified && status?.aadhaarVerified) {
+                    await updateKycStatus(user.uid, 'complete').catch(() => { })
+                    setPhase('complete')
+                }
+            } catch { /* ignore */ }
+        }
+        document.addEventListener('visibilitychange', handleVisibility)
+        return () => document.removeEventListener('visibilitychange', handleVisibility)
+    }, [phase, user])
+
     // ─── Eagerly inject SDK script on mount ──────────────────────────────────
     // This runs as soon as the component mounts (even during liveness phase)
     // so by the time liveness completes the script is already cached.
@@ -1093,9 +1115,6 @@ function VerifyKycContent() {
 
                 </div>
 
-                <p className="text-center mt-4 text-xs text-gray-500 dark:text-gray-400">
-                    Having trouble? <a href="mailto:support@needyou.app" className="text-blue-500 hover:underline">Contact Support</a>
-                </p>
             </motion.div>
         </div>
     )
