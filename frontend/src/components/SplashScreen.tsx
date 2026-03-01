@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 
 /**
@@ -13,9 +14,14 @@ import { useAuth } from '@/context/AuthContext';
  *    Keeps a plain dark overlay visible while auth.loading is true so users
  *    never see the sign-in screen flash before Firebase resolves the session.
  *    Fades out as soon as the auth state is known.
+ *
+ * 3. SESSION RESTORE  (native app only)
+ *    If the ny_persist flag is set AND Firebase restores a user session,
+ *    automatically navigates to /dashboard — no manual re-login needed.
  */
 export default function SplashScreen() {
-    const { loading: authLoading } = useAuth();
+    const { loading: authLoading, user } = useAuth();
+    const router = useRouter();
 
     const [showSplash, setShowSplash] = useState(false); // launch splash
     const [splashFade, setSplashFade] = useState(false);
@@ -40,16 +46,21 @@ export default function SplashScreen() {
         }
     }, []);
 
-    // Dismiss auth shield once Firebase resolves (loading goes false)
+    // Dismiss auth shield once Firebase resolves; auto-route on restored session
     useEffect(() => {
         if (!(window as any).Capacitor?.isNativePlatform()) return;
         if (!authLoading) {
+            // If session was restored for a complete-profile user → go to dashboard
+            if (user && localStorage.getItem('ny_persist') === '1') {
+                router.replace('/dashboard');
+            }
+
             // Small delay so the page behind has time to render → no flicker
             const t = setTimeout(() => setShieldFade(true), 200);
             const t2 = setTimeout(() => setShowShield(false), 700);
             return () => { clearTimeout(t); clearTimeout(t2); };
         }
-    }, [authLoading]);
+    }, [authLoading, user, router]);
 
     return (
         <>

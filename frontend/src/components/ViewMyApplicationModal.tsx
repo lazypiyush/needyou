@@ -1116,7 +1116,7 @@ export default function ViewMyApplicationModal({
                             <motion.div initial={{ scale: 0 }} animate={{ scale: [0, 1.3, 1] }} transition={{ duration: 0.7, times: [0, 0.6, 1] }} className="text-7xl mb-4">🎉</motion.div>
                             <motion.h2 initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.5 }} className="text-2xl font-black text-white mb-3">All the Best!</motion.h2>
                             <motion.p initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.7 }} className="text-gray-300 text-sm leading-relaxed">
-                                Be nice, polite, and professional. Complete the job on time and give it your best. Good luck! 🌟
+                                Be nice, polite, and professional.Complete the job on time and give it your best. Good luck! 🌟
                             </motion.p>
                             <motion.button initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 1.5 }}
                                 onClick={() => setShowWelcomeAnimation(false)}

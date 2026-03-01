@@ -1,5 +1,5 @@
 import { initializeApp, getApps, FirebaseApp } from 'firebase/app';
-import { getAuth, GoogleAuthProvider, Auth } from 'firebase/auth';
+import { initializeAuth, GoogleAuthProvider, Auth, indexedDBLocalPersistence, browserSessionPersistence } from 'firebase/auth';
 import { getFirestore, Firestore } from 'firebase/firestore'
 import { getStorage, FirebaseStorage } from 'firebase/storage'
 
@@ -27,7 +27,11 @@ if (typeof window !== 'undefined') {
     firebaseApp = getApps()[0];
   }
 
-  firebaseAuth = getAuth(firebaseApp);
+  // Use indexedDB persistence only if user previously completed profile (ny_persist flag)
+  const shouldPersist = typeof window !== 'undefined' && localStorage.getItem('ny_persist') === '1'
+  firebaseAuth = initializeAuth(firebaseApp, {
+    persistence: shouldPersist ? [indexedDBLocalPersistence] : [browserSessionPersistence]
+  })
   firebaseGoogleProvider = new GoogleAuthProvider();
   firebaseDb = getFirestore(firebaseApp);
   firebaseStorage = getStorage(firebaseApp);

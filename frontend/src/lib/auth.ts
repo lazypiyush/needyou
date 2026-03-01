@@ -9,8 +9,29 @@ import {
   sendPasswordResetEmail,  // ← ADD THIS
   reload,
   onAuthStateChanged,
-  User
+  User,
+  setPersistence,
+  indexedDBLocalPersistence,
 } from 'firebase/auth'
+
+// ── Session persistence helpers ───────────────────────────────────────────────
+/** Call this once profile+onboarding+KYC are confirmed complete.
+ *  Migrates the current session to IndexedDB so it survives APK cold restarts. */
+export const upgradeToPersistentSession = async () => {
+  try {
+    if (typeof window === 'undefined') return
+    await setPersistence(auth, indexedDBLocalPersistence)
+    localStorage.setItem('ny_persist', '1')
+  } catch (e) {
+    console.error('upgradeToPersistentSession:', e)
+  }
+}
+
+/** Call on sign-out so the next cold start requires a fresh login. */
+export const clearPersistentSession = () => {
+  if (typeof window !== 'undefined') localStorage.removeItem('ny_persist')
+}
+// ─────────────────────────────────────────────────────────────────────────────
 import { doc, setDoc, updateDoc, getDoc, collection, query, where, getDocs, onSnapshot, addDoc, orderBy, Timestamp } from 'firebase/firestore'
 import { auth, db } from './firebase'
 

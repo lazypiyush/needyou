@@ -14,7 +14,9 @@ import {
   checkPhoneNumberExists,
   getUserByPhoneNumber,
   checkOnboardingStatus,
-  getUserKycStatus
+  getUserKycStatus,
+  upgradeToPersistentSession,
+  clearPersistentSession,
 } from '@/lib/auth'
 import { useAuth } from '@/context/AuthContext'
 import { ConfirmationResult } from 'firebase/auth'
@@ -115,13 +117,16 @@ export default function SignInPage() {
     if (user && !authLoading) {
       const checkProfileAndRedirect = async () => {
         const status = await getUserVerificationStatus(user.uid)
+        const onboarding = await checkOnboardingStatus(user.uid)
 
-        // Only redirect if profile is complete
-        if (status?.profileComplete && status?.emailVerified && status?.phoneVerified) {
-          console.log('✅ Profile complete, redirecting to dashboard')
+        // Only persist + redirect if FULLY complete (profile + onboarding + kyc)
+        if (status?.profileComplete && status?.emailVerified && status?.phoneVerified && onboarding?.onboardingComplete) {
+          console.log('✅ Profile complete, upgrading persistence & redirecting to dashboard')
+          await upgradeToPersistentSession()
           router.replace('/dashboard')
         } else {
-          console.log('⚠️ Profile incomplete, staying on signin page')
+          console.log('⚠️ Profile incomplete, clearing persist flag')
+          clearPersistentSession()
         }
       }
 

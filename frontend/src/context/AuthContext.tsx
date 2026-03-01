@@ -43,6 +43,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signOut = async () => {
     try {
+      if (typeof window !== 'undefined') localStorage.removeItem('ny_persist')
       await firebaseSignOut(auth)
     } catch (error) {
       console.error('Sign out error:', error)
