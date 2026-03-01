@@ -458,6 +458,7 @@ export default function JobCard({ job, onApply, onDelete, userLocation, highligh
                     jobId={job.id}
                     jobTitle={job.caption}
                     jobBudget={job.budget}
+                    jobPosterName={job.userName}
                     onClose={() => setShowApplications(false)}
                 />
             )}

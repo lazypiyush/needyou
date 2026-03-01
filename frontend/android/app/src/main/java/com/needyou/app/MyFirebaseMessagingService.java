@@ -95,16 +95,17 @@ public class MyFirebaseMessagingService extends FirebaseMessagingService {
             body = data.get("body");
         }
 
-        // Extract deep-link jobId if present
+        // Extract deep-link fields if present
         String jobId = data.containsKey("jobId") ? data.get("jobId") : null;
+        String notificationType = data.containsKey("notificationType") ? data.get("notificationType") : null;
 
-        Log.d(TAG, "Posting notification — title: " + title + " | body: " + body);
-        postNotification(title, body, jobId);
+        Log.d(TAG, "Posting notification — title: " + title + " | body: " + body + " | type: " + notificationType);
+        postNotification(title, body, jobId, notificationType);
     }
 
     // ─── Post system notification ─────────────────────────────────────────────
 
-    private void postNotification(String title, String body, String jobId) {
+    private void postNotification(String title, String body, String jobId, String notificationType) {
         ensureChannelExists();
 
         // Build an intent that re-opens MainActivity and passes deep-link extras
@@ -112,6 +113,9 @@ public class MyFirebaseMessagingService extends FirebaseMessagingService {
         intent.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
         if (jobId != null && !jobId.isEmpty()) {
             intent.putExtra("jobId", jobId);
+        }
+        if (notificationType != null && !notificationType.isEmpty()) {
+            intent.putExtra("notificationType", notificationType);
         }
 
         int piFlags = Build.VERSION.SDK_INT >= Build.VERSION_CODES.M

@@ -1,17 +1,23 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import { X, User, Mail, Phone, Clock, CheckCircle, XCircle, IndianRupee, MessageCircle, Loader2 } from 'lucide-react'
 import { getUserOwnApplication } from '@/lib/auth'
 import { useTheme } from 'next-themes'
 import { useAuth } from '@/context/AuthContext'
-import { doc, getDoc } from 'firebase/firestore'
+import { collection, doc, getDoc, onSnapshot, query, where } from 'firebase/firestore'
 import { db } from '@/lib/firebase'
 import { respondToRenegotiation } from '@/lib/renegotiation'
+import { requestStartJob, verifyStartCode } from '@/lib/startJob'
 import { useModalHistory } from '@/hooks/useModalHistory'
 import { pushChatState } from '@/lib/chatNavigation'
 import { getCompressedImageUrl } from '@/lib/cloudinary'
+import { updateWorkerLocation } from '@/lib/liveTracking'
+import LiveTrackingMap from './LiveTrackingMap'
+import { motion, AnimatePresence } from 'framer-motion'
+import { calcDistance, notifyArrival, requestMeeting, verifyMeetingCode as verifyMeetingOtp, submitBill } from '@/lib/jobBilling'
+import JobBillModal, { type BillItem } from './JobBillModal'
 import UserProfileSheet from './UserProfileSheet'
 
 interface ViewMyApplicationModalProps {
@@ -53,6 +59,31 @@ export default function ViewMyApplicationModal({
     const [negotiationReason, setNegotiationReason] = useState<string>('')
     const [responding, setResponding] = useState(false)
 
+    // Start Job state
+    const [enteredCode, setEnteredCode] = useState('')
+    const [codeSubmitting, setCodeSubmitting] = useState(false)
+    const [secondsLeft, setSecondsLeft] = useState(0)
+    const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null)
+
+    // GPS / live tracking state (worker side)
+    const [gpsError, setGpsError] = useState<string | null>(null)
+    const [workerLocation, setWorkerLocation] = useState<{ lat: number; lng: number; updatedAt: number } | null>(null)
+    const [showTrackingMap, setShowTrackingMap] = useState(true)
+    const watchIdRef = useRef<number | null>(null)
+    const [jobDestination, setJobDestination] = useState<{ lat: number; lng: number } | null>(null)
+    const jobDestinationRef = useRef<{ lat: number; lng: number } | null>(null)
+    const arrivalNotifiedRef = useRef(false)
+    // Meeting OTP state (in-person meeting confirmation after arrival)
+    const [meetingEnteredCode, setMeetingEnteredCode] = useState('')
+    const [meetingCodeSubmitting, setMeetingCodeSubmitting] = useState(false)
+    const [meetingSecondsLeft, setMeetingSecondsLeft] = useState(0)
+    const meetingCountdownRef = useRef<ReturnType<typeof setInterval> | null>(null)
+    // Bill & animation state
+    const [showBillModal, setShowBillModal] = useState(false)
+    const [showBillView, setShowBillView] = useState(false)
+    const [showWelcomeAnimation, setShowWelcomeAnimation] = useState(false)
+    const welcomeShownRef = useRef(false)
+
     useEffect(() => {
         setMounted(true)
     }, [])
@@ -60,33 +91,116 @@ export default function ViewMyApplicationModal({
     const currentTheme = theme === 'system' ? systemTheme : theme
     const isDark = currentTheme === 'dark'
 
+    // Real-time listener on the application doc so Start Job status syncs instantly
     useEffect(() => {
-        const fetchApplication = async () => {
-            if (!user?.uid) return
-
-            console.log('🔍 Fetching application for:', { jobId, userId: user.uid })
-            try {
-                const app = await getUserOwnApplication(jobId, user.uid)
-                console.log('✅ Application data:', app)
-                console.log('📊 Budget details:', {
-                    budgetSatisfied: app?.budgetSatisfied,
-                    negotiationStatus: app?.negotiationStatus,
-                    currentOffer: app?.currentOffer,
-                    counterOffer: app?.counterOffer,
-                    jobBudget: jobBudget
-                })
-                setApplication(app)
-            } catch (error) {
-                console.error('❌ Error fetching application:', error)
-            } finally {
-                setLoading(false)
-            }
-        }
-
-        fetchApplication()
+        if (!user?.uid || !db) return
+        setLoading(true)
+        const q = query(
+            collection(db, 'job_applications'),
+            where('jobId', '==', jobId),
+            where('userId', '==', user.uid)
+        )
+        const unsub = onSnapshot(q, (snap) => {
+            if (snap.empty) { setApplication(null); setLoading(false); return }
+            const d = snap.docs[0]
+            setApplication({ id: d.id, ...d.data() })
+            setLoading(false)
+        }, (err) => {
+            console.error('Application listener error:', err)
+            setLoading(false)
+        })
+        return () => unsub()
     }, [jobId, user?.uid])
 
-    // Fetch job poster's phone number + avatar
+    // Countdown timer for OTP expiry
+    useEffect(() => {
+        const expiry: number = application?.startJobCodeExpiry ?? 0
+        if (!expiry) { setSecondsLeft(0); return }
+        const tick = () => {
+            const s = Math.max(0, Math.floor((expiry - Date.now()) / 1000))
+            setSecondsLeft(s)
+        }
+        tick()
+        if (countdownRef.current) clearInterval(countdownRef.current)
+        countdownRef.current = setInterval(tick, 1000)
+        return () => { if (countdownRef.current) clearInterval(countdownRef.current) }
+    }, [application?.startJobCodeExpiry])
+
+    // Fetch the job's saved location (latitude/longitude) for the direction route
+    useEffect(() => {
+        if (!db || !jobId) return
+        import('firebase/firestore').then(({ doc, getDoc }) => {
+            getDoc(doc(db!, 'jobs', jobId)).then(snap => {
+                if (!snap.exists()) return
+                const d = snap.data()
+                if (d.location?.latitude != null && d.location?.longitude != null) {
+                    setJobDestination({ lat: d.location.latitude, lng: d.location.longitude })
+                }
+            })
+        })
+    }, [jobId])
+
+    // Keep jobDestinationRef in sync for the watchPosition closure
+    useEffect(() => { jobDestinationRef.current = jobDestination }, [jobDestination])
+
+    // ── Worker GPS watchPosition — runs for all active tracking phases ──
+    const TRACKING_PHASES = ['active', 'arrived', 'meeting_requested', 'meeting_code_pending', 'working']
+    useEffect(() => {
+        const status = application?.startJobStatus ?? ''
+        if (!TRACKING_PHASES.includes(status)) return
+        if (watchIdRef.current !== null) return
+        if (!navigator.geolocation) { setGpsError('Geolocation not supported.'); return }
+
+        let lastPush = 0
+        watchIdRef.current = navigator.geolocation.watchPosition(
+            (pos) => {
+                setGpsError(null)
+                const loc = { lat: pos.coords.latitude, lng: pos.coords.longitude, updatedAt: Date.now() }
+                setWorkerLocation(loc)
+                if (Date.now() - lastPush > 5000 && application?.id) {
+                    lastPush = Date.now()
+                    updateWorkerLocation(application.id, loc.lat, loc.lng).catch(console.error)
+                }
+                // ── Auto-detect arrival within 200m ──
+                if (status === 'active' && !application?.arrivalDetected && !arrivalNotifiedRef.current && jobDestinationRef.current) {
+                    const dist = calcDistance(loc.lat, loc.lng, jobDestinationRef.current.lat, jobDestinationRef.current.lng)
+                    if (dist <= 200) {
+                        arrivalNotifiedRef.current = true
+                        notifyArrival(application.id, jobPosterId, jobTitle, application.userName || 'The worker', jobId).catch(console.error)
+                    }
+                }
+            },
+            (err) => setGpsError(err.message),
+            { enableHighAccuracy: true, timeout: 15000, maximumAge: 5000 }
+        )
+        return () => {
+            if (watchIdRef.current !== null) { navigator.geolocation.clearWatch(watchIdRef.current); watchIdRef.current = null }
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [application?.startJobStatus, application?.id])
+
+    // Meeting OTP countdown
+    useEffect(() => {
+        const expiry: number = application?.meetingCodeExpiry ?? 0
+        if (!expiry || application?.startJobStatus !== 'meeting_code_pending') { setMeetingSecondsLeft(0); return }
+        const tick = () => setMeetingSecondsLeft(Math.max(0, Math.floor((expiry - Date.now()) / 1000)))
+        tick()
+        if (meetingCountdownRef.current) clearInterval(meetingCountdownRef.current)
+        meetingCountdownRef.current = setInterval(tick, 1000)
+        return () => { if (meetingCountdownRef.current) clearInterval(meetingCountdownRef.current) }
+    }, [application?.meetingCodeExpiry, application?.startJobStatus])
+
+    // Welcome animation — show once when meeting confirmed
+    useEffect(() => {
+        if (application?.startJobStatus === 'working' && application?.meetingConfirmedAt && !welcomeShownRef.current) {
+            const age = Date.now() - (application.meetingConfirmedAt as number)
+            if (age < 60000) { // within 1 minute of confirmation
+                welcomeShownRef.current = true
+                setShowWelcomeAnimation(true)
+            }
+        }
+    }, [application?.startJobStatus, application?.meetingConfirmedAt])
+
     useEffect(() => {
         const fetchJobPosterPhone = async () => {
             if (!jobPosterId) return
@@ -196,6 +310,69 @@ export default function ViewMyApplicationModal({
         } finally {
             setResponding(false)
         }
+    }
+
+    const handleRequestStart = async () => {
+        if (!application) return
+        try {
+            await requestStartJob(application.id, jobId, jobTitle, jobPosterId, selfName || 'The applicant')
+        } catch (err) {
+            console.error(err)
+            alert('Failed to send start request. Please try again.')
+        }
+    }
+
+    const handleVerifyCode = async () => {
+        if (!application || enteredCode.length !== 6) return
+        try {
+            setCodeSubmitting(true)
+            const result = await verifyStartCode(application.id, enteredCode)
+            if (result === 'ok') {
+                setEnteredCode('')
+            } else if (result === 'expired') {
+                alert('Code expired! Please press “Request to Start Job” again.')
+                setEnteredCode('')
+            } else {
+                alert('Wrong code. Double-check with the job poster and try again.')
+            }
+        } catch (err) {
+            console.error(err)
+            alert('Error verifying code.')
+        } finally {
+            setCodeSubmitting(false)
+        }
+    }
+
+    const handleVerifyMeetingCode = async () => {
+        if (!application || meetingEnteredCode.length !== 6) return
+        setMeetingCodeSubmitting(true)
+        try {
+            const result = await verifyMeetingOtp(application.id, meetingEnteredCode)
+            if (result === 'ok') {
+                setMeetingEnteredCode('')
+            } else if (result === 'expired') {
+                setMeetingEnteredCode('')
+                alert('Code expired! Ask the client to generate a new meeting code.')
+            } else {
+                alert('Incorrect code. Double-check with the client.')
+            }
+        } catch (err) {
+            console.error(err)
+            alert('Error verifying meeting code.')
+        } finally {
+            setMeetingCodeSubmitting(false)
+        }
+    }
+
+    const handleSubmitBill = async (items: BillItem[], total: number) => {
+        if (!application?.id || !user?.uid) return
+        await submitBill(
+            application.id, jobId, items, total,
+            jobPosterId,
+            application.userName || user.displayName || 'Worker',
+            jobTitle
+        )
+        setShowBillModal(false)
     }
 
     if (!mounted) return null
@@ -605,6 +782,291 @@ export default function ViewMyApplicationModal({
                                     )}
                                 </div>
                             </div>
+
+                            {/* ── Start Job — only for hired applicants ── */}
+                            {(application.status === 'hired' || application.negotiationStatus === 'accepted') && (
+                                <div
+                                    className="p-4 rounded-xl border"
+                                    style={{ backgroundColor: isDark ? '#2a2a2a' : '#f9fafb', borderColor: isDark ? '#3a3a3a' : '#e5e7eb' }}
+                                >
+                                    <h3 className="text-sm font-semibold mb-3 flex items-center gap-2" style={{ color: isDark ? '#ffffff' : '#111827' }}>
+                                        🚀 Start Job
+                                    </h3>
+
+                                    {/* ── All post-start tracking phases ── */}
+                                    {(['active', 'arrived', 'meeting_requested', 'meeting_code_pending', 'working', 'bill_submitted', 'bill_accepted', 'completed'] as string[]).includes(application.startJobStatus ?? '') && (
+                                        <div className="space-y-3">
+
+                                            {/* Phase: active — heading to client */}
+                                            {application.startJobStatus === 'active' && (
+                                                <div className="flex items-center gap-2 p-3 rounded-lg bg-green-50 dark:bg-green-900/20">
+                                                    <CheckCircle className="w-5 h-5 text-green-600 flex-shrink-0" />
+                                                    <div>
+                                                        <p className="font-bold text-green-700 dark:text-green-400">Job is Active! 🎉</p>
+                                                        <p className="text-xs text-green-600 dark:text-green-500">Head to the client's location — we'll auto-detect when you arrive.</p>
+                                                    </div>
+                                                </div>
+                                            )}
+
+                                            {/* Phase: arrived */}
+                                            {application.startJobStatus === 'arrived' && (
+                                                <div className="space-y-2">
+                                                    <div className="flex items-center gap-2 p-3 rounded-lg" style={{ background: 'linear-gradient(135deg,#f59e0b20,#f59e0b08)', border: '1px solid #f59e0b80' }}>
+                                                        <span className="text-xl">📍</span>
+                                                        <div>
+                                                            <p className="font-bold text-amber-700 dark:text-amber-300">You've Arrived! 🎯</p>
+                                                            <p className="text-xs text-amber-600 dark:text-amber-400">Tap below to request meeting confirmation from the client.</p>
+                                                        </div>
+                                                    </div>
+                                                    <button
+                                                        onClick={() => requestMeeting(application.id).catch(console.error)}
+                                                        className="w-full py-3 rounded-xl font-bold text-white flex items-center justify-center gap-2 transition-all"
+                                                        style={{ background: 'linear-gradient(135deg,#f59e0b,#d97706)' }}
+                                                    >✋ Confirm I'm Here
+                                                    </button>
+                                                </div>
+                                            )}
+
+                                            {/* Phase: meeting_requested */}
+                                            {application.startJobStatus === 'meeting_requested' && (
+                                                <div className="flex items-center gap-3 p-3 rounded-lg" style={{ backgroundColor: isDark ? '#1e1a00' : '#fefce8', border: '1px solid #fde68a' }}>
+                                                    <Loader2 className="w-5 h-5 text-yellow-500 animate-spin flex-shrink-0" />
+                                                    <div>
+                                                        <p className="font-semibold text-sm text-yellow-700 dark:text-yellow-400">Waiting for meeting code</p>
+                                                        <p className="text-xs text-yellow-600 dark:text-yellow-500">The client will generate a 6-char code for you to enter.</p>
+                                                    </div>
+                                                </div>
+                                            )}
+
+                                            {/* Phase: meeting_code_pending */}
+                                            {application.startJobStatus === 'meeting_code_pending' && (
+                                                <div className="space-y-3">
+                                                    <div className="p-3 rounded-lg bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800">
+                                                        <p className="text-sm font-semibold text-blue-800 dark:text-blue-200">Enter the meeting code from client</p>
+                                                        {meetingSecondsLeft > 0 ? (
+                                                            <p className="text-xs text-blue-600 dark:text-blue-400 mt-1">
+                                                                Expires in: <span className="font-bold">{Math.floor(meetingSecondsLeft / 60)}:{String(meetingSecondsLeft % 60).padStart(2, '0')}</span>
+                                                            </p>
+                                                        ) : (
+                                                            <p className="text-xs text-orange-500 mt-1">Code expired — client will send a new one</p>
+                                                        )}
+                                                    </div>
+                                                    {meetingSecondsLeft > 0 && (
+                                                        <div className="space-y-2">
+                                                            <input
+                                                                type="text" maxLength={6}
+                                                                value={meetingEnteredCode}
+                                                                onChange={e => setMeetingEnteredCode(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, ''))}
+                                                                placeholder="ABC123"
+                                                                className="w-full px-4 py-3 rounded-xl border text-center font-mono font-bold tracking-widest outline-none"
+                                                                style={{ backgroundColor: isDark ? '#1a1a1a' : '#fff', borderColor: isDark ? '#3a3a3a' : '#e5e7eb', color: isDark ? '#fff' : '#111827', fontSize: 24 }}
+                                                            />
+                                                            <button
+                                                                onClick={handleVerifyMeetingCode}
+                                                                disabled={meetingCodeSubmitting || meetingEnteredCode.length !== 6}
+                                                                className="w-full rounded-xl bg-green-600 disabled:bg-gray-400 text-white font-bold transition-colors flex items-center justify-center gap-2"
+                                                                style={{ minHeight: 48 }}
+                                                            >
+                                                                {meetingCodeSubmitting ? <Loader2 className="w-5 h-5 animate-spin" /> : '✓ Verify Meeting Code'}
+                                                            </button>
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            )}
+
+                                            {/* Phase: working */}
+                                            {application.startJobStatus === 'working' && (
+                                                <div className="space-y-3">
+                                                    {/* Bill rejection notice */}
+                                                    {application.billStatus === 'rejected' && (
+                                                        <div className="flex items-start gap-2 p-3 rounded-xl" style={{ background: isDark ? '#2a0000' : '#fff0f0', border: '1px solid #fca5a5' }}>
+                                                            <XCircle className="w-4 h-4 text-red-500 flex-shrink-0 mt-0.5" />
+                                                            <div>
+                                                                <p className="font-bold text-sm text-red-600 dark:text-red-400">Previous bill was rejected</p>
+                                                                <p className="text-xs text-red-500 mt-0.5">The client declined your last bill. Please review and create a new one with updated amounts.</p>
+                                                            </div>
+                                                        </div>
+                                                    )}
+                                                    <div className="flex items-center gap-2 p-3 rounded-lg bg-green-50 dark:bg-green-900/20">
+                                                        <CheckCircle className="w-5 h-5 text-green-600 flex-shrink-0" />
+                                                        <div>
+                                                            <p className="font-bold text-green-700 dark:text-green-400">Meeting Confirmed! Job in progress 🛠️</p>
+                                                            <p className="text-xs text-green-600 dark:text-green-500">Complete the job, then create a bill when done.</p>
+                                                        </div>
+                                                    </div>
+                                                    <button
+                                                        onClick={() => setShowBillModal(true)}
+                                                        className="w-full py-3 rounded-xl font-bold text-white flex items-center justify-center gap-2 transition-all"
+                                                        style={{ background: 'linear-gradient(135deg,#6366f1,#8b5cf6)' }}
+                                                    >🧾 {application.billStatus === 'rejected' ? 'Create New Bill' : 'Create Bill'}
+                                                    </button>
+                                                </div>
+                                            )}
+
+                                            {/* Phase: bill_submitted */}
+                                            {application.startJobStatus === 'bill_submitted' && (
+                                                <div className="space-y-2">
+                                                    {application.billStatus === 'pending_review' && (
+                                                        <>
+                                                            <div className="flex items-center gap-2 p-3 rounded-lg" style={{ background: isDark ? '#1a1a00' : '#fefce8', border: '1px solid #fde68a' }}>
+                                                                <Loader2 className="w-4 h-4 text-yellow-500 animate-spin flex-shrink-0" />
+                                                                <div>
+                                                                    <p className="font-semibold text-sm text-yellow-700 dark:text-yellow-400">Bill in review — awaiting client approval</p>
+                                                                    <p className="text-xs text-yellow-600">Amount: ₹{application.bill?.total?.toLocaleString('en-IN') ?? '–'}</p>
+                                                                </div>
+                                                            </div>
+                                                            <button onClick={() => setShowBillView(true)} className="w-full py-2.5 rounded-xl text-sm font-semibold border transition-colors" style={{ borderColor: isDark ? '#3a3a3a' : '#e5e7eb', color: isDark ? '#9ca3af' : '#6b7280' }}>👁️ View Submitted Bill</button>
+                                                        </>
+                                                    )}
+                                                    {application.billStatus === 'rejected' && (
+                                                        <>
+                                                            <div className="flex items-center gap-2 p-3 rounded-lg" style={{ background: isDark ? '#2a0000' : '#fff0f0', border: '1px solid #fca5a5' }}>
+                                                                <XCircle className="w-4 h-4 text-red-500 flex-shrink-0" />
+                                                                <div>
+                                                                    <p className="font-semibold text-sm text-red-600 dark:text-red-400">Bill rejected by client</p>
+                                                                    <p className="text-xs text-red-500">Create a new bill with updated amounts.</p>
+                                                                </div>
+                                                            </div>
+                                                            <button onClick={() => setShowBillView(true)} className="w-full py-2 rounded-xl text-xs font-medium border" style={{ borderColor: isDark ? '#3a3a3a' : '#e5e7eb', color: isDark ? '#6b7280' : '#9ca3af' }}>👁️ View Rejected Bill</button>
+                                                            <button onClick={() => setShowBillModal(true)} className="w-full py-3 rounded-xl font-bold text-white flex items-center justify-center gap-2 transition-all" style={{ background: 'linear-gradient(135deg,#6366f1,#8b5cf6)' }}>🧾 Create New Bill</button>
+                                                        </>
+                                                    )}
+                                                </div>
+                                            )}
+
+                                            {/* Phase: bill_accepted / payment processing */}
+                                            {application.startJobStatus === 'bill_accepted' && (
+                                                <div className="flex items-center gap-3 p-3 rounded-lg bg-blue-50 dark:bg-blue-900/20">
+                                                    <Loader2 className="w-5 h-5 text-blue-500 animate-spin flex-shrink-0" />
+                                                    <div>
+                                                        <p className="font-semibold text-sm text-blue-700 dark:text-blue-300">Payment processing…</p>
+                                                        <p className="text-xs text-blue-600 dark:text-blue-400">Client is paying ₹{application.bill?.total?.toLocaleString('en-IN') ?? '–'}</p>
+                                                    </div>
+                                                </div>
+                                            )}
+
+                                            {/* Phase: completed */}
+                                            {application.startJobStatus === 'completed' && (
+                                                <div className="p-5 rounded-xl text-center space-y-2" style={{ background: 'linear-gradient(135deg,rgba(16,185,129,0.15),rgba(5,150,105,0.1))', border: '1px solid rgba(16,185,129,0.4)' }}>
+                                                    <p className="text-3xl">💰</p>
+                                                    <p className="font-bold text-green-700 dark:text-green-400 text-lg">Payment Received!</p>
+                                                    <p className="text-2xl font-black" style={{ color: isDark ? '#34d399' : '#059669' }}>₹{application.bill?.total?.toLocaleString('en-IN') ?? '–'}</p>
+                                                    <p className="text-xs text-green-600 dark:text-green-500">Added to your wallet — check the Profile tab.</p>
+                                                </div>
+                                            )}
+
+                                            {/* GPS warning banner — tracking phases */}
+                                            {(['active', 'arrived'] as string[]).includes(application.startJobStatus ?? '') && (
+                                                <div className="flex items-start gap-2 px-3 py-2 rounded-lg" style={{ background: 'linear-gradient(135deg,#f59e0b22,#f59e0b11)', border: '1px solid #f59e0b44' }}>
+                                                    <span className="text-base mt-0.5">📍</span>
+                                                    <p className="text-xs font-medium text-amber-700 dark:text-amber-300">Always keep your location ON for live tracking. Turning off GPS pauses tracking for the client.</p>
+                                                </div>
+                                            )}
+
+                                            {/* Map toggle + LiveTrackingMap */}
+                                            {(['active', 'arrived', 'meeting_requested'] as string[]).includes(application.startJobStatus ?? '') && (
+                                                <>
+                                                    <button
+                                                        onClick={() => setShowTrackingMap(v => !v)}
+                                                        className="w-full py-2.5 rounded-xl font-semibold text-sm transition-all flex items-center justify-center gap-2"
+                                                        style={{ background: showTrackingMap ? (isDark ? '#1e3a8a' : '#dbeafe') : (isDark ? '#1a1a1a' : '#f3f4f6'), color: showTrackingMap ? (isDark ? '#93c5fd' : '#1d4ed8') : (isDark ? '#9ca3af' : '#6b7280') }}
+                                                    >🗺️ {showTrackingMap ? 'Hide Live Map' : 'View Live Tracking'}
+                                                    </button>
+                                                    {showTrackingMap && (
+                                                        <LiveTrackingMap
+                                                            workerLat={workerLocation?.lat ?? null}
+                                                            workerLng={workerLocation?.lng ?? null}
+                                                            locationUpdatedAt={workerLocation?.updatedAt ?? null}
+                                                            destinationLat={jobDestination?.lat ?? null}
+                                                            destinationLng={jobDestination?.lng ?? null}
+                                                            role="worker" height={240} isDark={isDark}
+                                                        />
+                                                    )}
+                                                </>
+                                            )}
+
+                                            {/* GPS denied popup — all tracking phases */}
+                                            {gpsError && (['active', 'arrived', 'meeting_requested', 'meeting_code_pending', 'working'] as string[]).includes(application.startJobStatus ?? '') && (
+                                                <div className="fixed inset-0 bg-black/70 z-[99999] flex items-center justify-center p-6">
+                                                    <div className="rounded-2xl p-6 max-w-sm w-full text-center space-y-4" style={{ backgroundColor: isDark ? '#1c1c1c' : '#ffffff' }}>
+                                                        <div className="w-16 h-16 rounded-full flex items-center justify-center mx-auto" style={{ background: '#fef3c7' }}><span className="text-3xl">📍</span></div>
+                                                        <h3 className="text-lg font-bold" style={{ color: isDark ? '#fff' : '#111827' }}>Location Required</h3>
+                                                        <p className="text-sm" style={{ color: isDark ? '#9ca3af' : '#6b7280' }}>Enable GPS and allow location permission to continue job tracking.</p>
+                                                        <p className="text-xs text-red-500 break-words">{gpsError}</p>
+                                                        <button onClick={() => { setGpsError(null); if (watchIdRef.current !== null) { navigator.geolocation.clearWatch(watchIdRef.current); watchIdRef.current = null } }}
+                                                            className="w-full py-3 rounded-xl text-white font-bold text-sm" style={{ background: 'linear-gradient(135deg,#3b82f6,#6366f1)' }}>
+                                                            Try Again
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            )}
+                                        </div>
+                                    )}
+
+
+                                    {/* Idle — request button */}
+                                    {!application.startJobStatus && (
+                                        <button
+                                            onClick={handleRequestStart}
+                                            className="w-full py-3 rounded-xl font-bold text-white flex items-center justify-center gap-2 transition-all hover:shadow-lg"
+                                            style={{ background: 'linear-gradient(135deg, #10b981, #059669)' }}
+                                        >
+                                            🚀 Request to Start Job
+                                        </button>
+                                    )}
+
+                                    {/* Waiting for poster */}
+                                    {application.startJobStatus === 'requested' && (
+                                        <div className="flex items-center gap-3 p-3 rounded-lg" style={{ backgroundColor: isDark ? '#1a1a1a' : '#f3f4f6' }}>
+                                            <Loader2 className="w-5 h-5 animate-spin text-blue-600 flex-shrink-0" />
+                                            <div>
+                                                <p className="font-semibold text-sm" style={{ color: isDark ? '#ffffff' : '#111827' }}>Waiting for client to accept…</p>
+                                                <p className="text-xs" style={{ color: isDark ? '#6b7280' : '#9ca3af' }}>They'll generate a code once they accept.</p>
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {/* Code entry */}
+                                    {application.startJobStatus === 'code_pending' && secondsLeft > 0 && (
+                                        <div className="space-y-3">
+                                            <div className="p-3 rounded-lg bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800">
+                                                <p className="text-sm font-semibold text-blue-800 dark:text-blue-200">Enter the 6-digit code from the job poster</p>
+                                                <p className="text-xs text-blue-600 dark:text-blue-400 mt-1">
+                                                    Expires in: <span className="font-bold">{Math.floor(secondsLeft / 60)}:{String(secondsLeft % 60).padStart(2, '0')}</span>
+                                                </p>
+                                            </div>
+                                            <div className="space-y-2">
+                                                <input
+                                                    type="text"
+                                                    maxLength={6}
+                                                    value={enteredCode}
+                                                    onChange={e => setEnteredCode(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, ''))}
+                                                    placeholder="ABC123"
+                                                    className="w-full px-4 py-3 rounded-xl border text-center font-mono font-bold tracking-widest outline-none"
+                                                    style={{ backgroundColor: isDark ? '#1a1a1a' : '#ffffff', borderColor: isDark ? '#3a3a3a' : '#e5e7eb', color: isDark ? '#ffffff' : '#111827', fontSize: 24 }}
+                                                />
+                                                <button
+                                                    onClick={handleVerifyCode}
+                                                    disabled={codeSubmitting || enteredCode.length !== 6}
+                                                    className="w-full rounded-xl bg-green-600 disabled:bg-gray-400 text-white font-bold transition-colors flex items-center justify-center gap-2"
+                                                    style={{ minHeight: 48 }}
+                                                >
+                                                    {codeSubmitting ? <Loader2 className="w-5 h-5 animate-spin" /> : '✓ Verify Code'}
+                                                </button>
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {/* Code expired */}
+                                    {application.startJobStatus === 'code_pending' && secondsLeft === 0 && (
+                                        <div className="flex items-center gap-2 p-3 rounded-lg bg-orange-50 dark:bg-orange-900/20">
+                                            <XCircle className="w-5 h-5 text-orange-500 flex-shrink-0" />
+                                            <p className="text-sm text-orange-600 dark:text-orange-400">Code expired — resetting… You can request again shortly.</p>
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+
                         </div>
                     )}
                 </div>
@@ -616,12 +1078,56 @@ export default function ViewMyApplicationModal({
         <>
             {createPortal(modalContent, document.body)}
             {viewingProfileId && (
-                <UserProfileSheet
-                    userId={viewingProfileId}
-                    isDark={isDark}
-                    onClose={() => setViewingProfileId(null)}
-                />
+                <UserProfileSheet userId={viewingProfileId} isDark={isDark} onClose={() => setViewingProfileId(null)} />
             )}
+            {/* Bill create modal — portalled to body */}
+            {showBillModal && createPortal(
+                <JobBillModal
+                    mode="create"
+                    isDark={isDark}
+                    onClose={() => setShowBillModal(false)}
+                    onSubmitBill={handleSubmitBill}
+                    jobTitle={jobTitle}
+                />,
+                document.body
+            )}
+            {/* Bill view modal (pending/rejected) — portalled to body */}
+            {showBillView && application?.bill && createPortal(
+                <JobBillModal
+                    mode="view"
+                    isDark={isDark}
+                    onClose={() => setShowBillView(false)}
+                    bill={application.bill as any}
+                    billStatus={application.billStatus}
+                    billRejectedAt={application.billRejectedAt}
+                    jobTitle={jobTitle}
+                />,
+                document.body
+            )}
+            {/* Welcome animation overlay */}
+            <AnimatePresence>
+                {showWelcomeAnimation && (
+                    <motion.div
+                        initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+                        className="fixed inset-0 z-[99997] flex items-center justify-center"
+                        style={{ background: 'rgba(0,0,0,0.88)' }}
+                    >
+                        <div className="text-center p-8 max-w-xs">
+                            <motion.div initial={{ scale: 0 }} animate={{ scale: [0, 1.3, 1] }} transition={{ duration: 0.7, times: [0, 0.6, 1] }} className="text-7xl mb-4">🎉</motion.div>
+                            <motion.h2 initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.5 }} className="text-2xl font-black text-white mb-3">All the Best!</motion.h2>
+                            <motion.p initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.7 }} className="text-gray-300 text-sm leading-relaxed">
+                                Be nice, polite, and professional. Complete the job on time and give it your best. Good luck! 🌟
+                            </motion.p>
+                            <motion.button initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 1.5 }}
+                                onClick={() => setShowWelcomeAnimation(false)}
+                                className="mt-6 px-6 py-2.5 rounded-xl text-sm font-bold text-white border border-white/30 hover:bg-white/10 transition-colors"
+                            >
+                                Let's Go! 🚀
+                            </motion.button>
+                        </div>
+                    </motion.div>
+                )}
+            </AnimatePresence>
         </>
     )
 }

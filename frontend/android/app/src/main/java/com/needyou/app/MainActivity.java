@@ -197,6 +197,27 @@ public class MainActivity extends BridgeActivity {
             SharedPreferences prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
             return prefs.getString("fcmToken", "");
         }
+
+        /**
+         * Returns a JSON string like {"type":"job_hired","jobId":"..."} if the app
+         * was launched via a push-notification tap, or "" otherwise.
+         * Call from JS on mount: window.NeedYouBridge.getPendingDeepLink()
+         */
+        @JavascriptInterface
+        public String getPendingDeepLink() {
+            SharedPreferences prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
+            return prefs.getString("pendingDeepLink", "");
+        }
+
+        /**
+         * Clears the pending deep-link after the React app has consumed it.
+         * Call from JS: window.NeedYouBridge.clearPendingDeepLink()
+         */
+        @JavascriptInterface
+        public void clearPendingDeepLink() {
+            getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
+                    .edit().remove("pendingDeepLink").apply();
+        }
     }
 
     /**
@@ -472,6 +493,50 @@ public class MainActivity extends BridgeActivity {
         // 6. Load bundled splash intro — works offline, runs 2.7 s animation,
         // then calls NeedYouBridge.splashDone() to go to app or offline page
         getBridge().getWebView().loadUrl(SPLASH_INTRO_URL);
+
+        // 7. Store any deep-link from the notification that launched this Activity
+        handleDeepLinkIntent(getIntent());
+    }
+
+    /**
+     * Parses jobId + notificationType from a notification-tap intent and persists
+     * them in SharedPreferences so the React app can read them on mount via
+     * NeedYouBridge.getPendingDeepLink().
+     */
+    private void handleDeepLinkIntent(Intent intent) {
+        if (intent == null)
+            return;
+        String jobId = intent.getStringExtra("jobId");
+        String notificationType = intent.getStringExtra("notificationType");
+        if (jobId != null && !jobId.isEmpty() && notificationType != null && !notificationType.isEmpty()) {
+            String json = "{\"type\":\"" + notificationType + "\",\"jobId\":\"" + jobId + "\"}";
+            getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
+                    .edit().putString("pendingDeepLink", json).apply();
+            Log.d("NeedYouFCM", "Deep-link stored: " + json);
+        }
+    }
+
+    /**
+     * Called when a notification is tapped while the app is already in the
+     * foreground or background (not killed). Stores the deep-link AND dispatches
+     * a JS CustomEvent so the React app can react immediately.
+     */
+    @Override
+    protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        setIntent(intent);
+        handleDeepLinkIntent(intent);
+
+        final String jobId = intent.getStringExtra("jobId");
+        final String notificationType = intent.getStringExtra("notificationType");
+        if (jobId != null && !jobId.isEmpty() && notificationType != null && !notificationType.isEmpty()) {
+            WebView wv = getBridge().getWebView();
+            if (wv != null) {
+                String js = "window.dispatchEvent(new CustomEvent('needyou_deep_link'," +
+                        "{detail:{type:'" + notificationType + "',jobId:'" + jobId + "'}}))";
+                wv.post(() -> wv.evaluateJavascript(js, null));
+            }
+        }
     }
 
     // ─── File chooser result ─────────────────────────────────────────────────

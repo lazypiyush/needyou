@@ -15,6 +15,10 @@ const config: CapacitorConfig = {
       'need-you.xyz',
       '*.need-you.xyz',
       'need-you.vercel.app',
+      'razorpay.com',
+      '*.razorpay.com',
+      'api.razorpay.com',
+      'checkout.razorpay.com',
     ],
   },
 

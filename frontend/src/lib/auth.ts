@@ -1090,7 +1090,7 @@ export interface CreateJobData {
 export interface Notification {
   id: string
   userId: string  // Recipient
-  type: 'new_application' | 'counter_offer_received' | 'applicant_counter_offer' | 'budget_accepted' | 'new_job_nearby'
+  type: 'new_application' | 'counter_offer_received' | 'applicant_counter_offer' | 'budget_accepted' | 'new_job_nearby' | 'job_hired'
   title: string
   message: string
   jobId: string
@@ -1175,7 +1175,7 @@ export const createJob = async (userId: string, jobData: CreateJobData): Promise
     const job: Job = {
       id: jobId,
       userId,
-      userName: userData.name || 'Unknown',
+      userName: userData.name || userData.displayName || 'Unknown',
       userEmail: userData.email || '',
       caption: jobData.caption,
       budget: jobData.budget,
@@ -1304,7 +1304,7 @@ export const applyToJob = async (
     const applicationData: any = {
       jobId,
       userId: userId,
-      userName: userData?.name || 'Unknown',
+      userName: userData?.name || userData?.displayName || 'Unknown',
       userEmail: userData?.email || '',
       userPhone: userData?.phoneNumber || '',
       description,

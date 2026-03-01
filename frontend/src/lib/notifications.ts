@@ -49,8 +49,10 @@ export const createNotification = async (
             notification.userId,
             notification.title,
             notification.message,
-            // Pass jobId as data for deep-link handling in MyFirebaseMessagingService
-            notification.jobId ? { jobId: notification.jobId } : undefined
+            {
+                ...(notification.jobId ? { jobId: notification.jobId } : {}),
+                notificationType: notification.type,
+            }
         )
     } catch (error: any) {
         console.error('❌ Create Notification Error:', error)

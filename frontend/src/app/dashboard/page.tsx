@@ -51,6 +51,7 @@ export default function DashboardPage() {
     const [appliedJobs, setAppliedJobs] = useState<Array<Job & { application: any }>>([])
     const [loadingApplied, setLoadingApplied] = useState(false)
     const [selectedAppliedJob, setSelectedAppliedJob] = useState<(Job & { application: any }) | null>(null)
+    const [pendingOpenJobId, setPendingOpenJobId] = useState<string | null>(null) // set when tapping job_hired notification
 
     // Chat overlay state — populated when pushChatState() is called (no real navigation)
     const [chatOverlay, setChatOverlay] = useState<{
@@ -99,6 +100,39 @@ export default function DashboardPage() {
         }, 2000)
         return () => clearTimeout(timer)
     }, [])
+
+    // Handle notification deep-link (Android APK):
+    // Case 1 — app was killed/backgrounded: read from NeedYouBridge SharedPreferences on mount
+    // Case 2 — app was already running: listen for CustomEvent dispatched by onNewIntent
+    useEffect(() => {
+        const applyDeepLink = (type: string, jobId: string) => {
+            if (type === 'job_hired' && jobId) {
+                setActiveTab('jobs')
+                setMyJobsSubTab('applied')
+                setPendingOpenJobId(jobId)
+            }
+        }
+
+        // Case 1: killed/background
+        if (typeof window !== 'undefined' && (window as any).NeedYouBridge) {
+            try {
+                const raw: string = (window as any).NeedYouBridge.getPendingDeepLink?.() || ''
+                if (raw) {
+                    const deep = JSON.parse(raw)
+                    applyDeepLink(deep.type, deep.jobId);
+                    (window as any).NeedYouBridge.clearPendingDeepLink?.()
+                }
+            } catch (_) { /* ignore parse errors */ }
+        }
+
+        // Case 2: foreground / background resume
+        const listener = (e: Event) => {
+            const { type, jobId } = (e as CustomEvent).detail || {}
+            applyDeepLink(type, jobId)
+        }
+        window.addEventListener('needyou_deep_link', listener)
+        return () => window.removeEventListener('needyou_deep_link', listener)
+    }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
     // Keep anyModalOpenRef in sync with every modal/popup state
     useEffect(() => {
@@ -269,7 +303,17 @@ export default function DashboardPage() {
         }
     }, [user, locationChecked, userLocation])
 
-    // Fetch applied jobs whenever the user is known or the sub-tab is switched to 'applied'
+    // Auto-open ViewMyApplicationModal when navigated from a job_hired notification
+    useEffect(() => {
+        if (!pendingOpenJobId || appliedJobs.length === 0) return
+        const match = appliedJobs.find(j => j.id === pendingOpenJobId)
+        if (match) {
+            setSelectedAppliedJob(match)
+            setPendingOpenJobId(null)
+        }
+    }, [appliedJobs, pendingOpenJobId])
+
+
     useEffect(() => {
         if (!user?.uid) return
         if (activeTab !== 'jobs' || myJobsSubTab !== 'applied') return
@@ -940,6 +984,8 @@ export default function DashboardPage() {
                                                 negotiating: { label: 'Negotiating', bg: isDark ? 'rgba(59,130,246,0.15)' : '#dbeafe', color: '#2563eb' },
                                                 accepted: { label: 'Accepted', bg: isDark ? 'rgba(34,197,94,0.15)' : '#dcfce7', color: '#16a34a' },
                                                 rejected: { label: 'Rejected', bg: isDark ? 'rgba(239,68,68,0.15)' : '#fee2e2', color: '#dc2626' },
+                                                hired: { label: '🎉 Hired!', bg: isDark ? 'rgba(34,197,94,0.2)' : '#bbf7d0', color: '#15803d' },
+                                                closed: { label: 'Closed', bg: isDark ? 'rgba(107,114,128,0.15)' : '#f3f4f6', color: '#6b7280' },
                                             }
                                             const st = statusConfig[app.status] ?? statusConfig.pending
                                             const timeAgo = (() => {
@@ -1089,6 +1135,11 @@ export default function DashboardPage() {
                                                 notification.type === 'budget_accepted') {
                                                 // Job poster notifications - go to My Jobs tab
                                                 setActiveTab('jobs')
+                                            } else if (notification.type === 'job_hired') {
+                                                // Applicant hired — go to applied tab and auto-open the modal
+                                                setActiveTab('jobs')
+                                                setMyJobsSubTab('applied')
+                                                setPendingOpenJobId(notification.jobId)
                                             } else if (notification.type === 'counter_offer_received' ||
                                                 notification.type === 'new_job_nearby') {
                                                 // Applicant / nearby job notifications - go to Home feed

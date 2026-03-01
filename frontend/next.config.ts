@@ -52,6 +52,10 @@ const withPWA = withPWAInit({
 });
 
 const nextConfig: NextConfig = {
+  // Disable React Strict Mode — its effect double-invocation causes useModalHistory
+  // cleanup to call history.back() immediately after opening, closing modals instantly.
+  // This only happened in dev (browser); APK uses production build where effects run once.
+  reactStrictMode: false,
   images: {
     unoptimized: true,
   },
@@ -59,9 +63,6 @@ const nextConfig: NextConfig = {
   devIndicators: {
     position: "bottom-left",
   },
-  // Turbopack is default in Next.js 16. next-pwa only affects production builds
-  // (it's disabled in dev), but still registers a webpack config that conflicts.
-  // Empty turbopack config tells Next.js we're aware and opted in to Turbopack.
   turbopack: {},
 };
 
