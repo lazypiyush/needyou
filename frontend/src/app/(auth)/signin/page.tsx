@@ -346,12 +346,8 @@ export default function SignInPage() {
         return
       }
 
-      // Check if profile is complete
-      if (!verificationStatus?.profileComplete) {
-        setError('⚠️ Profile incomplete. Please complete signup with email first.')
-        setLoading(false)
-        return
-      }
+      // Note: profileComplete may be false for users mid-signup (before KYC/onboarding).
+      // Don't block here — the KYC and onboarding checks below will redirect appropriately.
 
       // Step KYC check for phone login
       const kycStatus = await getUserKycStatus(phoneUser.uid)
