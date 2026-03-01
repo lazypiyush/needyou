@@ -387,30 +387,32 @@ function VerifyKycContent() {
         'screen', 'display',
     ])
     const startPhoneWatchdog = () => {
+        // On native Android/iOS (Capacitor APK) the user IS on their phone — skip entirely.
+        // Phone detection is only meaningful on desktop where someone might hold a phone
+        // in front of a webcam to spoof liveness using a recorded video.
+        if ((window as any).Capacitor?.isNativePlatform?.()) return
+
         phoneTimerRef.current = setInterval(() => {
-            // Guard: run whenever camera stream is open (covers 'ready' state too)
             if (!streamRef.current) return
             const video = videoRef.current
             if (!video || video.readyState < 2) return
 
             let detected = false
-            let reason = ''
 
-            // Check 1: ML object detection
+            // Check 1: ML object detection — threshold raised to 0.65 to avoid partial-device false positives
             if (objectDetectorRef.current) {
                 try {
                     const result = objectDetectorRef.current.detectForVideo(video, performance.now())
                     const hit = result.detections?.find((d: any) =>
-                        d.categories?.some((c: any) => SCREEN_LABELS.has(c.categoryName?.toLowerCase?.() ?? '') && c.score > 0.35)
+                        d.categories?.some((c: any) => SCREEN_LABELS.has(c.categoryName?.toLowerCase?.() ?? '') && c.score > 0.65)
                     )
-                    if (hit) { detected = true; reason = `device detected (${hit.categories?.[0]?.categoryName})` }
+                    if (hit) { detected = true }
                 } catch { }
             }
 
             // Check 2: Canvas pixel analysis (works even without ObjectDetector)
             if (!detected && analyzePixelsForScreen()) {
                 detected = true
-                reason = 'screen pixels detected in frame'
             }
 
             if (detected) {
@@ -504,12 +506,15 @@ function VerifyKycContent() {
         }, ch.timeoutMs)
 
         {
-            let lastTs = -1
+            // On native Android, throttle ML inference to ~12fps to reduce CPU load.
+            // Desktop runs at max RAF speed. Camera quality (720p) is unchanged.
+            const INFER_INTERVAL_MS = (window as any).Capacitor?.isNativePlatform?.() ? 80 : 0
+            let lastTs = 0
             const loop = (now: number) => {
                 if (!stepActiveRef.current) return
+                if (now - lastTs < INFER_INTERVAL_MS) { rafRef.current = requestAnimationFrame(loop); return }
+                lastTs = now
                 const ts = Math.floor(now)
-                if (ts === lastTs) { rafRef.current = requestAnimationFrame(loop); return }
-                lastTs = ts
                 const video = videoRef.current
                 if (!video) { rafRef.current = requestAnimationFrame(loop); return }
                 try {

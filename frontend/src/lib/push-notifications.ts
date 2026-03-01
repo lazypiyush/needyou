@@ -7,8 +7,10 @@ export async function initPushNotifications(userId?: string): Promise<void> {
     try {
         const { PushNotifications } = await import('@capacitor/push-notifications');
 
-        // Request permission (may already be granted natively by MainActivity.java)
-        const result = await PushNotifications.requestPermissions();
+        // Do NOT call requestPermissions() here — MainActivity.java already shows
+        // the Android system dialog at startup (onCreate). Calling it again would
+        // show a second dialog. Just check if permission was already granted.
+        const result = await PushNotifications.checkPermissions();
         if (result.receive !== 'granted') return;
 
         // Register with FCM
