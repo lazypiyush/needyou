@@ -183,6 +183,17 @@ export default function DashboardPage() {
 
                 if (userDoc.exists()) {
                     const userData = userDoc.data()
+
+                    // ── Guard 1: KYC must be complete ─────────────────────────
+                    // kycVerified is set by updateKycStatus(uid, 'complete') at the
+                    // end of the verify-kyc flow. If it's falsy the user force-closed
+                    // the app mid-verification and must resume there.
+                    if (!userData.kycVerified) {
+                        router.replace('/verify-kyc')
+                        return
+                    }
+
+                    // ── Guard 2: Location must be set ─────────────────────────
                     if (userData.location) {
                         setUserLocation({
                             city: userData.location.city || '',
@@ -192,7 +203,6 @@ export default function DashboardPage() {
                             longitude: userData.location.longitude,
                         })
                     } else {
-                        // User has no location saved → send them to set it up
                         router.replace('/onboarding/location')
                         return
                     }
@@ -205,7 +215,7 @@ export default function DashboardPage() {
         }
 
         fetchUserLocation()
-        // Safety timeout: if location check hangs (network issue), unblock after 5s
+        // Safety timeout: if check hangs (network issue), unblock after 5s
         const safetyTimer = setTimeout(() => setLocationChecked(true), 5000)
         return () => clearTimeout(safetyTimer)
     }, [user, router])
