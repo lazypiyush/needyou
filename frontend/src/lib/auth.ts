@@ -693,8 +693,10 @@ export const checkPhoneNumberExists = async (phoneNumber: string, excludeUserId?
   } catch (error: any) {
     console.error('❌ Check Phone Number Error:', error)
     console.error('Error details:', error.code, error.message)
-    // Fail-open: if check errors, return true so OTP can still be attempted
-    return true
+    // Fail-open: allow the operation to proceed regardless of which direction it takes.
+    // Signup (excludeUserId set): return false = "not taken by others" → allow OTP send.
+    // Signin (no excludeUserId): return true = "account exists" → allow OTP send.
+    return excludeUserId ? false : true
   }
 }
 
