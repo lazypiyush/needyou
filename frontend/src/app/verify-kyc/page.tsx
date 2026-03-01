@@ -506,9 +506,10 @@ function VerifyKycContent() {
         }, ch.timeoutMs)
 
         {
-            // On native Android, throttle ML inference to ~12fps to reduce CPU load.
-            // Desktop runs at max RAF speed. Camera quality (720p) is unchanged.
-            const INFER_INTERVAL_MS = (window as any).Capacitor?.isNativePlatform?.() ? 80 : 0
+            // On native Android, throttle ML inference to ~30fps (33ms) to reduce CPU load.
+            // 12fps was too aggressive — hold-based challenges (blink, wink, fingers) require
+            // consecutive passing frames and became 5× harder. 30fps halves CPU vs 60fps.
+            const INFER_INTERVAL_MS = (window as any).Capacitor?.isNativePlatform?.() ? 33 : 0
             let lastTs = 0
             const loop = (now: number) => {
                 if (!stepActiveRef.current) return
