@@ -308,6 +308,11 @@ public class MainActivity extends BridgeActivity {
         });
 
         webView.getSettings().setGeolocationEnabled(true);
+        // Required for onCreateWindow to intercept window.open() calls.
+        // Without these two flags every window.open() (e.g. DigiLocker popup)
+        // bypasses onCreateWindow and opens in Chrome instead.
+        webView.getSettings().setSupportMultipleWindows(true);
+        webView.getSettings().setJavaScriptCanOpenWindowsAutomatically(true);
         getBridge().getWebView().setWebChromeClient(new WebChromeClient() {
             @Override
             public void onGeolocationPermissionsShowPrompt(
