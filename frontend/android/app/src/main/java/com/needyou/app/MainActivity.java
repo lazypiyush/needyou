@@ -25,6 +25,7 @@ import android.os.PowerManager;
 import android.provider.Settings;
 import android.webkit.GeolocationPermissions;
 import android.webkit.JavascriptInterface;
+import android.webkit.PermissionRequest;
 import android.webkit.ValueCallback;
 import android.webkit.WebChromeClient;
 import android.view.View;
@@ -64,6 +65,15 @@ public class MainActivity extends BridgeActivity {
     private ValueCallback<Uri[]> pendingFileCallback = null; // held while requesting media permission
     private static final int FILE_CHOOSER_REQUEST_CODE = 2000;
     private static final int MEDIA_PERMISSION_CODE = 3000;
+    private static final int CAMERA_PERMISSION_CODE = 4000; // for getUserMedia / liveness
+
+    // Held while we ask the user for CAMERA runtime permission during getUserMedia
+    private PermissionRequest pendingCameraPermissionRequest = null;
+
+    // Prevents the battery-optimisation dialog from re-appearing on EVERY onResume
+    // (e.g. when returning from the Settings screen it just opened).
+    // Reset to false each time a fresh Activity instance is created.
+    private boolean batteryDialogShown = false;
 
     // ─── Native bridge exposed to the WebView ────────────────────────────────
     public class NeedYouBridge {
@@ -250,10 +260,16 @@ public class MainActivity extends BridgeActivity {
         // 1. Notification channel (Android 8+)
         createNotificationChannel();
 
-        // 2. Request notification permission (Android 13+)
+        // 2. Request notification permission (Android 13+) — ask only once ever.
+        // We track whether the user has already responded using SharedPreferences.
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            if (ContextCompat.checkSelfPermission(this,
-                    Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+            boolean alreadyAsked = getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
+                    .getBoolean("notifPermissionAsked", false);
+            if (!alreadyAsked &&
+                    ContextCompat.checkSelfPermission(this,
+                            Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+                getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
+                        .edit().putBoolean("notifPermissionAsked", true).apply();
                 ActivityCompat.requestPermissions(
                         this,
                         new String[] { Manifest.permission.POST_NOTIFICATIONS },
@@ -300,6 +316,68 @@ public class MainActivity extends BridgeActivity {
                             LOCATION_PERMISSION_CODE);
                     callback.invoke(origin, false, false);
                 }
+            }
+
+            // ── Camera / microphone for getUserMedia (liveness detection) ──────
+            // Without this override the WebView silently denies any getUserMedia
+            // call, even if CAMERA is listed in AndroidManifest.xml.
+            @Override
+            public void onPermissionRequest(PermissionRequest request) {
+                runOnUiThread(() -> {
+                    boolean hasCam = ContextCompat.checkSelfPermission(
+                            MainActivity.this, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED;
+                    if (hasCam) {
+                        // Runtime permission already granted — allow immediately
+                        request.grant(request.getResources());
+                    } else {
+                        // Ask for native camera permission, then grant once user accepts
+                        pendingCameraPermissionRequest = request;
+                        ActivityCompat.requestPermissions(
+                                MainActivity.this,
+                                new String[] { Manifest.permission.CAMERA },
+                                CAMERA_PERMISSION_CODE);
+                    }
+                });
+            }
+
+            // ── DigiLocker / any window.open() popup ─────────────────────────
+            // WebView blocks window.open() by default. Open these in the
+            // device's default browser so the popup is never silently dropped.
+            @Override
+            public boolean onCreateWindow(WebView view, boolean isDialog,
+                    boolean isUserGesture, android.os.Message resultMsg) {
+                // Extract the URL the page wants to open
+                WebView.HitTestResult result = view.getHitTestResult();
+                String url = result != null ? result.getExtra() : null;
+                if (url != null && !url.isEmpty()) {
+                    try {
+                        Intent browserIntent = new Intent(Intent.ACTION_VIEW, Uri.parse(url));
+                        browserIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                        startActivity(browserIntent);
+                    } catch (Exception ignored) {
+                    }
+                    return false;
+                }
+                // Fallback: create a temporary WebView to follow the URL,
+                // then open it in the browser once resolved.
+                WebView tempView = new WebView(MainActivity.this);
+                tempView.getSettings().setJavaScriptEnabled(true);
+                tempView.setWebViewClient(new android.webkit.WebViewClient() {
+                    @Override
+                    public boolean shouldOverrideUrlLoading(WebView v, String u) {
+                        try {
+                            Intent i = new Intent(Intent.ACTION_VIEW, Uri.parse(u));
+                            i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                            startActivity(i);
+                        } catch (Exception ignored) {
+                        }
+                        return true;
+                    }
+                });
+                WebView.WebViewTransport transport = (WebView.WebViewTransport) resultMsg.obj;
+                transport.setWebView(tempView);
+                resultMsg.sendToTarget();
+                return true;
             }
 
             @Override
@@ -405,6 +483,20 @@ public class MainActivity extends BridgeActivity {
     @Override
     public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+
+        if (requestCode == CAMERA_PERMISSION_CODE) {
+            // Grant or deny the pending WebView camera permission request
+            if (pendingCameraPermissionRequest != null) {
+                if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+                    pendingCameraPermissionRequest.grant(pendingCameraPermissionRequest.getResources());
+                } else {
+                    pendingCameraPermissionRequest.deny();
+                }
+                pendingCameraPermissionRequest = null;
+            }
+            return;
+        }
+
         if (requestCode == MEDIA_PERMISSION_CODE && pendingFileCallback != null) {
             // Launch picker regardless of result — user can still pick from Recent files
             ValueCallback<Uri[]> cb = pendingFileCallback;
@@ -440,6 +532,12 @@ public class MainActivity extends BridgeActivity {
         // If already exempted, nothing to do
         if (pm == null || pm.isIgnoringBatteryOptimizations(getPackageName()))
             return;
+        // Show AT MOST ONCE per Activity instance lifecycle.
+        // onResume fires every time the user returns from Settings, which would
+        // otherwise re-show the dialog in a loop.
+        if (batteryDialogShown)
+            return;
+        batteryDialogShown = true;
 
         // Detect common OEM ROMs that need extra manual steps
         String manufacturer = Build.MANUFACTURER.toLowerCase();

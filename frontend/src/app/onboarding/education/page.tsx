@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import { motion } from 'framer-motion'
 import { GraduationCap, Briefcase, Building2, Calendar, ArrowRight, Loader2, AlertCircle } from 'lucide-react'
 import { useAuth } from '@/context/AuthContext'
-import { updateUserEducation, updateUserEmployment, checkOnboardingStatus } from '@/lib/auth'
+import { updateUserEducation, updateUserEmployment, checkOnboardingStatus, getUserKycStatus } from '@/lib/auth'
 import Image from 'next/image'
 import Link from 'next/link'
 import ThemeToggle from '@/components/ThemeToggle'
@@ -62,10 +62,17 @@ export default function EducationPage() {
         }
     }, [user, authLoading, router])
 
-    // Check if already completed
+    // Check if KYC is done and onboarding is already completed
     useEffect(() => {
         const checkStatus = async () => {
             if (user) {
+                // KYC guard — ensure user completed KYC before onboarding
+                const kycStatus = await getUserKycStatus(user.uid)
+                if (!kycStatus?.kycVerified) {
+                    console.log('⚠️ KYC not verified, redirecting from onboarding to /verify-kyc')
+                    router.push('/verify-kyc')
+                    return
+                }
                 const status = await checkOnboardingStatus(user.uid)
                 if (status?.education && status?.employment) {
                     // Already completed, go to location

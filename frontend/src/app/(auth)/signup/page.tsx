@@ -391,7 +391,7 @@ function SignUpPageContent() {
       // Sign out user after complete signup
       await signOutUser()
 
-      setSuccess('🎉 Sign up complete! You can now sign in with either email or phone number.')
+      setSuccess('🎉 Sign up complete! Please sign in to complete your identity verification (KYC).')
 
       // Redirect to sign in page
       setTimeout(() => {

@@ -279,6 +279,12 @@ export const signUpWithEmail = async (
       phoneVerified: false,
       createdAt: new Date().toISOString(),
       profileComplete: false,
+      // KYC Verification fields
+      kycVerified: false,
+      livenessVerified: false,
+      aadhaarVerified: false,
+      panVerified: false,
+      kycData: null,
       // Onboarding fields
       onboardingComplete: false,
       education: null,
@@ -320,7 +326,8 @@ export const getUserVerificationStatus = async (userId: string) => {
       return {
         emailVerified: data.emailVerified || false,
         phoneVerified: data.phoneVerified || false,
-        profileComplete: data.profileComplete || false
+        profileComplete: data.profileComplete || false,
+        kycVerified: data.kycVerified || false
       }
     }
     return null
@@ -329,6 +336,79 @@ export const getUserVerificationStatus = async (userId: string) => {
     return null
   }
 }
+
+
+// Get KYC status for a user
+export const getUserKycStatus = async (userId: string) => {
+  try {
+    const userDoc = await getDoc(doc(db, 'users', userId))
+    if (userDoc.exists()) {
+      const data = userDoc.data()
+      return {
+        kycVerified: data.kycVerified || false,
+        livenessVerified: data.livenessVerified || false,
+        aadhaarVerified: data.aadhaarVerified || false,
+        panVerified: data.panVerified || false,
+        kycData: data.kycData || null
+      }
+    }
+    return null
+  } catch (error: any) {
+    console.error('❌ Get KYC Status Error:', error)
+    return null
+  }
+}
+
+
+// Update KYC status for a specific step
+export const updateKycStatus = async (
+  userId: string,
+  step: 'liveness' | 'aadhaar' | 'pan' | 'complete',
+  data?: Record<string, any>
+) => {
+  try {
+    // Use dot-notation field paths so individual kycData fields
+    // update independently without overwriting each other
+    const updateData: Record<string, any> = {}
+
+    if (step === 'liveness') {
+      updateData.livenessVerified = true
+      if (data?.livenessVideoUrl) {
+        updateData['kycData.livenessVideoUrl'] = data.livenessVideoUrl
+      }
+
+    } else if (step === 'aadhaar') {
+      updateData.aadhaarVerified = true
+      if (data) {
+        if (data.name !== undefined) updateData['kycData.aadhaarName'] = data.name || null
+        if (data.dob !== undefined) updateData['kycData.aadhaarDob'] = data.dob || null
+        if (data.gender !== undefined) updateData['kycData.aadhaarGender'] = data.gender || null
+        if (data.maskedAadhaar !== undefined) updateData['kycData.aadhaarMasked'] = data.maskedAadhaar || null
+        if (data.aadhaarDocUrl) updateData['kycData.aadhaarDocUrl'] = data.aadhaarDocUrl
+        if (data.aadhaarPdfUrl) updateData['kycData.aadhaarPdfUrl'] = data.aadhaarPdfUrl
+        if (data.profileImage !== undefined) updateData['kycData.aadhaarPhoto'] = data.profileImage || null
+        if (data.address !== undefined) updateData['kycData.aadhaarAddress'] = data.address || null
+      }
+
+    } else if (step === 'pan') {
+      updateData.panVerified = true
+      if (data) {
+        updateData['kycData.panNumber'] = data.panNumber || null
+        updateData['kycData.panName'] = data.panName || null
+      }
+
+    } else if (step === 'complete') {
+      updateData.kycVerified = true
+    }
+
+    await setDoc(doc(db, 'users', userId), updateData, { merge: true })
+    console.log(`✅ KYC step '${step}' updated for user:`, userId)
+  } catch (error: any) {
+    console.error('❌ Update KYC Status Error:', error)
+    throw new Error(error.message || 'Failed to update KYC status')
+  }
+}
+
 
 
 // Check if email is verified (requires user to sign in temporarily)

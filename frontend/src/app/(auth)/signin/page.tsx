@@ -13,7 +13,8 @@ import {
   resetPassword,
   checkPhoneNumberExists,
   getUserByPhoneNumber,
-  checkOnboardingStatus
+  checkOnboardingStatus,
+  getUserKycStatus
 } from '@/lib/auth'
 import { useAuth } from '@/context/AuthContext'
 import { ConfirmationResult } from 'firebase/auth'
@@ -204,6 +205,20 @@ export default function SignInPage() {
         return
       }
 
+      // Step 4.5: Check KYC verification
+      const kycStatus = await getUserKycStatus(user.uid)
+      console.log('🔍 KYC status:', kycStatus)
+
+      if (!kycStatus?.kycVerified) {
+        console.log('⚠️ KYC incomplete, redirecting to /verify-kyc')
+        setError('⚠️ Identity verification pending. Redirecting...')
+        setTimeout(() => {
+          router.push('/verify-kyc')
+        }, 1200)
+        setLoading(false)
+        return
+      }
+
       // Step 5: Check onboarding status
       const onboardingStatus = await checkOnboardingStatus(user.uid)
       console.log('🔍 Onboarding status:', onboardingStatus)
@@ -334,6 +349,20 @@ export default function SignInPage() {
       // Check if profile is complete
       if (!verificationStatus?.profileComplete) {
         setError('⚠️ Profile incomplete. Please complete signup with email first.')
+        setLoading(false)
+        return
+      }
+
+      // Step KYC check for phone login
+      const kycStatus = await getUserKycStatus(phoneUser.uid)
+      console.log('🔍 KYC status (phone login):', kycStatus)
+
+      if (!kycStatus?.kycVerified) {
+        console.log('⚠️ KYC incomplete (phone login), redirecting to /verify-kyc')
+        setError('⚠️ Identity verification pending. Redirecting...')
+        setTimeout(() => {
+          router.push('/verify-kyc')
+        }, 1200)
         setLoading(false)
         return
       }
