@@ -319,7 +319,6 @@ export default function SignInPage() {
     }
   }
 
-  // ✅ UPDATED: Phone login with linked credentials
   const handleVerifyOTP = async (e: React.FormEvent) => {
     e.preventDefault()
     setError('')
@@ -329,71 +328,61 @@ export default function SignInPage() {
     try {
       if (!confirmationResult) throw new Error('Please request OTP first')
 
-      // Verify OTP - Firebase returns the same user whether signing in with email or phone (if linked)
+      // Confirm the OTP — Firebase may sign into a phone-only account (separate UID)
       const phoneUser = await verifyOTPSignIn(confirmationResult, otp)
+      console.log('✅ Phone OTP verified, Firebase UID:', phoneUser.uid)
 
-      console.log('✅ Phone OTP verified, user:', phoneUser.uid)
-      console.log('📱 Phone number:', phoneUser.phoneNumber)
+      // Look up the REAL email account by phone number in Firestore.
+      // Firebase phone auth can create a separate UID from the email account,
+      // so we must use the Firestore-stored UID for status checks.
+      const formattedPhone = phoneNumber.startsWith('+91') ? phoneNumber : `+91${phoneNumber}`
+      const firestoreUser = await getUserByPhoneNumber(formattedPhone)
 
-      // Get user verification status
-      const verificationStatus = await getUserVerificationStatus(phoneUser.uid)
-      console.log('🔍 Verification status:', verificationStatus)
+      if (!firestoreUser) {
+        setError('❌ No account found linked to this phone number.')
+        setLoading(false)
+        return
+      }
 
-      // Check if email is verified
-      if (!verificationStatus?.emailVerified) {
+      const realUid = firestoreUser.uid
+      console.log('🔍 Real account UID from Firestore:', realUid)
+
+      // Check email verification on the real account
+      if (!firestoreUser.emailVerified) {
         setError('⚠️ Please verify your email before signing in.\n\nSign in with email to complete verification.')
         setLoading(false)
         return
       }
 
-      // Note: profileComplete may be false for users mid-signup (before KYC/onboarding).
-      // Don't block here — the KYC and onboarding checks below will redirect appropriately.
-
-      // Step KYC check for phone login
-      const kycStatus = await getUserKycStatus(phoneUser.uid)
+      // Check KYC
+      const kycStatus = await getUserKycStatus(realUid)
       console.log('🔍 KYC status (phone login):', kycStatus)
-
       if (!kycStatus?.kycVerified) {
-        console.log('⚠️ KYC incomplete (phone login), redirecting to /verify-kyc')
         setError('⚠️ Identity verification pending. Redirecting...')
-        setTimeout(() => {
-          router.push('/verify-kyc')
-        }, 1200)
+        setTimeout(() => router.push('/verify-kyc'), 1200)
         setLoading(false)
         return
       }
 
-      // Check onboarding status
-      const onboardingStatus = await checkOnboardingStatus(phoneUser.uid)
+      // Check onboarding
+      const onboardingStatus = await checkOnboardingStatus(realUid)
       console.log('🔍 Onboarding status:', onboardingStatus)
-
       if (!onboardingStatus?.onboardingComplete) {
-        console.log('⚠️ Onboarding incomplete, redirecting...')
-
-        // Redirect to appropriate onboarding step
         if (!onboardingStatus?.education || !onboardingStatus?.employment) {
           setError('⚠️ Please complete your profile. Redirecting...')
-          setTimeout(() => {
-            router.push('/onboarding/education')
-          }, 1500)
-        } else if (!onboardingStatus?.location || !onboardingStatus?.address) {
+          setTimeout(() => router.push('/onboarding/education'), 1500)
+        } else {
           setError('⚠️ Please add your location. Redirecting...')
-          setTimeout(() => {
-            router.push('/onboarding/location')
-          }, 1500)
+          setTimeout(() => router.push('/onboarding/location'), 1500)
         }
-
         setLoading(false)
         return
       }
 
-      // All verified and onboarded - redirect to dashboard
+      // All good
       console.log('✅ Phone login successful!')
       setSuccess('✅ Login successful! Redirecting...')
-
-      setTimeout(() => {
-        router.replace('/dashboard')
-      }, 1000)
+      setTimeout(() => router.replace('/dashboard'), 1000)
 
     } catch (err: any) {
       setError('❌ ' + (err.message || 'Invalid OTP'))
