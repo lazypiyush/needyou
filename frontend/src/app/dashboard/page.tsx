@@ -254,9 +254,8 @@ export default function DashboardPage() {
             const allJobs = await getJobs()
             setJobs(allJobs)
 
-            // Extract unique categories
-            const uniqueCategories = getUniqueCategories(allJobs)
-            setCategories(uniqueCategories)
+            // Categories are derived later in the filter effect (after city/distance filter)
+            // so we don't show categories for jobs outside the user's area.
         } catch (error) {
             console.error('Error fetching jobs:', error)
         } finally {
@@ -301,16 +300,9 @@ export default function DashboardPage() {
             )
         }
 
-        // Apply distance filter
+        // Distance filter (async path)
         if (userLocation && distanceFilter !== 'all') {
-            // Check if db is initialized
-            if (!db) {
-                console.error('Firestore not initialized for distance filter')
-                setFilteredJobs(result)
-                return
-            }
-
-            // Get user's full location with coordinates
+            if (!db) { setFilteredJobs(result); return }
             if (user) {
                 getDoc(doc(db, 'users', user.uid)).then((userDoc: any) => {
                     if (userDoc.exists()) {
@@ -329,9 +321,15 @@ export default function DashboardPage() {
                                     result = filterJobsByDistance(result, userLat, userLon, distance)
                                 }
                             }
-
-                            // Add distance to jobs for display
                             result = addDistanceToJobs(result, userLat, userLon)
+
+                            // Update category pills from distance-filtered jobs (before category filter)
+                            setCategories(getUniqueCategories(result))
+
+                            // Apply category filter
+                            if (selectedCategory !== 'All') {
+                                result = result.filter(job => job.category === selectedCategory)
+                            }
                             setFilteredJobs(result)
                         }
                     }
@@ -342,6 +340,9 @@ export default function DashboardPage() {
                 return
             }
         }
+
+        // Sync path — update category pills from city-filtered jobs (before category filter)
+        setCategories(getUniqueCategories(result))
 
         // Apply category filter
         if (selectedCategory !== 'All') {
