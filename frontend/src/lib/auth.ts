@@ -457,8 +457,12 @@ export const addPhoneToUser = async (
   try {
     console.log('📱 Adding phone number to user:', userId)
 
+    // Always store in canonical +91XXXXXXXXXX format so Firestore queries match
+    const normalized = normalizePhone(phoneNumber)
+    console.log('📱 Storing normalized phone:', normalized)
+
     await updateDoc(doc(db, 'users', userId), {
-      phoneNumber: phoneNumber,
+      phoneNumber: normalized,
       phoneVerified: true,
       profileComplete: true
     })
