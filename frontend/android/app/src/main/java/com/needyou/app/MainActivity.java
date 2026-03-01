@@ -31,6 +31,8 @@ import android.webkit.WebChromeClient;
 import android.view.View;
 import android.view.Window;
 import android.webkit.WebView;
+import android.webkit.WebViewClient;
+import android.app.Dialog;
 import android.widget.Toast;
 import android.util.Log;
 import androidx.core.view.WindowCompat;
@@ -345,41 +347,52 @@ public class MainActivity extends BridgeActivity {
             }
 
             // ── DigiLocker / any window.open() popup ─────────────────────────
-            // WebView blocks window.open() by default. Open these in the
-            // device's default browser so the popup is never silently dropped.
+            // Use an in-app full-screen WebView dialog instead of Chrome so that
+            // the DigiLocker SDK's postMessage / onSuccess callback can reach the
+            // main WebView. If we send the popup to Chrome the callback is lost.
             @Override
             public boolean onCreateWindow(WebView view, boolean isDialog,
                     boolean isUserGesture, android.os.Message resultMsg) {
-                // Extract the URL the page wants to open
-                WebView.HitTestResult result = view.getHitTestResult();
-                String url = result != null ? result.getExtra() : null;
-                if (url != null && !url.isEmpty()) {
-                    try {
-                        Intent browserIntent = new Intent(Intent.ACTION_VIEW, Uri.parse(url));
-                        browserIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-                        startActivity(browserIntent);
-                    } catch (Exception ignored) {
-                    }
-                    return false;
-                }
-                // Fallback: create a temporary WebView to follow the URL,
-                // then open it in the browser once resolved.
-                WebView tempView = new WebView(MainActivity.this);
-                tempView.getSettings().setJavaScriptEnabled(true);
-                tempView.setWebViewClient(new android.webkit.WebViewClient() {
+
+                // Build a full-screen dialog housing a child WebView
+                final Dialog popup = new Dialog(MainActivity.this,
+                        android.R.style.Theme_Black_NoTitleBar_Fullscreen);
+                final WebView popupView = new WebView(MainActivity.this);
+                popupView.getSettings().setJavaScriptEnabled(true);
+                popupView.getSettings().setDomStorageEnabled(true);
+                popupView.getSettings().setSupportMultipleWindows(true);
+
+                popupView.setWebViewClient(new WebViewClient() {
                     @Override
-                    public boolean shouldOverrideUrlLoading(WebView v, String u) {
-                        try {
-                            Intent i = new Intent(Intent.ACTION_VIEW, Uri.parse(u));
-                            i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-                            startActivity(i);
-                        } catch (Exception ignored) {
+                    public boolean shouldOverrideUrlLoading(
+                            WebView v, android.webkit.WebResourceRequest req) {
+                        String url = req.getUrl().toString();
+                        // When DigiLocker redirects back to our domain, close the
+                        // popup and load the callback URL in the main WebView so
+                        // the SDK's onSuccess handler fires correctly.
+                        if (url.startsWith("https://need-you.xyz") ||
+                                url.startsWith("https://www.need-you.xyz")) {
+                            popup.dismiss();
+                            runOnUiThread(() -> getBridge().getWebView().loadUrl(url));
+                            return true;
                         }
-                        return true;
+                        return false;
                     }
                 });
+
+                popupView.setWebChromeClient(new WebChromeClient() {
+                    @Override
+                    public void onCloseWindow(WebView window) {
+                        popup.dismiss();
+                    }
+                });
+
+                popup.setContentView(popupView);
+                popup.show();
+
+                // Wire the new WebView into the WebView window-open transport
                 WebView.WebViewTransport transport = (WebView.WebViewTransport) resultMsg.obj;
-                transport.setWebView(tempView);
+                transport.setWebView(popupView);
                 resultMsg.sendToTarget();
                 return true;
             }

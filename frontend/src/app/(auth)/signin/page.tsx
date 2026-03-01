@@ -289,22 +289,10 @@ export default function SignInPage() {
     try {
       const formattedPhone = phoneNumber.startsWith('+91') ? phoneNumber : `+91${phoneNumber}`
 
-      // Check if phone number exists in database
-      console.log('🔍 Checking if phone number exists:', formattedPhone)
-      const phoneExists = await checkPhoneNumberExists(formattedPhone)
-
-      if (!phoneExists) {
-        setError('❌ No account found with this phone number.\n\nPlease sign up first or sign in with email if you already have an account.')
-        setLoading(false)
-        return
-      }
-
-      console.log('✅ Phone number exists, sending OTP...')
-
-      // Clear any existing recaptcha before starting
+      // Skip Firestore pre-check — cross-user collection queries are blocked by
+      // security rules and return 0 results silently. Just send OTP; if the
+      // number isn't linked to any account, the OTP verify step will catch it.
       clearRecaptcha()
-
-      // Small delay to ensure cleanup is complete
       await new Promise(resolve => setTimeout(resolve, 300))
 
       const result = await sendOTP(formattedPhone)
@@ -328,35 +316,31 @@ export default function SignInPage() {
     try {
       if (!confirmationResult) throw new Error('Please request OTP first')
 
-      // Confirm the OTP — Firebase may sign into a phone-only account (separate UID)
+      // OTP verification — since the phone was linked to the email account during
+      // signup via linkWithCredential, this returns the SAME UID as the email
+      // account. All subsequent reads are single-doc getDoc() calls allowed by rules.
       const phoneUser = await verifyOTPSignIn(confirmationResult, otp)
-      console.log('✅ Phone OTP verified, Firebase UID:', phoneUser.uid)
+      console.log('✅ Phone OTP verified, UID:', phoneUser.uid)
 
-      // Look up the REAL email account by phone number in Firestore.
-      // Firebase phone auth can create a separate UID from the email account,
-      // so we must use the Firestore-stored UID for status checks.
-      const formattedPhone = phoneNumber.startsWith('+91') ? phoneNumber : `+91${phoneNumber}`
-      const firestoreUser = await getUserByPhoneNumber(formattedPhone)
+      // Single-doc read — allowed by Firestore rules (auth.uid == userId)
+      const verificationStatus = await getUserVerificationStatus(phoneUser.uid)
+      console.log('🔍 Verification status:', verificationStatus)
 
-      if (!firestoreUser) {
-        setError('❌ No account found linked to this phone number.')
+      if (!verificationStatus) {
+        // No Firestore doc for this UID means the phone isn't linked to any account
+        setError('❌ No account linked to this phone number.\n\nPlease sign in with email or sign up first.')
         setLoading(false)
         return
       }
 
-      const realUid = firestoreUser.uid
-      console.log('🔍 Real account UID from Firestore:', realUid)
-
-      // Check email verification on the real account
-      if (!firestoreUser.emailVerified) {
+      if (!verificationStatus.emailVerified) {
         setError('⚠️ Please verify your email before signing in.\n\nSign in with email to complete verification.')
         setLoading(false)
         return
       }
 
-      // Check KYC
-      const kycStatus = await getUserKycStatus(realUid)
-      console.log('🔍 KYC status (phone login):', kycStatus)
+      const kycStatus = await getUserKycStatus(phoneUser.uid)
+      console.log('🔍 KYC status:', kycStatus)
       if (!kycStatus?.kycVerified) {
         setError('⚠️ Identity verification pending. Redirecting...')
         setTimeout(() => router.push('/verify-kyc'), 1200)
@@ -364,8 +348,7 @@ export default function SignInPage() {
         return
       }
 
-      // Check onboarding
-      const onboardingStatus = await checkOnboardingStatus(realUid)
+      const onboardingStatus = await checkOnboardingStatus(phoneUser.uid)
       console.log('🔍 Onboarding status:', onboardingStatus)
       if (!onboardingStatus?.onboardingComplete) {
         if (!onboardingStatus?.education || !onboardingStatus?.employment) {
@@ -379,7 +362,6 @@ export default function SignInPage() {
         return
       }
 
-      // All good
       console.log('✅ Phone login successful!')
       setSuccess('✅ Login successful! Redirecting...')
       setTimeout(() => router.replace('/dashboard'), 1000)
