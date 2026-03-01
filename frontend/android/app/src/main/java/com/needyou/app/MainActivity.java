@@ -33,6 +33,11 @@ import android.view.Window;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
 import android.app.Dialog;
+import android.graphics.Color;
+import android.graphics.Typeface;
+import android.widget.LinearLayout;
+import android.widget.TextView;
+import android.widget.Button;
 import android.widget.Toast;
 import android.util.Log;
 import androidx.core.view.WindowCompat;
@@ -347,32 +352,63 @@ public class MainActivity extends BridgeActivity {
             }
 
             // ── DigiLocker / any window.open() popup ─────────────────────────
-            // Open popups inside the app — NOT Chrome — so that window.opener.postMessage()
-            // from the DigiLocker OAuth popup reaches the main WebView's SDK listener.
-            // (Sending to Chrome breaks the postMessage bridge → onSuccess never fires.)
+            // Open popups inside the app — NOT Chrome — so postMessage flows back.
             @Override
             public boolean onCreateWindow(WebView view, boolean isDialog,
                     boolean isUserGesture, android.os.Message resultMsg) {
 
                 final Dialog popup = new Dialog(MainActivity.this,
                         android.R.style.Theme_Black_NoTitleBar_Fullscreen);
+
+                // ── Root layout ───────────────────────────────────────────────
+                LinearLayout root = new LinearLayout(MainActivity.this);
+                root.setOrientation(LinearLayout.VERTICAL);
+                root.setBackgroundColor(Color.WHITE);
+
+                // ── Header bar (blue + title + close button) ──────────────────
+                LinearLayout header = new LinearLayout(MainActivity.this);
+                header.setOrientation(LinearLayout.HORIZONTAL);
+                header.setBackgroundColor(0xFF1E5EFF);
+                header.setPadding(48, 56, 16, 24);
+
+                TextView titleView = new TextView(MainActivity.this);
+                titleView.setText("DigiLocker Verification");
+                titleView.setTextColor(Color.WHITE);
+                titleView.setTextSize(17);
+                titleView.setTypeface(null, Typeface.BOLD);
+                LinearLayout.LayoutParams titleParams = new LinearLayout.LayoutParams(
+                        0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f);
+                titleView.setLayoutParams(titleParams);
+
+                Button closeBtn = new Button(MainActivity.this);
+                closeBtn.setText("\u2715");
+                closeBtn.setTextColor(Color.WHITE);
+                closeBtn.setTextSize(18);
+                closeBtn.setBackgroundColor(Color.TRANSPARENT);
+                closeBtn.setOnClickListener(v -> popup.dismiss());
+
+                header.addView(titleView);
+                header.addView(closeBtn);
+
+                // ── WebView fills the rest ─────────────────────────────────────
                 final WebView popupView = new WebView(MainActivity.this);
                 popupView.getSettings().setJavaScriptEnabled(true);
                 popupView.getSettings().setDomStorageEnabled(true);
                 popupView.getSettings().setSupportMultipleWindows(true);
-
-                // Plain WebViewClient — let all URLs load inside the popup so
-                // postMessage flows back to the parent (main WebView) via window.opener.
                 popupView.setWebViewClient(new WebViewClient());
-
                 popupView.setWebChromeClient(new WebChromeClient() {
                     @Override
                     public void onCloseWindow(WebView window) {
                         popup.dismiss();
                     }
                 });
+                LinearLayout.LayoutParams webParams = new LinearLayout.LayoutParams(
+                        LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f);
+                popupView.setLayoutParams(webParams);
 
-                popup.setContentView(popupView);
+                root.addView(header);
+                root.addView(popupView);
+                popup.setContentView(root);
                 popup.show();
 
                 WebView.WebViewTransport transport = (WebView.WebViewTransport) resultMsg.obj;
