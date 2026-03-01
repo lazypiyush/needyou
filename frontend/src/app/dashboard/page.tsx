@@ -172,6 +172,7 @@ export default function DashboardPage() {
     useEffect(() => {
         const fetchUserLocation = async () => {
             if (!user) return
+            let redirected = false
             try {
                 if (!db) {
                     console.error('Firestore not initialized')
@@ -185,10 +186,8 @@ export default function DashboardPage() {
                     const userData = userDoc.data()
 
                     // ── Guard 1: KYC must be complete ─────────────────────────
-                    // kycVerified is set by updateKycStatus(uid, 'complete') at the
-                    // end of the verify-kyc flow. If it's falsy the user force-closed
-                    // the app mid-verification and must resume there.
                     if (!userData.kycVerified) {
+                        redirected = true
                         router.replace('/verify-kyc')
                         return
                     }
@@ -203,6 +202,7 @@ export default function DashboardPage() {
                             longitude: userData.location.longitude,
                         })
                     } else {
+                        redirected = true
                         router.replace('/onboarding/location')
                         return
                     }
@@ -210,13 +210,15 @@ export default function DashboardPage() {
             } catch (error) {
                 console.error('Error fetching user location:', error)
             } finally {
-                setLocationChecked(true)
+                // Only unblock skeleton if we're NOT navigating away.
+                // If redirected=true, keep skeleton showing until the new page loads.
+                if (!redirected) setLocationChecked(true)
             }
         }
 
         fetchUserLocation()
-        // Safety timeout: if check hangs (network issue), unblock after 5s
-        const safetyTimer = setTimeout(() => setLocationChecked(true), 5000)
+        // Safety timeout: unblock after 6s only if still on this page (not redirected)
+        const safetyTimer = setTimeout(() => setLocationChecked(true), 6000)
         return () => clearTimeout(safetyTimer)
     }, [user, router])
 
