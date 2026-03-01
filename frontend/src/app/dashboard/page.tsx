@@ -48,6 +48,8 @@ export default function DashboardPage() {
     const [showBatteryBanner, setShowBatteryBanner] = useState(false)
     // My Jobs sub-tab
     const [myJobsSubTab, setMyJobsSubTab] = useState<'posted' | 'applied'>('posted')
+    const [postedSubTab, setPostedSubTab] = useState<'pending' | 'completed'>('pending')
+    const [appliedSubTab, setAppliedSubTab] = useState<'pending' | 'completed' | 'rejected'>('pending')
     const [appliedJobs, setAppliedJobs] = useState<Array<Job & { application: any }>>([])
     const [loadingApplied, setLoadingApplied] = useState(false)
     const [selectedAppliedJob, setSelectedAppliedJob] = useState<(Job & { application: any }) | null>(null)
@@ -634,7 +636,7 @@ export default function DashboardPage() {
                     {activeTab === 'home' && (
                         <div>
                             <h1 className="text-2xl font-bold mb-2" style={{ color: mounted && isDark ? '#ffffff' : '#111827' }}>
-                                {filteredJobs.length} {filteredJobs.length === 1 ? 'Job' : 'Jobs'} Available
+                                {filteredJobs.filter(j => j.status !== 'completed').length} {filteredJobs.filter(j => j.status !== 'completed').length === 1 ? 'Job' : 'Jobs'} Available
                             </h1>
 
                             {/* Category Filter Buttons */}
@@ -844,7 +846,7 @@ export default function DashboardPage() {
                             ) : (
                                 <>
                                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 max-w-md md:max-w-none mx-auto">
-                                        {filteredJobs.slice(0, displayedJobsCount).map((job) => (
+                                        {filteredJobs.filter(j => j.status !== 'completed').slice(0, displayedJobsCount).map((job) => (
                                             <JobCard
                                                 key={job.id}
                                                 job={job}
@@ -907,167 +909,218 @@ export default function DashboardPage() {
 
                             {/* ── POSTED JOBS ──────────────────────────────────── */}
                             {myJobsSubTab === 'posted' && (() => {
-                                const myJobs = jobs.filter(j =>
+                                const allMyJobs = jobs.filter(j =>
                                     j.userId === user?.uid &&
                                     (!searchQuery || j.caption?.toLowerCase().includes(searchQuery.toLowerCase()))
                                 )
+                                const pendingJobs = allMyJobs.filter(j => j.status !== 'completed')
+                                const completedJobs = allMyJobs.filter(j => j.status === 'completed')
+                                const currentJobs = postedSubTab === 'completed' ? completedJobs : pendingJobs
                                 if (loadingJobs) return (
                                     <div className="flex items-center justify-center py-16">
                                         <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
                                     </div>
                                 )
-                                if (myJobs.length === 0) return (
-                                    <div className="text-center py-16 space-y-4">
-                                        <Briefcase className="w-16 h-16 mx-auto text-gray-400" />
-                                        <p className="text-gray-500 dark:text-gray-400">
-                                            {searchQuery ? `No jobs matching "${searchQuery}"` : "You haven't posted any jobs yet"}
-                                        </p>
-                                        {!searchQuery && (
-                                            <button
-                                                onClick={() => setActiveTab('create')}
-                                                className="px-6 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-bold rounded-xl hover:shadow-lg transition-all"
-                                            >
-                                                Post Your First Job
-                                            </button>
-                                        )}
-                                    </div>
-                                )
                                 return (
                                     <>
-                                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                                            {myJobs.slice(0, displayedMyJobsCount).map((job) => (
-                                                <JobCard
-                                                    key={job.id}
-                                                    job={job}
-                                                    highlightJobId={notificationJobId}
-                                                    onDelete={() => { fetchJobs(); setNotificationJobId(null) }}
-                                                />
+                                        {/* Pending / Completed inner tabs */}
+                                        <div className="flex gap-2 mb-5">
+                                            {(['pending', 'completed'] as const).map(tab => (
+                                                <button
+                                                    key={tab}
+                                                    onClick={() => setPostedSubTab(tab)}
+                                                    className="px-4 py-2 rounded-xl text-sm font-semibold transition-all"
+                                                    style={{
+                                                        background: postedSubTab === tab
+                                                            ? 'linear-gradient(135deg,#1E5EFF,#6366f1)'
+                                                            : (isDark ? '#2a2a2a' : '#f3f4f6'),
+                                                        color: postedSubTab === tab ? '#fff' : (isDark ? '#9ca3af' : '#6b7280'),
+                                                    }}
+                                                >
+                                                    {tab === 'pending'
+                                                        ? `⏳ Pending (${pendingJobs.length})`
+                                                        : `✅ Completed (${completedJobs.length})`}
+                                                </button>
                                             ))}
                                         </div>
-                                        {myJobs.length > displayedMyJobsCount && (
-                                            <div className="flex justify-center mt-8">
-                                                <button
-                                                    onClick={() => setDisplayedMyJobsCount(p => p + 12)}
-                                                    className="px-6 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-bold rounded-xl hover:shadow-lg transition-all"
-                                                >
-                                                    Load More ({myJobs.length - displayedMyJobsCount} remaining)
-                                                </button>
+                                        {currentJobs.length === 0 ? (
+                                            <div className="text-center py-16 space-y-4">
+                                                <Briefcase className="w-16 h-16 mx-auto text-gray-400" />
+                                                <p className="text-gray-500 dark:text-gray-400">
+                                                    {postedSubTab === 'completed'
+                                                        ? 'No completed jobs yet'
+                                                        : searchQuery ? `No jobs matching "${searchQuery}"` : "You haven't posted any jobs yet"}
+                                                </p>
+                                                {!searchQuery && postedSubTab === 'pending' && (
+                                                    <button
+                                                        onClick={() => setActiveTab('create')}
+                                                        className="px-6 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-bold rounded-xl hover:shadow-lg transition-all"
+                                                    >
+                                                        Post Your First Job
+                                                    </button>
+                                                )}
                                             </div>
+                                        ) : (
+                                            <>
+                                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                                                    {currentJobs.slice(0, displayedMyJobsCount).map((job) => (
+                                                        <JobCard
+                                                            key={job.id}
+                                                            job={job}
+                                                            highlightJobId={notificationJobId}
+                                                            onDelete={() => { fetchJobs(); setNotificationJobId(null) }}
+                                                        />
+                                                    ))}
+                                                </div>
+                                                {currentJobs.length > displayedMyJobsCount && (
+                                                    <div className="flex justify-center mt-8">
+                                                        <button
+                                                            onClick={() => setDisplayedMyJobsCount(p => p + 12)}
+                                                            className="px-6 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-bold rounded-xl hover:shadow-lg transition-all"
+                                                        >
+                                                            Load More ({currentJobs.length - displayedMyJobsCount} remaining)
+                                                        </button>
+                                                    </div>
+                                                )}
+                                            </>
                                         )}
                                     </>
                                 )
                             })()}
 
-                            {/* ── APPLIED JOBS ─────────────────────────────────── */}
+                            {/* ── APPLIED JOBS ───────────────────────────────── */}
                             {myJobsSubTab === 'applied' && (
                                 loadingApplied ? (
                                     <div className="flex items-center justify-center py-16">
                                         <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
                                     </div>
-                                ) : appliedJobs.length === 0 ? (
-                                    <div className="text-center py-16 space-y-3">
-                                        <CheckCircle className="w-16 h-16 mx-auto text-gray-400" />
-                                        <p className="text-gray-500 dark:text-gray-400">You haven't applied to any jobs yet</p>
-                                        <button
-                                            onClick={() => setActiveTab('home')}
-                                            className="px-6 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-bold rounded-xl hover:shadow-lg transition-all"
-                                        >
-                                            Browse Jobs
-                                        </button>
-                                    </div>
-                                ) : (
-                                    <div className="space-y-4">
-                                        {appliedJobs.map((job) => {
-                                            const app = job.application
-                                            const statusConfig: Record<string, { label: string; bg: string; color: string }> = {
-                                                pending: { label: 'Pending', bg: isDark ? 'rgba(234,179,8,0.15)' : '#fef9c3', color: '#ca8a04' },
-                                                negotiating: { label: 'Negotiating', bg: isDark ? 'rgba(59,130,246,0.15)' : '#dbeafe', color: '#2563eb' },
-                                                accepted: { label: 'Accepted', bg: isDark ? 'rgba(34,197,94,0.15)' : '#dcfce7', color: '#16a34a' },
-                                                rejected: { label: 'Rejected', bg: isDark ? 'rgba(239,68,68,0.15)' : '#fee2e2', color: '#dc2626' },
-                                                hired: { label: '🎉 Hired!', bg: isDark ? 'rgba(34,197,94,0.2)' : '#bbf7d0', color: '#15803d' },
-                                                closed: { label: 'Closed', bg: isDark ? 'rgba(107,114,128,0.15)' : '#f3f4f6', color: '#6b7280' },
-                                            }
-                                            const st = statusConfig[app.status] ?? statusConfig.pending
-                                            const timeAgo = (() => {
-                                                const diff = Date.now() - app.appliedAt
-                                                const d = Math.floor(diff / 86400000)
-                                                const h = Math.floor(diff / 3600000)
-                                                const m = Math.floor(diff / 60000)
-                                                if (d > 0) return `${d}d ago`
-                                                if (h > 0) return `${h}h ago`
-                                                return `${m}m ago`
-                                            })()
-                                            return (
-                                                <button
-                                                    key={app.id}
-                                                    onClick={() => setSelectedAppliedJob(job)}
-                                                    className="w-full text-left rounded-2xl border p-4 transition-all active:scale-[0.98]"
-                                                    style={{
-                                                        backgroundColor: isDark ? '#1e1e1e' : '#ffffff',
-                                                        borderColor: isDark ? '#333' : '#e5e7eb',
-                                                        boxShadow: isDark
-                                                            ? '0 0 0 1px rgba(255,255,255,0.06), 0 4px 16px rgba(255,255,255,0.06)'
-                                                            : '0 1px 4px rgba(0,0,0,0.06)',
-                                                    }}
-                                                >
-                                                    <div className="flex items-start justify-between gap-3 mb-2">
-                                                        <div className="flex-1 min-w-0">
-                                                            <p className="font-semibold text-base truncate"
-                                                                style={{ color: isDark ? '#fff' : '#111827' }}>
-                                                                {job.caption}
-                                                            </p>
-                                                            <p className="text-sm mt-0.5"
-                                                                style={{ color: isDark ? '#6b7280' : '#9ca3af' }}>
-                                                                {job.location?.city}, {job.location?.state} · {timeAgo}
-                                                            </p>
-                                                        </div>
-                                                        {/* Status chip */}
-                                                        <span
-                                                            className="flex-shrink-0 text-xs font-bold px-3 py-1 rounded-full"
-                                                            style={{ background: st.bg, color: st.color }}
-                                                        >
-                                                            {st.label}
+                                ) : (() => {
+                                    const pendingApps = appliedJobs.filter(j =>
+                                        j.application.status !== 'rejected' &&
+                                        j.application.startJobStatus !== 'completed'
+                                    )
+                                    const completedApps = appliedJobs.filter(j => j.application.startJobStatus === 'completed')
+                                    const rejectedApps = appliedJobs.filter(j => j.application.status === 'rejected')
+                                    const currentApps = appliedSubTab === 'completed' ? completedApps
+                                        : appliedSubTab === 'rejected' ? rejectedApps
+                                            : pendingApps
+                                    const renderCard = (job: typeof appliedJobs[0]) => {
+                                        const app = job.application
+                                        const statusConfig: Record<string, { label: string; bg: string; color: string }> = {
+                                            pending: { label: 'Pending', bg: isDark ? 'rgba(234,179,8,0.15)' : '#fef9c3', color: '#ca8a04' },
+                                            negotiating: { label: 'Negotiating', bg: isDark ? 'rgba(59,130,246,0.15)' : '#dbeafe', color: '#2563eb' },
+                                            accepted: { label: 'Accepted', bg: isDark ? 'rgba(34,197,94,0.15)' : '#dcfce7', color: '#16a34a' },
+                                            rejected: { label: 'Rejected', bg: isDark ? 'rgba(239,68,68,0.15)' : '#fee2e2', color: '#dc2626' },
+                                            hired: { label: '🎉 Hired!', bg: isDark ? 'rgba(34,197,94,0.2)' : '#bbf7d0', color: '#15803d' },
+                                            closed: { label: 'Closed', bg: isDark ? 'rgba(107,114,128,0.15)' : '#f3f4f6', color: '#6b7280' },
+                                            completed: { label: '✅ Completed', bg: isDark ? 'rgba(34,197,94,0.2)' : '#bbf7d0', color: '#15803d' },
+                                        }
+                                        const statusKey = app.startJobStatus === 'completed' ? 'completed' : app.status
+                                        const st = statusConfig[statusKey] ?? statusConfig.pending
+                                        const timeAgo = (() => {
+                                            const diff = Date.now() - app.appliedAt
+                                            const d = Math.floor(diff / 86400000)
+                                            const h = Math.floor(diff / 3600000)
+                                            const m = Math.floor(diff / 60000)
+                                            if (d > 0) return `${d}d ago`
+                                            if (h > 0) return `${h}h ago`
+                                            return `${m}m ago`
+                                        })()
+                                        return (
+                                            <button
+                                                key={app.id}
+                                                onClick={() => setSelectedAppliedJob(job)}
+                                                className="w-full text-left rounded-2xl border p-4 transition-all active:scale-[0.98]"
+                                                style={{
+                                                    backgroundColor: isDark ? '#1e1e1e' : '#ffffff',
+                                                    borderColor: isDark ? '#333' : '#e5e7eb',
+                                                    boxShadow: isDark
+                                                        ? '0 0 0 1px rgba(255,255,255,0.06), 0 4px 16px rgba(255,255,255,0.06)'
+                                                        : '0 1px 4px rgba(0,0,0,0.06)',
+                                                }}
+                                            >
+                                                <div className="flex items-start justify-between gap-3 mb-2">
+                                                    <div className="flex-1 min-w-0">
+                                                        <p className="font-semibold text-base truncate" style={{ color: isDark ? '#fff' : '#111827' }}>{job.caption}</p>
+                                                        <p className="text-sm mt-0.5" style={{ color: isDark ? '#6b7280' : '#9ca3af' }}>
+                                                            {job.location?.city}, {job.location?.state} · {timeAgo}
+                                                        </p>
+                                                    </div>
+                                                    <span className="flex-shrink-0 text-xs font-bold px-3 py-1 rounded-full" style={{ background: st.bg, color: st.color }}>
+                                                        {st.label}
+                                                    </span>
+                                                </div>
+                                                <div className="flex flex-wrap items-center gap-3 mt-3">
+                                                    {job.budget && (
+                                                        <span className="text-sm" style={{ color: isDark ? '#9ca3af' : '#6b7280' }}>
+                                                            Job budget: <strong style={{ color: isDark ? '#fff' : '#111827' }}>₹{job.budget.toLocaleString()}</strong>
                                                         </span>
-                                                    </div>
-
-                                                    {/* Budget / offer row */}
-                                                    <div className="flex flex-wrap items-center gap-3 mt-3">
-                                                        {job.budget && (
-                                                            <span className="text-sm" style={{ color: isDark ? '#9ca3af' : '#6b7280' }}>
-                                                                Job budget: <strong style={{ color: isDark ? '#fff' : '#111827' }}>₹{job.budget.toLocaleString()}</strong>
-                                                            </span>
-                                                        )}
-                                                        {app.counterOffer && (
-                                                            <span className="text-sm" style={{ color: isDark ? '#9ca3af' : '#6b7280' }}>
-                                                                Your offer: <strong className="text-green-500">₹{app.counterOffer.toLocaleString()}</strong>
-                                                            </span>
-                                                        )}
-                                                        {app.budgetSatisfied && !app.counterOffer && (
-                                                            <span className="text-xs font-medium px-2 py-0.5 rounded-full"
-                                                                style={{ background: isDark ? 'rgba(34,197,94,0.15)' : '#dcfce7', color: '#16a34a' }}>
-                                                                Accepted budget
-                                                            </span>
-                                                        )}
-                                                    </div>
-
-                                                    {/* Category badge */}
-                                                    {job.category && (
-                                                        <div className="mt-3">
-                                                            <span className="text-xs px-2 py-0.5 rounded-full font-medium"
-                                                                style={{ background: isDark ? 'rgba(99,102,241,0.15)' : '#ede9fe', color: '#7c3aed' }}>
-                                                                {job.category}
-                                                            </span>
-                                                        </div>
                                                     )}
-                                                    {/* Tap hint */}
-                                                    <p className="text-xs mt-3" style={{ color: isDark ? '#4b5563' : '#d1d5db' }}>
-                                                        Tap to view your application
+                                                    {app.counterOffer && (
+                                                        <span className="text-sm" style={{ color: isDark ? '#9ca3af' : '#6b7280' }}>
+                                                            Your offer: <strong className="text-green-500">₹{app.counterOffer.toLocaleString()}</strong>
+                                                        </span>
+                                                    )}
+                                                    {app.budgetSatisfied && !app.counterOffer && (
+                                                        <span className="text-xs font-medium px-2 py-0.5 rounded-full" style={{ background: isDark ? 'rgba(34,197,94,0.15)' : '#dcfce7', color: '#16a34a' }}>Accepted budget</span>
+                                                    )}
+                                                </div>
+                                                {job.category && (
+                                                    <div className="mt-3">
+                                                        <span className="text-xs px-2 py-0.5 rounded-full font-medium" style={{ background: isDark ? 'rgba(99,102,241,0.15)' : '#ede9fe', color: '#7c3aed' }}>{job.category}</span>
+                                                    </div>
+                                                )}
+                                                <p className="text-xs mt-3" style={{ color: isDark ? '#4b5563' : '#d1d5db' }}>Tap to view your application</p>
+                                            </button>
+                                        )
+                                    }
+                                    return (
+                                        <>
+                                            {/* Pending / Completed / Rejected inner tabs */}
+                                            <div className="flex gap-2 mb-5 flex-wrap">
+                                                {([
+                                                    { key: 'pending', label: '📋 Pending', count: pendingApps.length },
+                                                    { key: 'completed', label: '✅ Completed', count: completedApps.length },
+                                                    { key: 'rejected', label: '❌ Rejected', count: rejectedApps.length },
+                                                ] as const).map(({ key, label, count }) => (
+                                                    <button
+                                                        key={key}
+                                                        onClick={() => setAppliedSubTab(key)}
+                                                        className="px-4 py-2 rounded-xl text-sm font-semibold transition-all"
+                                                        style={{
+                                                            background: appliedSubTab === key
+                                                                ? 'linear-gradient(135deg,#1E5EFF,#6366f1)'
+                                                                : (isDark ? '#2a2a2a' : '#f3f4f6'),
+                                                            color: appliedSubTab === key ? '#fff' : (isDark ? '#9ca3af' : '#6b7280'),
+                                                        }}
+                                                    >
+                                                        {label} ({count})
+                                                    </button>
+                                                ))}
+                                            </div>
+                                            {currentApps.length === 0 ? (
+                                                <div className="text-center py-16 space-y-3">
+                                                    <CheckCircle className="w-16 h-16 mx-auto text-gray-400" />
+                                                    <p className="text-gray-500 dark:text-gray-400">
+                                                        {appliedSubTab === 'pending' ? "No pending applications"
+                                                            : appliedSubTab === 'completed' ? "No completed jobs yet"
+                                                                : "No rejected applications"}
                                                     </p>
-                                                </button>
-                                            )
-                                        })}
-                                    </div>
-                                )
+                                                    {appliedSubTab === 'pending' && (
+                                                        <button onClick={() => setActiveTab('home')}
+                                                            className="px-6 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-bold rounded-xl hover:shadow-lg transition-all">
+                                                            Browse Jobs
+                                                        </button>
+                                                    )}
+                                                </div>
+                                            ) : (
+                                                <div className="space-y-4">
+                                                    {currentApps.map(job => renderCard(job))}
+                                                </div>
+                                            )}
+                                        </>
+                                    )
+                                })()
                             )}
                         </div>
                     )}
