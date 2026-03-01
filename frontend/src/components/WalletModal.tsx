@@ -219,8 +219,7 @@ export default function WalletModal({ isDark, onClose, balance = 0, uid = '', us
         setWithdrawError('')
         const amt = Math.floor(parseFloat(withdrawAmount)) // integers only
         if (!withdrawMethod) return setWithdrawError('Please select a payment method.')
-        if (!amt || amt <= 0) return setWithdrawError('Enter a valid amount.')
-        if (amt < 50) return setWithdrawError('Minimum withdrawal amount is ₹50.')
+        if (!amt || amt <= 0) return setWithdrawError('Enter a valid amount greater than ₹0.')
         if (amt > balance) return setWithdrawError(`Amount exceeds your balance of ₹${balance.toLocaleString('en-IN')}.`)
         // Block if a pending request already exists
         const hasPending = historyRequests.some((r: any) => r.status === 'pending')
@@ -750,14 +749,14 @@ export default function WalletModal({ isDark, onClose, balance = 0, uid = '', us
                                         <div>
                                             <label className={labelCls}>Amount (₹)</label>
                                             <input
-                                                type="number" min="50" max={balance} step="1"
+                                                type="number" min="1" max={balance} step="1"
                                                 value={withdrawAmount}
                                                 onChange={e => setWithdrawAmount(e.target.value ? String(Math.floor(Number(e.target.value))) : '')}
                                                 placeholder="Enter whole amount (e.g. 500)"
                                                 className={inputCls}
                                             />
                                             <p className="text-xs mt-1.5" style={{ color: textSec }}>
-                                                Min ₹50 · Max ₹{balance.toLocaleString('en-IN')} · Whole rupees only
+                                                Max ₹{balance.toLocaleString('en-IN')} · Whole rupees only
                                             </p>
                                         </div>
                                         {withdrawError && (
