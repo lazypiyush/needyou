@@ -649,14 +649,25 @@ export const onAuthStateChange = (callback: (user: User | null) => void) => {
 }
 
 
+
+/** Canonical Indian mobile format: +91XXXXXXXXXX (10 digits after country code) */
+function normalizePhone(raw: string): string {
+  // Strip everything except digits
+  const digits = raw.replace(/\D/g, '')
+  // Remove leading 91 if present (country code), then prepend +91
+  const local = digits.startsWith('91') && digits.length > 10 ? digits.slice(2) : digits
+  return `+91${local}`
+}
+
 // Check if phone number exists in Firestore (excluding current user)
 export const checkPhoneNumberExists = async (phoneNumber: string, excludeUserId?: string) => {
   try {
-    console.log('🔍 Checking phone number:', phoneNumber)
+    const normalized = normalizePhone(phoneNumber)
+    console.log('🔍 Checking phone number:', normalized)
     console.log('🔍 Excluding user ID:', excludeUserId || 'none')
 
     const usersRef = collection(db, 'users')
-    const q = query(usersRef, where('phoneNumber', '==', phoneNumber))
+    const q = query(usersRef, where('phoneNumber', '==', normalized))
     const snapshot = await getDocs(q)
 
     console.log('📊 Query results:', snapshot.size, 'documents found')
@@ -678,8 +689,8 @@ export const checkPhoneNumberExists = async (phoneNumber: string, excludeUserId?
   } catch (error: any) {
     console.error('❌ Check Phone Number Error:', error)
     console.error('Error details:', error.code, error.message)
-    // On error, allow the operation to proceed (fail open for better UX)
-    return false
+    // Fail-open: if check errors, return true so OTP can still be attempted
+    return true
   }
 }
 
@@ -687,8 +698,10 @@ export const checkPhoneNumberExists = async (phoneNumber: string, excludeUserId?
 // Get user by phone number
 export const getUserByPhoneNumber = async (phoneNumber: string) => {
   try {
+    const normalized = normalizePhone(phoneNumber)
+    console.log('🔍 Getting user by phone:', normalized)
     const usersRef = collection(db, 'users')
-    const q = query(usersRef, where('phoneNumber', '==', phoneNumber))
+    const q = query(usersRef, where('phoneNumber', '==', normalized))
     const snapshot = await getDocs(q)
 
     if (snapshot.empty) {
