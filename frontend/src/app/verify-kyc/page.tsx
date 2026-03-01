@@ -506,22 +506,21 @@ function VerifyKycContent() {
         }, ch.timeoutMs)
 
         {
-            // On native Android, throttle ML inference to ~30fps (33ms) to reduce CPU load.
-            // 12fps was too aggressive — hold-based challenges (blink, wink, fingers) require
-            // consecutive passing frames and became 5× harder. 30fps halves CPU vs 60fps.
-            const INFER_INTERVAL_MS = (window as any).Capacitor?.isNativePlatform?.() ? 33 : 0
-            let lastTs = 0
+            // Run ML inference at full 60fps so detection sensitivity matches desktop —
+            // CLOSE_HOLD_FRAMES=25 = 416ms, FINGER_HOLD_FRAMES=12 = 200ms hold.
+            // On native, only throttle REACT STATE UPDATES to 20fps (50ms) so the
+            // UI doesn't jank from 60 re-renders/sec. Completion fires immediately.
+            const isNative = (window as any).Capacitor?.isNativePlatform?.()
+            const STATE_INTERVAL_MS = isNative ? 50 : 0
+            let lastStateUpdate = 0
             const loop = (now: number) => {
                 if (!stepActiveRef.current) return
-                if (now - lastTs < INFER_INTERVAL_MS) { rafRef.current = requestAnimationFrame(loop); return }
-                lastTs = now
                 const ts = Math.floor(now)
                 const video = videoRef.current
                 if (!video) { rafRef.current = requestAnimationFrame(loop); return }
                 try {
                     const face = faceLandmarkerRef.current?.detectForVideo(video, ts)
                     const lm: any[] | undefined = face?.faceLandmarks?.[0]
-                    setFaceInFrame(!!(lm && lm.length > 0))
 
                     let hand: any[] | undefined
                     if (ch.category === 'hand' && handLandmarkerRef.current) {
@@ -530,11 +529,22 @@ function VerifyKycContent() {
                     }
 
                     const pct = detectChallenge(ch, lm, hand)
-                    if (pct !== null) setProgress(Math.min(100, pct))
+
+                    // Completion: fire immediately — don't wait for state batch
                     if (pct !== null && pct >= 100) {
                         if (stepTimerRef.current) clearTimeout(stepTimerRef.current)
                         stepActiveRef.current = false
+                        setProgress(100)
+                        setFaceInFrame(!!(lm && lm.length > 0))
                         advanceStep(true, idx); return
+                    }
+
+                    // Throttle UI state updates to avoid excess re-renders on mobile
+                    const shouldUpdate = now - lastStateUpdate >= STATE_INTERVAL_MS
+                    if (shouldUpdate) {
+                        lastStateUpdate = now
+                        setFaceInFrame(!!(lm && lm.length > 0))
+                        if (pct !== null) setProgress(Math.min(100, pct))
                     }
                 } catch { }
                 rafRef.current = requestAnimationFrame(loop)
