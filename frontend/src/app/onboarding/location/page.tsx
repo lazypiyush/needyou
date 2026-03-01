@@ -100,7 +100,7 @@ function LocationContent() {
                         city,
                         state,
                         country,
-                        area: area || undefined
+                        ...(area ? { area } : {})
                     })
                 }
             }
@@ -282,7 +282,7 @@ function LocationContent() {
                         city: location.city,
                         state: location.state,
                         country: location.country,
-                        area: location.area
+                        ...(location.area ? { area: location.area } : {})
                     },
                     isDefault: setAsDefault
                 })
@@ -303,7 +303,7 @@ function LocationContent() {
                         city: location.city,
                         state: location.state,
                         country: location.country,
-                        area: location.area
+                        ...(location.area ? { area: location.area } : {})
                     },
                     isDefault: setAsDefault
                 })
