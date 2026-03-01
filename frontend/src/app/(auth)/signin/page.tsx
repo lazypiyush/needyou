@@ -333,7 +333,10 @@ export default function SignInPage() {
         return
       }
 
-      if (!verificationStatus.emailVerified) {
+      // Email verified? Check Firebase Auth directly (phoneUser.emailVerified) — the
+      // Firestore field may be stale or not yet updated after email verification.
+      const emailVerified = phoneUser.emailVerified || verificationStatus.emailVerified
+      if (!emailVerified) {
         setError('⚠️ Please verify your email before signing in.\n\nSign in with email to complete verification.')
         setLoading(false)
         return
