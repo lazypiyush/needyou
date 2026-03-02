@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Plus, Trash2, X, CheckCircle, XCircle, Loader2, Receipt, IndianRupee, AlertCircle } from 'lucide-react'
+import { Plus, Trash2, X, CheckCircle, XCircle, Loader2, Receipt, IndianRupee, AlertCircle, Download } from 'lucide-react'
 
 export interface BillItem {
     reason: string
@@ -16,8 +16,8 @@ export interface Bill {
 }
 
 interface JobBillModalProps {
-    /** 'create' = worker filling bill | 'review' = client can accept/reject | 'view' = read-only (pending/rejected) */
-    mode: 'create' | 'review' | 'view'
+    /** 'create' = worker filling bill | 'review' = client accept/reject | 'view' = read-only | 'paid' = completed receipt with PDF */
+    mode: 'create' | 'review' | 'view' | 'paid'
     isDark: boolean
     onClose: () => void
 
@@ -34,6 +34,11 @@ interface JobBillModalProps {
     billRejectedAt?: number | null
     workerName?: string     // shown on client review mode
     jobTitle?: string
+
+    // paid mode extras
+    clientName?: string
+    paymentId?: string
+    paidAt?: number
 }
 
 function ReceiptLine({ item, isDark }: { item: BillItem; isDark: boolean }) {
@@ -94,6 +99,9 @@ export default function JobBillModal({
     billRejectedAt,
     workerName,
     jobTitle,
+    clientName,
+    paymentId,
+    paidAt,
 }: JobBillModalProps) {
     // create mode state
     const [items, setItems] = useState<BillItem[]>(
@@ -113,7 +121,38 @@ export default function JobBillModal({
 
     const total = items.reduce((s, i) => s + (Number(i.amount) || 0), 0)
 
-    // ── Create Mode Helpers ────────────────────────────────────────────────────
+    // ── PDF Export (APK-compatible: uses Android native print dialog) ───────────
+    const exportToPDF = () => {
+        const win = window.open('', '_blank', 'width=820,height=960')
+        if (!win) return
+        const rows = (bill?.items ?? []).map(it =>
+            `<tr><td style="padding:9px 0;border-bottom:1px solid #e5e7eb;color:#374151;font-size:14px">${it.reason}</td>
+             <td style="padding:9px 0;border-bottom:1px solid #e5e7eb;text-align:right;font-weight:700;font-size:14px;color:#111827">\u20b9${it.amount.toLocaleString('en-IN')}</td></tr>`
+        ).join('')
+        const dateStr = paidAt ? new Date(paidAt).toLocaleDateString('en-IN', { dateStyle: 'long' }) : new Date().toLocaleDateString('en-IN', { dateStyle: 'long' })
+        const timeStr = paidAt ? new Date(paidAt).toLocaleTimeString('en-IN', { timeStyle: 'short' }) : ''
+        win.document.write(`<!DOCTYPE html><html lang="en"><head><meta charset="utf-8">
+<title>NeedYou – Job Receipt</title>
+<style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:'Segoe UI',Arial,sans-serif;background:#f4f5f7;padding:32px 16px;color:#111827}.card{max-width:580px;margin:0 auto;background:#fff;border-radius:20px;box-shadow:0 8px 32px rgba(0,0,0,0.10);overflow:hidden}.hd{background:linear-gradient(135deg,#4f46e5,#7c3aed);padding:36px 32px;text-align:center;color:#fff}.hd h1{font-size:30px;font-weight:900;letter-spacing:.04em}.hd p{font-size:13px;opacity:.85;margin-top:5px}.paid-pill{display:inline-block;margin-top:14px;background:rgba(255,255,255,.22);border-radius:50px;padding:5px 20px;font-size:11px;font-weight:800;letter-spacing:.15em}.body{padding:28px 32px}.meta-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:26px}.meta-cell{background:#f9fafb;border-radius:12px;padding:12px 14px}.meta-cell.full{grid-column:1/-1}.meta-cell label{display:block;font-size:10px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:#9ca3af;margin-bottom:4px}.meta-cell p{font-size:14px;font-weight:600;color:#111827}.sec-label{font-size:10px;font-weight:800;letter-spacing:.12em;text-transform:uppercase;color:#9ca3af;margin-bottom:10px}table{width:100%;border-collapse:collapse}.total-row{display:flex;justify-content:space-between;align-items:center;padding-top:16px;margin-top:12px;border-top:2px solid #4f46e5}.total-label{font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:#6b7280}.total-amt{font-size:30px;font-weight:900;color:#4f46e5}.ok-pill{display:flex;align-items:center;justify-content:center;gap:8px;margin-top:20px;background:#ecfdf5;border:1.5px solid #6ee7b7;border-radius:50px;padding:8px 20px;font-size:13px;font-weight:700;color:#059669}.ft{background:#f9fafb;border-top:1px solid #e5e7eb;padding:16px 32px;text-align:center;font-size:11px;color:#9ca3af}@media print{body{padding:0;background:#fff}.card{border-radius:0;box-shadow:none}}</style></head>
+<body><div class="card">
+<div class="hd"><h1>NeedYou</h1><p>Job Payment Receipt</p><div class="paid-pill">&#10022; PAID &#10022;</div></div>
+<div class="body">
+<div class="meta-grid">
+  <div class="meta-cell"><label>Job</label><p>${jobTitle ?? '–'}</p></div>
+  <div class="meta-cell"><label>Date</label><p>${dateStr}${timeStr ? ' · ' + timeStr : ''}</p></div>
+  ${clientName ? `<div class="meta-cell"><label>Client</label><p>${clientName}</p></div>` : ''}
+  ${workerName ? `<div class="meta-cell"><label>Service Provider</label><p>${workerName}</p></div>` : ''}
+  ${paymentId ? `<div class="meta-cell full"><label>Payment Reference</label><p style="font-family:monospace;font-size:12px;word-break:break-all">${paymentId}</p></div>` : ''}
+</div>
+<p class="sec-label">Bill Details</p>
+<table><tbody>${rows}</tbody></table>
+<div class="total-row"><span class="total-label">Total Paid</span><span class="total-amt">&#8377;${(bill?.total ?? 0).toLocaleString('en-IN')}</span></div>
+<div class="ok-pill">&#10003; Payment Complete &nbsp;&mdash;&nbsp; Amount credited to service provider</div>
+</div>
+<div class="ft"><p>Generated by NeedYou Platform &nbsp;&bull;&nbsp; ${new Date().toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' })}</p><p style="margin-top:4px">Computer-generated receipt &bull; No signature required</p></div>
+</div><script>window.onload=()=>{setTimeout(()=>window.print(),400)}<\/script></body></html>`)
+        win.document.close()
+    }
     const addItem = () => setItems(prev => [...prev, { reason: '', amount: 0 }])
 
     const updateItem = (idx: number, field: keyof BillItem, value: string | number) => {
@@ -174,7 +213,7 @@ export default function JobBillModal({
                 {/* Close button */}
                 <div className="flex items-center justify-between px-5 pt-4 pb-2 flex-shrink-0">
                     <p className="text-base font-bold" style={{ color: textPri }}>
-                        {mode === 'create' ? '🧾 Create Bill' : mode === 'review' ? '📋 Review Bill' : '🧾 Bill Receipt'}
+                        {mode === 'create' ? '🧾 Create Bill' : mode === 'review' ? '📋 Review Bill' : mode === 'paid' ? '✅ Payment Receipt' : '🧾 Bill Receipt'}
                     </p>
                     <button onClick={onClose} className="p-1.5 rounded-full transition-colors hover:bg-gray-200/20">
                         <X className="w-5 h-5" style={{ color: textSec }} />
@@ -306,6 +345,37 @@ export default function JobBillModal({
                             </span>
                         </div>
 
+                        {/* Paid mode: payment metadata */}
+                        {mode === 'paid' && (
+                            <div className="mt-3 p-3 rounded-xl space-y-2" style={{ background: isDark ? '#0d2212' : '#f0fdf4', border: '1px solid rgba(16,185,129,0.35)' }}>
+                                <div className="flex items-center gap-2 mb-1">
+                                    <CheckCircle className="w-4 h-4 text-emerald-500" />
+                                    <span className="text-sm font-bold text-emerald-700 dark:text-emerald-400">Payment Completed</span>
+                                </div>
+                                {clientName && (
+                                    <div className="flex justify-between text-xs" style={{ color: textSec }}>
+                                        <span>Client</span><span className="font-semibold" style={{ color: textPri }}>{clientName}</span>
+                                    </div>
+                                )}
+                                {workerName && (
+                                    <div className="flex justify-between text-xs" style={{ color: textSec }}>
+                                        <span>Service Provider</span><span className="font-semibold" style={{ color: textPri }}>{workerName}</span>
+                                    </div>
+                                )}
+                                {paidAt && (
+                                    <div className="flex justify-between text-xs" style={{ color: textSec }}>
+                                        <span>Paid on</span><span className="font-semibold" style={{ color: textPri }}>{new Date(paidAt).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' })}</span>
+                                    </div>
+                                )}
+                                {paymentId && (
+                                    <div className="flex justify-between text-xs gap-3" style={{ color: textSec }}>
+                                        <span className="flex-shrink-0">Payment ID</span>
+                                        <span className="font-mono text-[11px] truncate" style={{ color: textPri }}>{paymentId}</span>
+                                    </div>
+                                )}
+                            </div>
+                        )}
+
                         {/* Perforated bottom effect */}
                         <DashedDivider isDark={isDark} />
                         <p className="text-center text-[10px] tracking-widest uppercase" style={{ color: isDark ? '#404040' : '#d1d5db' }}>
@@ -352,6 +422,16 @@ export default function JobBillModal({
                                     {acceptLoading ? <><Loader2 className="w-4 h-4 animate-spin" /> Processing…</> : <><CheckCircle className="w-4 h-4" /> Accept & Pay</>}
                                 </button>
                             </div>
+                        )}
+
+                        {mode === 'paid' && (
+                            <button
+                                onClick={exportToPDF}
+                                className="w-full py-3.5 rounded-xl font-bold text-sm text-white flex items-center justify-center gap-2 transition-all"
+                                style={{ background: 'linear-gradient(135deg, #4f46e5, #7c3aed)' }}
+                            >
+                                <Download className="w-4 h-4" /> Download Receipt (PDF)
+                            </button>
                         )}
 
                         {mode === 'view' && billStatus === 'rejected' && (

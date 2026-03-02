@@ -51,6 +51,7 @@ export default function JobApplicationsModal({ jobId, jobTitle, jobBudget, jobPo
     const [jobDestination, setJobDestination] = useState<{ lat: number; lng: number } | null>(null)
     // Bill review modal
     const [showBillReviewForApp, setShowBillReviewForApp] = useState<string | null>(null)
+    const [showReceiptForApp, setShowReceiptForApp] = useState<string | null>(null)
     const [paymentLoading, setPaymentLoading] = useState<Record<string, boolean>>({})
 
     useEffect(() => {
@@ -672,10 +673,19 @@ export default function JobApplicationsModal({ jobId, jobTitle, jobBudget, jobPo
 
                                                                             {/* Phase: completed */}
                                                                             {app.startJobStatus === 'completed' && (
-                                                                                <div className="p-3 rounded-lg text-center" style={{ background: 'linear-gradient(135deg,rgba(16,185,129,0.15),rgba(5,150,105,0.1))', border: '1px solid rgba(16,185,129,0.4)' }}>
-                                                                                    <p className="text-xl mb-1">✅</p>
-                                                                                    <p className="text-sm font-bold text-green-700 dark:text-green-400">Job Completed! Payment Sent</p>
-                                                                                    <p className="text-xs text-green-600">₹{app.bill?.total?.toLocaleString('en-IN') ?? '–'} sent to worker's wallet</p>
+                                                                                <div className="space-y-2">
+                                                                                    <div className="p-3 rounded-lg text-center" style={{ background: 'linear-gradient(135deg,rgba(16,185,129,0.15),rgba(5,150,105,0.1))', border: '1px solid rgba(16,185,129,0.4)' }}>
+                                                                                        <p className="text-xl mb-1">✅</p>
+                                                                                        <p className="text-sm font-bold text-green-700 dark:text-green-400">Job Completed! Payment Sent</p>
+                                                                                        <p className="text-xs text-green-600">₹{app.bill?.total?.toLocaleString('en-IN') ?? '–'} sent to worker&apos;s wallet</p>
+                                                                                    </div>
+                                                                                    <button
+                                                                                        onClick={() => setShowReceiptForApp(app.id)}
+                                                                                        className="w-full py-2.5 rounded-lg text-sm font-bold text-white flex items-center justify-center gap-2"
+                                                                                        style={{ background: 'linear-gradient(135deg,#4f46e5,#7c3aed)' }}
+                                                                                    >
+                                                                                        🧾 View Receipt & Export PDF
+                                                                                    </button>
                                                                                 </div>
                                                                             )}
 
@@ -906,6 +916,25 @@ export default function JobApplicationsModal({ jobId, jobTitle, jobBudget, jobPo
                         jobTitle={jobTitle}
                         onAccept={() => handleAcceptBillAndPay(app)}
                         onReject={() => handleRejectBill(app).then(() => setShowBillReviewForApp(null))}
+                    />,
+                    document.body
+                )
+            })()}
+            {/* Paid receipt portal — view completed bill + PDF for client */}
+            {(() => {
+                const receiptApp = applications.find((a: any) => a.id === showReceiptForApp)
+                if (!receiptApp || !receiptApp.bill) return null
+                return createPortal(
+                    <JobBillModal
+                        mode="paid"
+                        isDark={isDark}
+                        onClose={() => setShowReceiptForApp(null)}
+                        bill={receiptApp.bill}
+                        jobTitle={jobTitle}
+                        workerName={receiptApp.userName}
+                        clientName={jobPosterName}
+                        paymentId={receiptApp.razorpayPaymentId}
+                        paidAt={receiptApp.paidAt}
                     />,
                     document.body
                 )

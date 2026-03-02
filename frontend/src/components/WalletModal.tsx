@@ -263,9 +263,30 @@ export default function WalletModal({ isDark, onClose, balance = 0, uid = '', us
             orderBy('createdAt', 'desc')
         )
         return onSnapshot(q, snap => {
-            setHistoryRequests(snap.docs.map(d => ({ id: d.id, ...d.data() })))
+            setHistoryRequests(snap.docs.map(d => ({ id: d.id, ...d.data(), _type: 'withdrawal' })))
         })
     }, [uid])
+
+    // Income transactions — payments received for completed jobs
+    const [incomeTransactions, setIncomeTransactions] = useState<any[]>([])
+    useEffect(() => {
+        if (!uid) return
+        const q = query(
+            collection(db, 'wallet_transactions'),
+            where('userId', '==', uid),
+            orderBy('createdAt', 'desc')
+        )
+        return onSnapshot(q, snap => {
+            setIncomeTransactions(snap.docs.map(d => ({ id: d.id, ...d.data(), _type: 'income' })))
+        })
+    }, [uid])
+
+    // Merged history sorted newest first
+    const allHistory = [...historyRequests, ...incomeTransactions].sort((a, b) => {
+        const aMs = a.createdAt?.toDate?.()?.getTime?.() ?? 0
+        const bMs = b.createdAt?.toDate?.()?.getTime?.() ?? 0
+        return bMs - aMs
+    })
 
     // UPI logo
     const UPI_LOGO = 'https://upload.wikimedia.org/wikipedia/commons/thumb/e/e1/UPI-Logo-vector.svg/2560px-UPI-Logo-vector.svg.png'
@@ -780,15 +801,20 @@ export default function WalletModal({ isDark, onClose, balance = 0, uid = '', us
                         {/* ── History ── */}
                         {tab === 'history' && (
                             <motion.div key="history" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="p-5 pb-12 md:pb-5 space-y-4">
-                                {historyRequests.length === 0 ? (
+                                {allHistory.length === 0 ? (
                                     <div className="text-center py-10 space-y-2">
                                         <Clock className="w-10 h-10 mx-auto opacity-20" style={{ color: textSec }} />
-                                        <p className="text-sm font-medium" style={{ color: textSec }}>No withdrawal requests yet</p>
+                                        <p className="text-sm font-medium" style={{ color: textSec }}>No transaction history yet</p>
                                     </div>
                                 ) : (
-                                    historyRequests.map((req: any) => {
+                                    allHistory.map((item: any) => {
+                                        if (item._type === 'income') return (
+                                            <motion.div key={item.id} layout initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="rounded-2xl border overflow-hidden" style={{ backgroundColor: cardBg, borderColor: isDark ? '#1a3a1a' : '#d1fae5' }}>
+                                                <div className="flex items-center justify-between px-4 py-3 border-b" style={{ borderColor: isDark ? '#1a3a1a' : '#d1fae5' }}><div><p className="font-bold text-sm text-emerald-600 dark:text-emerald-400">+&#8377;{item.amount?.toLocaleString('en-IN')}</p><p className="text-xs" style={{ color: textSec }}>{item.createdAt?.toDate?.()?.toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' }) || ''}</p></div><span className="text-xs font-bold px-2.5 py-1 rounded-full bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400">Received</span></div>
+                                                <div className="px-4 py-3 space-y-1">{item.jobTitle && <p className="text-xs" style={{ color: textSec }}>Job: <span className="font-semibold" style={{ color: textPri }}>{item.jobTitle}</span></p>}{item.clientName && <p className="text-xs" style={{ color: textSec }}>From: <span className="font-semibold" style={{ color: textPri }}>{item.clientName}</span></p>}{item.paymentId && <p className="text-xs font-mono" style={{ color: textSec }}>ID: {item.paymentId}</p>}</div></motion.div>)
+                                        const req = item
                                         const methodLabel = req.method?.type === 'bank'
-                                            ? `${INDIAN_BANKS.find((b: any) => b.id === req.method?.bankId)?.name || 'Bank'} ••••${(req.method?.accountNumber || '').slice(-4)}`
+                                            ? ` \u2022\u2022\u2022\u2022`
                                             : req.method?.upiId || 'UPI'
                                         const date = req.createdAt?.toDate?.()?.toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' }) || ''
                                         return (

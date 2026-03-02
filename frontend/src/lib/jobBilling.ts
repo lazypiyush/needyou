@@ -1,6 +1,6 @@
 // Job billing lifecycle helpers — arrival → meeting OTP → bill → payment → wallet credit
 import { db } from '@/lib/firebase'
-import { doc, updateDoc, increment, getDoc } from 'firebase/firestore'
+import { doc, updateDoc, increment, getDoc, collection, addDoc, Timestamp } from 'firebase/firestore'
 import { createNotification } from '@/lib/notifications'
 
 export interface BillItem {
@@ -205,6 +205,18 @@ export async function completePayment(
     // Credit worker wallet
     await updateDoc(doc(db!, 'users', workerId), {
         walletBalance: increment(total),
+    })
+    // Record income in wallet_transactions for history display
+    await addDoc(collection(db!, 'wallet_transactions'), {
+        userId: workerId,
+        type: 'income',
+        amount: total,
+        jobId,
+        jobTitle,
+        clientName,
+        paymentId,
+        applicationId: appId,
+        createdAt: Timestamp.now(),
     })
     // Notify worker
     await createNotification({

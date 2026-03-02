@@ -54,6 +54,7 @@ export default function ViewMyApplicationModal({
     useModalHistory(true, onClose)
 
     // Renegotiation state
+    const [showPaidReceipt, setShowPaidReceipt] = useState(false)
     const [isNegotiating, setIsNegotiating] = useState(false)
     const [newOffer, setNewOffer] = useState<string>('')
     const [negotiationReason, setNegotiationReason] = useState<string>('')
@@ -947,11 +948,20 @@ export default function ViewMyApplicationModal({
 
                                             {/* Phase: completed */}
                                             {application.startJobStatus === 'completed' && (
-                                                <div className="p-5 rounded-xl text-center space-y-2" style={{ background: 'linear-gradient(135deg,rgba(16,185,129,0.15),rgba(5,150,105,0.1))', border: '1px solid rgba(16,185,129,0.4)' }}>
-                                                    <p className="text-3xl">💰</p>
-                                                    <p className="font-bold text-green-700 dark:text-green-400 text-lg">Payment Received!</p>
-                                                    <p className="text-2xl font-black" style={{ color: isDark ? '#34d399' : '#059669' }}>₹{application.bill?.total?.toLocaleString('en-IN') ?? '–'}</p>
-                                                    <p className="text-xs text-green-600 dark:text-green-500">Added to your wallet — check the Profile tab.</p>
+                                                <div className="space-y-3">
+                                                    <div className="p-5 rounded-xl text-center space-y-2" style={{ background: 'linear-gradient(135deg,rgba(16,185,129,0.15),rgba(5,150,105,0.1))', border: '1px solid rgba(16,185,129,0.4)' }}>
+                                                        <p className="text-3xl">💰</p>
+                                                        <p className="font-bold text-green-700 dark:text-green-400 text-lg">Payment Received!</p>
+                                                        <p className="text-2xl font-black" style={{ color: isDark ? '#34d399' : '#059669' }}>₹{application.bill?.total?.toLocaleString('en-IN') ?? '–'}</p>
+                                                        <p className="text-xs text-green-600 dark:text-green-500">Added to your wallet — check the Profile tab.</p>
+                                                    </div>
+                                                    <button
+                                                        onClick={() => setShowPaidReceipt(true)}
+                                                        className="w-full py-3 rounded-xl font-bold text-sm text-white flex items-center justify-center gap-2 transition-all"
+                                                        style={{ background: 'linear-gradient(135deg,#4f46e5,#7c3aed)' }}
+                                                    >
+                                                        🧾 View Receipt & Export PDF
+                                                    </button>
                                                 </div>
                                             )}
 
@@ -1101,6 +1111,21 @@ export default function ViewMyApplicationModal({
                     billStatus={application.billStatus}
                     billRejectedAt={application.billRejectedAt}
                     jobTitle={jobTitle}
+                />,
+                document.body
+            )}
+            {/* Paid receipt modal (completed jobs) */}
+            {showPaidReceipt && application?.bill && createPortal(
+                <JobBillModal
+                    mode="paid"
+                    isDark={isDark}
+                    onClose={() => setShowPaidReceipt(false)}
+                    bill={application.bill as any}
+                    jobTitle={jobTitle}
+                    workerName={selfName || user?.displayName || undefined}
+                    clientName={jobPosterName}
+                    paymentId={application.razorpayPaymentId}
+                    paidAt={application.paidAt}
                 />,
                 document.body
             )}

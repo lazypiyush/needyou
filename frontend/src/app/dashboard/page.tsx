@@ -3,7 +3,7 @@
 import { useEffect, useState, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/context/AuthContext'
-import { Loader2, MapPin, Search, Filter, Home, Plus, Bell, User, Briefcase, Edit, Trash2, Check, CheckCircle, RotateCw, Send } from 'lucide-react'
+import { Loader2, MapPin, Search, Filter, Home, Plus, Bell, User, Briefcase, Edit, Trash2, Check, CheckCircle, RotateCw, Send, Clock, XCircle, CheckCircle2 } from 'lucide-react'
 import CreateJobInline from '@/components/CreateJobInline'
 import ProfileSection from '@/components/ProfileSection'
 import ThemeToggle from '@/components/ThemeToggle'
@@ -369,8 +369,8 @@ export default function DashboardPage() {
                             }
                             result = addDistanceToJobs(result, userLat, userLon)
 
-                            // Update category pills from distance-filtered jobs (before category filter)
-                            setCategories(getUniqueCategories(result))
+                            // Update category pills — exclude completed jobs from category list
+                            setCategories(getUniqueCategories(result.filter((j: any) => j.status !== 'completed')))
 
                             // Apply category filter
                             if (selectedCategory !== 'All') {
@@ -387,8 +387,8 @@ export default function DashboardPage() {
             }
         }
 
-        // Sync path — update category pills from city-filtered jobs (before category filter)
-        setCategories(getUniqueCategories(result))
+        // Sync path — update category pills, excluding completed jobs
+        setCategories(getUniqueCategories(result.filter((j: any) => j.status !== 'completed')))
 
         // Apply category filter
         if (selectedCategory !== 'All') {
@@ -929,17 +929,19 @@ export default function DashboardPage() {
                                                 <button
                                                     key={tab}
                                                     onClick={() => setPostedSubTab(tab)}
-                                                    className="px-4 py-2 rounded-xl text-sm font-semibold transition-all"
+                                                    className="flex items-center px-4 py-2 rounded-xl text-sm font-semibold transition-all"
                                                     style={{
                                                         background: postedSubTab === tab
-                                                            ? 'linear-gradient(135deg,#1E5EFF,#6366f1)'
+                                                            ? (tab === 'pending' ? 'linear-gradient(135deg,#b45309,#d97706)' : 'linear-gradient(135deg,#1d4ed8,#2563eb)')
                                                             : (isDark ? '#2a2a2a' : '#f3f4f6'),
                                                         color: postedSubTab === tab ? '#fff' : (isDark ? '#9ca3af' : '#6b7280'),
                                                     }}
                                                 >
-                                                    {tab === 'pending'
-                                                        ? `⏳ Pending (${pendingJobs.length})`
-                                                        : `✅ Completed (${completedJobs.length})`}
+                                                    <span className="flex items-center gap-1.5">
+                                                        {tab === 'pending'
+                                                            ? <><Clock className="w-3.5 h-3.5" /> Pending ({pendingJobs.length})</>
+                                                            : <><CheckCircle2 className="w-3.5 h-3.5" /> Completed ({completedJobs.length})</>}
+                                                    </span>
                                                 </button>
                                             ))}
                                         </div>
@@ -1078,22 +1080,21 @@ export default function DashboardPage() {
                                         <>
                                             {/* Pending / Completed / Rejected inner tabs */}
                                             <div className="flex gap-2 mb-5 flex-wrap">
-                                                {([
-                                                    { key: 'pending', label: '📋 Pending', count: pendingApps.length },
-                                                    { key: 'completed', label: '✅ Completed', count: completedApps.length },
-                                                    { key: 'rejected', label: '❌ Rejected', count: rejectedApps.length },
-                                                ] as const).map(({ key, label, count }) => (
+                                                {[
+                                                    { key: 'pending' as const, Icon: Clock, label: 'Pending', count: pendingApps.length, activeColor: 'linear-gradient(135deg,#b45309,#d97706)', iconColor: '#d97706' },
+                                                    { key: 'completed' as const, Icon: CheckCircle2, label: 'Completed', count: completedApps.length, activeColor: 'linear-gradient(135deg,#1d4ed8,#2563eb)', iconColor: '#3b82f6' },
+                                                    { key: 'rejected' as const, Icon: XCircle, label: 'Rejected', count: rejectedApps.length, activeColor: 'linear-gradient(135deg,#b91c1c,#dc2626)', iconColor: '#ef4444' },
+                                                ].map(({ key, Icon, label, count, activeColor, iconColor }) => (
                                                     <button
                                                         key={key}
                                                         onClick={() => setAppliedSubTab(key)}
-                                                        className="px-4 py-2 rounded-xl text-sm font-semibold transition-all"
+                                                        className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold transition-all"
                                                         style={{
-                                                            background: appliedSubTab === key
-                                                                ? 'linear-gradient(135deg,#1E5EFF,#6366f1)'
-                                                                : (isDark ? '#2a2a2a' : '#f3f4f6'),
+                                                            background: appliedSubTab === key ? activeColor : (isDark ? '#2a2a2a' : '#f3f4f6'),
                                                             color: appliedSubTab === key ? '#fff' : (isDark ? '#9ca3af' : '#6b7280'),
                                                         }}
                                                     >
+                                                        <Icon className="w-3.5 h-3.5" style={{ color: appliedSubTab === key ? '#fff' : iconColor }} />
                                                         {label} ({count})
                                                     </button>
                                                 ))}
