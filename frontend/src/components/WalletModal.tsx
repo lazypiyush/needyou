@@ -267,7 +267,7 @@ export default function WalletModal({ isDark, onClose, balance = 0, uid = '', us
         })
     }, [uid])
 
-    // Income transactions — payments received for completed jobs
+    // Income transactions — payments received for completed jobs (new, have full metadata)
     const [incomeTransactions, setIncomeTransactions] = useState<any[]>([])
     useEffect(() => {
         if (!uid) return
@@ -281,12 +281,43 @@ export default function WalletModal({ isDark, onClose, balance = 0, uid = '', us
         })
     }, [uid])
 
+    // Completed job applications — covers OLD payments before wallet_transactions existed
+    const [completedApps, setCompletedApps] = useState<any[]>([])
+    useEffect(() => {
+        if (!uid) return
+        const q = query(
+            collection(db, 'job_applications'),
+            where('userId', '==', uid),
+            where('startJobStatus', '==', 'completed')
+        )
+        return onSnapshot(q, snap => {
+            setCompletedApps(snap.docs.map(d => ({ id: d.id, ...d.data() })))
+        })
+    }, [uid])
+
     // Merged history sorted newest first
-    const allHistory = [...historyRequests, ...incomeTransactions].sort((a, b) => {
-        const aMs = a.createdAt?.toDate?.()?.getTime?.() ?? 0
-        const bMs = b.createdAt?.toDate?.()?.getTime?.() ?? 0
-        return bMs - aMs
-    })
+    // wallet_transactions entries take priority (have more metadata)
+    // job_applications fill in gaps for older payments not yet in wallet_transactions
+    const allHistory = (() => {
+        const coveredAppIds = new Set(incomeTransactions.map((t: any) => t.applicationId).filter(Boolean))
+        const legacyPayments = completedApps
+            .filter(app => !coveredAppIds.has(app.id) && (app.bill?.total ?? 0) > 0)
+            .map(app => ({
+                id: `legacy_${app.id}`,
+                _type: 'income',
+                amount: app.bill?.total ?? 0,
+                jobTitle: app.jobTitle || undefined,
+                clientName: app.clientName || undefined,
+                paymentId: app.razorpayPaymentId || undefined,
+                applicationId: app.id,
+                createdAt: app.paidAt ? { toDate: () => new Date(app.paidAt) } : null,
+            }))
+        return [...historyRequests, ...incomeTransactions, ...legacyPayments].sort((a, b) => {
+            const aMs = a.createdAt?.toDate?.()?.getTime?.() ?? 0
+            const bMs = b.createdAt?.toDate?.()?.getTime?.() ?? 0
+            return bMs - aMs
+        })
+    })()
 
     // UPI logo
     const UPI_LOGO = 'https://upload.wikimedia.org/wikipedia/commons/thumb/e/e1/UPI-Logo-vector.svg/2560px-UPI-Logo-vector.svg.png'
