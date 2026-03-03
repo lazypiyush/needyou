@@ -133,6 +133,21 @@ export default function SignInPage() {
       redirectUser()
     }
   }, [user, authLoading, router])
+  // ── While Firebase restores IndexedDB session, show blank loading screen ────
+  // Prevents the sign-in form from flashing for already-authenticated users.
+  // authLoading = true for the ~1-2s it takes onAuthStateChanged to fire.
+  if (authLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center"
+        style={{ background: 'linear-gradient(135deg, #0f172a 0%, #1e1b4b 50%, #0f172a 100%)' }}>
+        <div className="flex flex-col items-center gap-4">
+          <div className="w-16 h-16 rounded-2xl bg-white/10 animate-pulse" />
+          <div className="h-3 w-32 rounded-full bg-white/10 animate-pulse" />
+          <div className="h-2 w-20 rounded-full bg-white/10 animate-pulse" />
+        </div>
+      </div>
+    )
+  }
 
   const handleEmailSignIn = async (e: React.FormEvent) => {
     e.preventDefault()

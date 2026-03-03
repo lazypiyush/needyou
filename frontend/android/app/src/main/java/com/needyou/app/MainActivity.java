@@ -49,10 +49,6 @@ import androidx.core.content.ContextCompat;
 import androidx.core.splashscreen.SplashScreen;
 
 import com.getcapacitor.BridgeActivity;
-import com.google.firebase.auth.FirebaseAuth;
-import com.google.firebase.auth.FirebaseUser;
-import com.google.firebase.firestore.DocumentSnapshot;
-import com.google.firebase.firestore.FirebaseFirestore;
 import com.google.firebase.messaging.FirebaseMessaging;
 
 public class MainActivity extends BridgeActivity {
@@ -766,63 +762,19 @@ public class MainActivity extends BridgeActivity {
     private void loadApp() {
         isShowingOfflinePage = false;
 
-        // ── Native route guard ──────────────────────────────────────────────
-        // Before loading any page, check Firebase Auth + Firestore to decide
-        // which URL the user should land on:
-        // • Not signed in → /signin
-        // • kycVerified != true → /verify-kyc
-        // • location field missing → /onboarding/location
-        // • Otherwise → /dashboard (APP_URL)
-        FirebaseUser fbUser = FirebaseAuth.getInstance().getCurrentUser();
-        if (fbUser == null) {
-            getBridge().getWebView().loadUrl("https://need-you.xyz/signin");
-            return;
-        }
-
-        // Timeout: if Firestore takes >4 s just open dashboard so user isn't stuck
-        final boolean[] loaded = { false };
-        Handler timeoutHandler = new Handler(Looper.getMainLooper());
-        Runnable fallback = () -> {
-            if (!loaded[0]) {
-                loaded[0] = true;
-                getBridge().getWebView().loadUrl(APP_URL);
-            }
-        };
-        timeoutHandler.postDelayed(fallback, 4000);
-
-        FirebaseFirestore.getInstance()
-                .collection("users")
-                .document(fbUser.getUid())
-                .get()
-                .addOnSuccessListener((DocumentSnapshot doc) -> {
-                    if (loaded[0])
-                        return; // timeout already fired
-                    loaded[0] = true;
-                    timeoutHandler.removeCallbacks(fallback);
-
-                    String url = APP_URL; // default: dashboard
-                    if (!doc.exists() || !Boolean.TRUE.equals(doc.getBoolean("kycVerified"))) {
-                        // KYC not complete → must verify identity first
-                        url = "https://need-you.xyz/verify-kyc";
-                    } else if (!Boolean.TRUE.equals(doc.getBoolean("onboardingComplete"))) {
-                        // KYC done, but education/skills onboarding not done yet
-                        url = "https://need-you.xyz/onboarding/education";
-                    } else if (doc.get("location") == null) {
-                        // Onboarding done, but location not set
-                        url = "https://need-you.xyz/onboarding/location";
-                    }
-
-                    final String targetUrl = url;
-                    runOnUiThread(() -> getBridge().getWebView().loadUrl(targetUrl));
-                })
-                .addOnFailureListener(e -> {
-                    if (loaded[0])
-                        return;
-                    loaded[0] = true;
-                    timeoutHandler.removeCallbacks(fallback);
-                    // Fail-open: load dashboard if Firestore unavailable
-                    runOnUiThread(() -> getBridge().getWebView().loadUrl(APP_URL));
-                });
+        // ── Always load the dashboard URL directly ──────────────────────────────
+        // The native Firebase Android SDK uses a SEPARATE session store from the
+        // React Web SDK (which persists in IndexedDB). Calling getCurrentUser()
+        // here always returns null for web-authenticated users, causing an
+        // incorrect redirect to /signin that the user sees as a 2-second flash.
+        //
+        // All routing is handled correctly by React:
+        // • AuthContext.onAuthStateChanged restores the Web SDK session from IndexedDB
+        // • dashboard/page.tsx checks kycVerified → onboardingComplete → location
+        // • signin/page.tsx redirects away if a session already exists
+        //
+        // Just load the dashboard and let React route from there.
+        getBridge().getWebView().loadUrl(APP_URL);
     }
 
     private void registerNetworkCallback() {
