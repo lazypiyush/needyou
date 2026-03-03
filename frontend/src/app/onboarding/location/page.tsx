@@ -143,6 +143,7 @@ function LocationContent() {
                 streetViewControl: false,
                 fullscreenControl: false,
                 zoomControl: true,
+                gestureHandling: 'greedy',   // 1-finger pan on mobile (no two-finger warning)
             })
 
             // Listen to map movement with optimized debounce
@@ -481,14 +482,15 @@ function LocationContent() {
                                         </div>
 
                                         {/* Map Container with Professional Fixed Center Pin */}
-                                        <div className="relative">
+                                        <div className="relative" style={{ touchAction: 'none' }}>
                                             <div
                                                 ref={mapRef}
                                                 className="w-full h-80 rounded-xl overflow-hidden border-2 border-gray-200 dark:border-gray-600"
                                                 style={{
                                                     minHeight: '320px',
                                                     position: 'relative',
-                                                    backgroundColor: '#e5e3df'
+                                                    backgroundColor: '#e5e3df',
+                                                    touchAction: 'none'
                                                 }}
                                             />
 
