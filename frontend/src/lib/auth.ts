@@ -235,44 +235,35 @@ export const linkPhoneToEmailAccount = async (
 // Sign Up with Email/Password
 export const signUpWithEmail = async (
   email: string,
-  password: string,
-  name: string
+  password: string
 ) => {
   try {
     console.log('📧 Creating account for:', email)
     const userCredential = await createUserWithEmailAndPassword(auth, email, password)
     const user = userCredential.user
 
-    // Update profile
-    await updateProfile(user, { displayName: name })
-    console.log('✅ Profile updated')
-
     // Generate Firebase verification link and send via Resend
     try {
-      // Step 1: Generate Firebase verification link using Admin SDK
       const linkResponse = await fetch('/api/generate-verification-link', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           email: user.email,
-          userName: name
+          userName: email.split('@')[0]
         })
       })
 
-      if (!linkResponse.ok) {
-        throw new Error('Failed to generate verification link')
-      }
+      if (!linkResponse.ok) throw new Error('Failed to generate verification link')
 
       const { verificationLink } = await linkResponse.json()
 
-      // Step 2: Send the Firebase link via Resend
       const emailResponse = await fetch('/api/send-verification-email', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           email: user.email,
           verificationLink,
-          userName: name
+          userName: email.split('@')[0]
         })
       })
 
@@ -294,25 +285,21 @@ export const signUpWithEmail = async (
     await setDoc(doc(db, 'users', user.uid), {
       uid: user.uid,
       email: user.email,
-      name: name,
       phoneNumber: null,
       emailVerified: false,
       phoneVerified: false,
       createdAt: new Date().toISOString(),
       profileComplete: false,
-      // KYC Verification fields
       kycVerified: false,
       livenessVerified: false,
       aadhaarVerified: false,
       panVerified: false,
       kycData: null,
-      // Onboarding fields
       onboardingComplete: false,
       education: null,
       employment: null,
       location: null,
       address: null,
-      // Stats
       jobsCompleted: 0,
       servicesOffered: 0,
       rating: 0,
@@ -1171,7 +1158,7 @@ export const createJob = async (userId: string, jobData: CreateJobData): Promise
     const job: Job = {
       id: jobId,
       userId,
-      userName: userData.name || userData.displayName || 'Unknown',
+      userName: userData.kycData?.aadhaarName || userData.name || 'User',
       userEmail: userData.email || '',
       caption: jobData.caption,
       budget: jobData.budget,
@@ -1300,7 +1287,7 @@ export const applyToJob = async (
     const applicationData: any = {
       jobId,
       userId: userId,
-      userName: userData?.name || userData?.displayName || 'Unknown',
+      userName: userData?.kycData?.aadhaarName || userData?.name || 'User',
       userEmail: userData?.email || '',
       userPhone: userData?.phoneNumber || '',
       description,
@@ -1320,9 +1307,10 @@ export const applyToJob = async (
     // Create notification for job poster
     try {
       const { createNotification } = await import('./notifications')
+      const workerName = userData?.kycData?.aadhaarName || userData?.name || 'Someone'
       const notificationMessage = budgetSatisfied
-        ? `${userData?.name || 'Someone'} applied to your job "${job.caption}"`
-        : `${userData?.name || 'Someone'} applied with counter-offer of ₹${counterOffer?.toLocaleString()} for "${job.caption}"`
+        ? `${workerName} applied to your job "${job.caption}"`
+        : `${workerName} applied with counter-offer of ₹${counterOffer?.toLocaleString()} for "${job.caption}"`
 
       await createNotification({
         userId: job.userId, // Job poster

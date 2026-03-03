@@ -233,7 +233,7 @@ export default function ViewMyApplicationModal({
                 const userDoc = await getDoc(doc(db, 'users', user.uid))
                 if (userDoc.exists()) {
                     const userData = userDoc.data()
-                    setSelfName(userData?.name || user.displayName || '')
+                    setSelfName(userData?.kycData?.aadhaarName || userData?.name || '')
                     if (userData?.photoURL) {
                         setSelfAvatar(getCompressedImageUrl(userData.photoURL))
                     }

@@ -377,7 +377,7 @@ export default function DashboardPage() {
                             result = addDistanceToJobs(result, userLat, userLon)
 
                             // Update category pills — exclude completed jobs from category list
-                            setCategories(getUniqueCategories(result.filter((j: any) => j.status !== 'completed')))
+                            setCategories(getUniqueCategories(result.filter((j: any) => j.status !== 'completed' && (j.status as string) !== 'filled')))
 
                             // Apply category filter
                             if (selectedCategory !== 'All') {
@@ -395,7 +395,7 @@ export default function DashboardPage() {
         }
 
         // Sync path — update category pills, excluding completed jobs
-        setCategories(getUniqueCategories(result.filter((j: any) => j.status !== 'completed')))
+        setCategories(getUniqueCategories(result.filter((j: any) => j.status !== 'completed' && (j.status as string) !== 'filled')))
 
         // Apply category filter
         if (selectedCategory !== 'All') {

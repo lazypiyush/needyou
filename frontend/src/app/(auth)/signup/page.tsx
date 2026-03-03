@@ -3,7 +3,7 @@
 import { useState, useEffect, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { motion } from 'framer-motion'
-import { Mail, Lock, User, Phone, ArrowRight, Loader2, CheckCircle, Eye, EyeOff, RefreshCw, AlertCircle, Check, X } from 'lucide-react'
+import { Mail, Lock, Phone, ArrowRight, Loader2, CheckCircle, Eye, EyeOff, RefreshCw, AlertCircle, Check, X } from 'lucide-react'
 import {
   signUpWithEmail,
   sendOTP,
@@ -35,7 +35,6 @@ function SignUpPageContent() {
   const [confirmPassword, setConfirmPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
   const [showConfirmPassword, setShowConfirmPassword] = useState(false)
-  const [name, setName] = useState('')
   const [phoneNumber, setPhoneNumber] = useState('')
   const [otp, setOtp] = useState('')
   const [loading, setLoading] = useState(true)
@@ -71,7 +70,6 @@ function SignUpPageContent() {
         if (status) {
           setTempUserId(user.uid)
           setEmail(user.email || '')
-          setName(user.displayName || '')
 
           // Check if redirected from signin with specific step
           if (stepParam === 'phone' && !status.phoneVerified) {
@@ -177,7 +175,7 @@ function SignUpPageContent() {
         return
       }
 
-      const newUser = await signUpWithEmail(email, password, name)
+      const newUser = await signUpWithEmail(email, password)
       setTempUserId(newUser.uid)
 
       // Keep user signed in for email verification (don't sign out)
@@ -506,23 +504,6 @@ function SignUpPageContent() {
             {/* Step 1: Email Signup */}
             {step === 'email' && (
               <form onSubmit={handleEmailSignup} className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                    Full Name
-                  </label>
-                  <div className="relative">
-                    <User className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
-                    <input
-                      type="text"
-                      required
-                      value={name}
-                      onChange={(e) => setName(e.target.value)}
-                      className="w-full pl-10 pr-4 py-3 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-gray-900 dark:text-white"
-                      placeholder="Enter your name"
-                    />
-                  </div>
-                </div>
-
                 <div>
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                     Email

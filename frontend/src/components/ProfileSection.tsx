@@ -96,7 +96,7 @@ export default function ProfileSection({ user, isDark }: Props) {
                 if (snap.exists()) {
                     const d = snap.data()
                     setPhotoURL(d.photoURL || '')
-                    setDisplayName(d.name || user.displayName || '')
+                    setDisplayName(d.kycData?.aadhaarName || d.name || '')
                     setAboutMe(d.aboutMe || '')
                     setAboutDraft(d.aboutMe || '')
                     setMemberSince(d.createdAt || null)
@@ -541,7 +541,7 @@ export default function ProfileSection({ user, isDark }: Props) {
                         onClose={() => setShowWallet(false)}
                         balance={walletBalance}
                         uid={user.uid}
-                        userName={user.displayName || user.email || ''}
+                        userName={displayName || user.email || ''}
                     />
                 )}
             </AnimatePresence>
