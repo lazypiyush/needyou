@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react'
 import { createPortal } from 'react-dom'
-import { X, User, Clock, ChevronDown, ChevronUp, CheckCircle, XCircle, IndianRupee, MessageCircle, Loader2 } from 'lucide-react'
+import { X, User, Clock, ChevronDown, ChevronUp, CheckCircle, XCircle, IndianRupee, MessageCircle, Loader2, MapPin, Wrench, Receipt, KeyRound, FileText, Map, Users } from 'lucide-react'
 import { getJobApplications } from '@/lib/auth'
 import { db } from '@/lib/firebase'
 import { collection, onSnapshot, query, where } from 'firebase/firestore'
@@ -375,8 +375,8 @@ export default function JobApplicationsModal({ jobId, jobTitle, jobBudget, jobPo
                                     style={{ background: 'linear-gradient(135deg,rgba(16,185,129,0.15),rgba(5,150,105,0.08))', border: '1.5px solid rgba(16,185,129,0.5)' }}>
                                     <CheckCircle className="w-5 h-5 text-green-600 flex-shrink-0" />
                                     <div className="flex-1">
-                                        <p className="text-sm font-bold text-green-700 dark:text-green-400">✅ {hiredApp.userName} is hired</p>
-                                        <p className="text-xs text-green-600 dark:text-green-500">Job filled — this applicant was selected</p>
+                                        <p className="text-sm font-bold text-green-700 dark:text-green-400">{hiredApp.userName} — Hired</p>
+                                        <p className="text-xs text-green-600 dark:text-green-500">This applicant has been selected for the job</p>
                                     </div>
                                     <span className="px-2 py-0.5 rounded-full text-xs font-bold bg-green-600 text-white">Hired</span>
                                 </div>
@@ -563,7 +563,7 @@ export default function JobApplicationsModal({ jobId, jobTitle, jobBudget, jobPo
                                                         {(app.status === 'hired' || app.negotiationStatus === 'accepted') && (
                                                             <div className="mt-3 flex items-center gap-2 p-2 rounded-lg bg-green-50 dark:bg-green-900/20">
                                                                 <CheckCircle className="w-4 h-4 text-green-600" />
-                                                                <span className="text-sm font-semibold text-green-700 dark:text-green-400">Hired ✓</span>
+                                                                <span className="text-sm font-semibold text-green-700 dark:text-green-400">Hired</span>
                                                             </div>
                                                         )}
 
@@ -584,15 +584,15 @@ export default function JobApplicationsModal({ jobId, jobTitle, jobBudget, jobPo
                                                                             {app.startJobStatus === 'active' && (
                                                                                 <div className="flex items-center gap-2 p-2 rounded-lg bg-green-50 dark:bg-green-900/20">
                                                                                     <CheckCircle className="w-4 h-4 text-green-600" />
-                                                                                    <span className="text-sm font-bold text-green-700 dark:text-green-400">Job Started! Worker is heading to you 🎉</span>
+                                                                                    <span className="text-sm font-bold text-green-700 dark:text-green-400">Job started — worker is on the way</span>
                                                                                 </div>
                                                                             )}
 
                                                                             {/* Phase: arrived — notification only, no button yet */}
                                                                             {app.startJobStatus === 'arrived' && (
                                                                                 <div className="flex items-center gap-2 p-2 rounded-lg" style={{ background: 'rgba(245,158,11,0.12)', border: '1px solid rgba(245,158,11,0.5)' }}>
-                                                                                    <span className="text-base">📍</span>
-                                                                                    <span className="text-sm font-bold text-amber-700 dark:text-amber-300 animate-pulse">Worker has arrived at your location!</span>
+                                                                                    <MapPin className="w-4 h-4 text-amber-600 flex-shrink-0" />
+                                                                                    <span className="text-sm font-bold text-amber-700 dark:text-amber-300">Worker has arrived at your location</span>
                                                                                 </div>
                                                                             )}
 
@@ -604,7 +604,7 @@ export default function JobApplicationsModal({ jobId, jobTitle, jobBudget, jobPo
                                                                                     className="w-full py-2 rounded-lg font-semibold text-white flex items-center justify-center gap-2 transition-all text-sm"
                                                                                     style={{ background: 'linear-gradient(135deg,#6366f1,#8b5cf6)' }}
                                                                                 >
-                                                                                    {acceptingId === app.id ? <Loader2 className="w-4 h-4 animate-spin" /> : '🔑 Generate Meeting Code'}
+                                                                                    {acceptingId === app.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <><KeyRound className="w-4 h-4" />Generate Meeting Code</>}
                                                                                 </button>
                                                                             )}
 
@@ -629,17 +629,17 @@ export default function JobApplicationsModal({ jobId, jobTitle, jobBudget, jobPo
                                                                                 const meetingSecs = app.meetingCodeExpiry ? Math.max(0, Math.floor((app.meetingCodeExpiry - Date.now()) / 1000)) : 0
                                                                                 void tick
                                                                                 return meetingSecs === 0 ? (
-                                                                                    <button onClick={() => handleAcceptMeetingRequest(app)} disabled={acceptingId === app.id} className="w-full py-2 rounded-lg text-xs font-semibold text-white" style={{ background: 'linear-gradient(135deg,#6366f1,#8b5cf6)' }}>
-                                                                                        {acceptingId === app.id ? <Loader2 className="w-4 h-4 animate-spin" /> : '🔑 Resend Meeting Code'}
+                                                                                    <button onClick={() => handleAcceptMeetingRequest(app)} disabled={acceptingId === app.id} className="w-full py-2 rounded-lg text-xs font-semibold text-white flex items-center justify-center gap-1.5" style={{ background: 'linear-gradient(135deg,#6366f1,#8b5cf6)' }}>
+                                                                                        {acceptingId === app.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <><KeyRound className="w-3.5 h-3.5" />Resend Meeting Code</>}
                                                                                     </button>
                                                                                 ) : null
                                                                             })()}
 
                                                                             {/* Phase: working */}
                                                                             {app.startJobStatus === 'working' && (
-                                                                                <div className="flex items-center gap-2 p-2 rounded-lg bg-green-50 dark:bg-green-900/20">
-                                                                                    <CheckCircle className="w-4 h-4 text-green-600" />
-                                                                                    <span className="text-sm font-bold text-green-700 dark:text-green-400">Job in progress 🛠️</span>
+                                                                                <div className="flex items-center gap-2 p-2 rounded-lg" style={{ background: 'rgba(16,185,129,0.1)', border: '1px solid rgba(16,185,129,0.3)' }}>
+                                                                                    <Wrench className="w-4 h-4 text-green-600" />
+                                                                                    <span className="text-sm font-bold text-green-700 dark:text-green-400">Job in progress</span>
                                                                                 </div>
                                                                             )}
 
@@ -647,13 +647,13 @@ export default function JobApplicationsModal({ jobId, jobTitle, jobBudget, jobPo
                                                                             {app.startJobStatus === 'bill_submitted' && app.billStatus === 'pending_review' && (
                                                                                 <div className="space-y-2">
                                                                                     <div className="flex items-center gap-2 p-2 rounded-lg" style={{ background: 'rgba(245,158,11,0.12)', border: '1px solid rgba(245,158,11,0.5)' }}>
-                                                                                        <span className="text-base">🧾</span>
+                                                                                        <Receipt className="w-4 h-4 text-amber-600 flex-shrink-0" />
                                                                                         <div>
                                                                                             <p className="text-sm font-bold text-amber-700 dark:text-amber-300">Bill received — ₹{app.bill?.total?.toLocaleString('en-IN') ?? '–'}</p>
                                                                                             <p className="text-xs text-amber-600">{app.userName?.split(' ')[0]} submitted a bill. Review and pay.</p>
                                                                                         </div>
                                                                                     </div>
-                                                                                    <button onClick={() => setShowBillReviewForApp(app.id)} className="w-full py-2 rounded-lg text-sm font-bold text-white" style={{ background: 'linear-gradient(135deg,#6366f1,#8b5cf6)' }}>📋 Review &amp; Pay Bill</button>
+                                                                                    <button onClick={() => setShowBillReviewForApp(app.id)} className="w-full py-2 rounded-lg text-sm font-bold text-white flex items-center justify-center gap-2" style={{ background: 'linear-gradient(135deg,#6366f1,#8b5cf6)' }}><FileText className="w-4 h-4" />Review &amp; Pay Bill</button>
                                                                                 </div>
                                                                             )}
                                                                             {app.startJobStatus === 'bill_submitted' && app.billStatus === 'rejected' && (
@@ -684,17 +684,19 @@ export default function JobApplicationsModal({ jobId, jobTitle, jobBudget, jobPo
                                                                             {/* Phase: completed */}
                                                                             {app.startJobStatus === 'completed' && (
                                                                                 <div className="space-y-2">
-                                                                                    <div className="p-3 rounded-lg text-center" style={{ background: 'linear-gradient(135deg,rgba(16,185,129,0.15),rgba(5,150,105,0.1))', border: '1px solid rgba(16,185,129,0.4)' }}>
-                                                                                        <p className="text-xl mb-1">✅</p>
-                                                                                        <p className="text-sm font-bold text-green-700 dark:text-green-400">Job Completed! Payment Sent</p>
-                                                                                        <p className="text-xs text-green-600">₹{app.bill?.total?.toLocaleString('en-IN') ?? '–'} sent to worker&apos;s wallet</p>
+                                                                                    <div className="p-3 rounded-lg" style={{ background: 'linear-gradient(135deg,rgba(16,185,129,0.15),rgba(5,150,105,0.1))', border: '1px solid rgba(16,185,129,0.4)' }}>
+                                                                                        <div className="flex items-center justify-center gap-2 mb-1">
+                                                                                            <CheckCircle className="w-5 h-5 text-green-600" />
+                                                                                            <p className="text-sm font-bold text-green-700 dark:text-green-400">Job Completed — Payment Sent</p>
+                                                                                        </div>
+                                                                                        <p className="text-xs text-green-600 text-center">₹{app.bill?.total?.toLocaleString('en-IN') ?? '–'} sent to worker&apos;s wallet</p>
                                                                                     </div>
                                                                                     <button
                                                                                         onClick={() => setShowReceiptForApp(app.id)}
                                                                                         className="w-full py-2.5 rounded-lg text-sm font-bold text-white flex items-center justify-center gap-2"
                                                                                         style={{ background: 'linear-gradient(135deg,#4f46e5,#7c3aed)' }}
                                                                                     >
-                                                                                        🧾 View Receipt & Export PDF
+                                                                                        <Receipt className="w-4 h-4" />View Receipt &amp; Export PDF
                                                                                     </button>
                                                                                 </div>
                                                                             )}
@@ -704,9 +706,9 @@ export default function JobApplicationsModal({ jobId, jobTitle, jobBudget, jobPo
                                                                                 <>
                                                                                     <button
                                                                                         onClick={() => setShowMapForApps(prev => ({ ...prev, [app.id]: !prev[app.id] }))}
-                                                                                        className="w-full py-2 rounded-lg text-xs font-semibold transition-all flex items-center justify-center gap-1"
+                                                                                        className="w-full py-2 rounded-lg text-xs font-semibold transition-all flex items-center justify-center gap-1.5"
                                                                                         style={{ background: showMapForApps[app.id] ? (isDark ? '#1e3a8a' : '#dbeafe') : (isDark ? '#1a1a1a' : '#f3f4f6'), color: showMapForApps[app.id] ? (isDark ? '#93c5fd' : '#1d4ed8') : (isDark ? '#9ca3af' : '#6b7280') }}
-                                                                                    >🗺️ {showMapForApps[app.id] ? 'Hide Live Map' : 'View Live Tracking'}</button>
+                                                                                    ><Map className="w-3.5 h-3.5" />{showMapForApps[app.id] ? 'Hide Live Map' : 'View Live Tracking'}</button>
                                                                                     {showMapForApps[app.id] && (
                                                                                         <LiveTrackingMap
                                                                                             workerLat={app.workerLat ?? null} workerLng={app.workerLng ?? null}
@@ -729,7 +731,7 @@ export default function JobApplicationsModal({ jobId, jobTitle, jobBudget, jobPo
                                                                         >
                                                                             {acceptingId === app.id
                                                                                 ? <Loader2 className="w-4 h-4 animate-spin" />
-                                                                                : '🔑 Accept Start Request — Generate Code'}
+                                                                                : <><KeyRound className="w-4 h-4" />Accept Start Request — Generate Code</>}
                                                                         </button>
                                                                     )}
                                                                     {/* Code display */}
@@ -911,13 +913,16 @@ export default function JobApplicationsModal({ jobId, jobTitle, jobBudget, jobPo
                                     }}
                                 >
                                     <span className="text-sm font-semibold flex items-center gap-2">
-                                        📋 Other Applications
+                                        <Users className="w-4 h-4" />
+                                        Other Applications
                                         <span className="px-1.5 py-0.5 rounded-full text-xs font-bold"
                                             style={{ backgroundColor: isDark ? '#2a2a2a' : '#e5e7eb', color: isDark ? '#d1d5db' : '#374151' }}>
                                             {otherApps.length}
                                         </span>
                                     </span>
-                                    <span className="text-xs">{showOtherApps ? '▲ Hide' : '▼ Show'}</span>
+                                    {showOtherApps
+                                        ? <ChevronUp className="w-4 h-4" />
+                                        : <ChevronDown className="w-4 h-4" />}
                                 </button>
                             )}
                         </div>
