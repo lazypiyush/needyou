@@ -18,8 +18,7 @@ import {
 } from '@/lib/auth'
 import { useAuth } from '@/context/AuthContext'
 import { ConfirmationResult } from 'firebase/auth'
-import { auth, db } from '@/lib/firebase'
-import { collection, query, where, getDocs } from 'firebase/firestore'
+import { auth } from '@/lib/firebase'
 import Link from 'next/link'
 import Image from 'next/image'
 import ThemeToggle from '@/components/ThemeToggle'
@@ -114,7 +113,22 @@ export default function SignInPage() {
     setLoading(true)
 
     try {
-      // Sign in directly — Firebase enumeration protection makes pre-checks unreliable
+      // Step 1: Check if email exists in Firebase Authentication (via Admin SDK)
+      const checkRes = await fetch('/api/check-email-exists', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email })
+      })
+      if (checkRes.ok) {
+        const { exists } = await checkRes.json()
+        if (!exists) {
+          setError('No account found with this email address. Please sign up first.')
+          setLoading(false)
+          return
+        }
+      }
+
+      // Step 2: Email exists — attempt sign in
       const user = await signInWithEmail(email, password)
 
       console.log('👤 User signed in:', user.uid)
@@ -212,24 +226,10 @@ export default function SignInPage() {
 
     } catch (err: any) {
       const code = err?.code || ''
-      if (code === 'auth/wrong-password') {
+      if (code === 'auth/wrong-password' || code === 'auth/invalid-credential') {
         setError('Incorrect password. Please try again or use Forgot Password to reset it.')
       } else if (code === 'auth/user-not-found') {
         setError('No account found with this email address. Please sign up first.')
-      } else if (code === 'auth/invalid-credential') {
-        // Modern Firebase uses this for both wrong email AND wrong password.
-        // Query Firestore to give a specific, helpful message.
-        try {
-          const q = query(collection(db!, 'users'), where('email', '==', email))
-          const snap = await getDocs(q)
-          if (snap.empty) {
-            setError('No account found with this email address. Please sign up first.')
-          } else {
-            setError('Incorrect password. Please try again or use Forgot Password to reset it.')
-          }
-        } catch {
-          setError('Incorrect email or password. Please try again.')
-        }
       } else if (code === 'auth/too-many-requests') {
         setError('Too many attempts. Please try again in a few minutes or reset your password.')
       } else {

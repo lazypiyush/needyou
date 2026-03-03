@@ -498,35 +498,10 @@ export const addPhoneToUser = async (
 
 // Sign In with Email/Password - Just authenticate, let UI handle verification checks
 export const signInWithEmail = async (email: string, password: string) => {
-  try {
-    console.log('🔐 Signing in:', email)
-    const userCredential = await signInWithEmailAndPassword(auth, email, password)
-    const user = userCredential.user
-
-    console.log('✅ Sign in successful for:', user.uid)
-
-    // Return user object - Let UI handle verification checks and redirects
-    return user
-
-  } catch (error: any) {
-    console.error('❌ Sign In Error:', error)
-
-    // Handle specific error codes
-    if (error.code === 'auth/user-not-found') {
-      throw new Error('No account found with this email. Please sign up first.')
-    } else if (error.code === 'auth/wrong-password') {
-      throw new Error('Incorrect password. Please try again.')
-    } else if (error.code === 'auth/invalid-email') {
-      throw new Error('Invalid email address.')
-    } else if (error.code === 'auth/user-disabled') {
-      throw new Error('This account has been disabled.')
-    } else if (error.code === 'auth/invalid-credential') {
-      throw new Error('Invalid email or password.')
-    } else {
-      throw new Error(error.message || 'Failed to sign in')
-    }
-  }
+  const userCredential = await signInWithEmailAndPassword(auth, email, password)
+  return userCredential.user
 }
+
 
 
 // Reset Password - Send password reset email via Resend with Firebase link
