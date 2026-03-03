@@ -17,7 +17,7 @@ import {
   getUserKycStatus,
 } from '@/lib/auth'
 import { useAuth } from '@/context/AuthContext'
-import { ConfirmationResult } from 'firebase/auth'
+import { ConfirmationResult, fetchSignInMethodsForEmail } from 'firebase/auth'
 import { auth } from '@/lib/firebase'
 import Link from 'next/link'
 import Image from 'next/image'
@@ -48,10 +48,6 @@ export default function SignInPage() {
   const [resetError, setResetError] = useState('')
   const [resetSuccess, setResetSuccess] = useState(false)
 
-  // Rate limiting states
-  const [failedAttempts, setFailedAttempts] = useState(0)
-  const [lockoutUntil, setLockoutUntil] = useState<number | null>(null)
-  const [lockoutTimeRemaining, setLockoutTimeRemaining] = useState(0)
 
   const router = useRouter()
   const { user, loading: authLoading } = useAuth()
@@ -59,25 +55,6 @@ export default function SignInPage() {
 
   useEffect(() => {
     setMounted(true)
-
-    // Load rate limiting data from localStorage
-    const storedAttempts = localStorage.getItem('signin_failed_attempts')
-    const storedLockout = localStorage.getItem('signin_lockout_until')
-
-    if (storedAttempts) {
-      setFailedAttempts(parseInt(storedAttempts))
-    }
-
-    if (storedLockout) {
-      const lockoutTime = parseInt(storedLockout)
-      if (lockoutTime > Date.now()) {
-        setLockoutUntil(lockoutTime)
-      } else {
-        // Lockout expired, clear it
-        localStorage.removeItem('signin_lockout_until')
-        localStorage.removeItem('signin_failed_attempts')
-      }
-    }
 
     // Cleanup on unmount
     return () => {
@@ -90,26 +67,6 @@ export default function SignInPage() {
       clearRecaptcha()
     }
   }, [authMethod])
-
-  // Lockout countdown timer
-  useEffect(() => {
-    if (lockoutUntil) {
-      const interval = setInterval(() => {
-        const remaining = Math.max(0, Math.ceil((lockoutUntil - Date.now()) / 1000))
-        setLockoutTimeRemaining(remaining)
-
-        if (remaining === 0) {
-          // Lockout expired
-          setLockoutUntil(null)
-          setFailedAttempts(0)
-          localStorage.removeItem('signin_lockout_until')
-          localStorage.removeItem('signin_failed_attempts')
-          setError('')
-        }
-      }, 1000)
-      return () => clearInterval(interval)
-    }
-  }, [lockoutUntil])
 
   // Already logged in — redirect to the appropriate page based on completion status
   useEffect(() => {
@@ -153,23 +110,18 @@ export default function SignInPage() {
     e.preventDefault()
     setError('')
     setSuccess('')
-
-    // Check if user is locked out
-    if (lockoutUntil && Date.now() < lockoutUntil) {
-      const minutes = Math.floor(lockoutTimeRemaining / 60)
-      const seconds = lockoutTimeRemaining % 60
-      setError(
-        `🔒 Too many failed sign-in attempts.\n\n` +
-        `⏱️ Try again in ${minutes}:${seconds.toString().padStart(2, '0')}\n\n` +
-        `💡 Forgot your password? Click "Forgot Password" below to reset it.`
-      )
-      return
-    }
-
     setLoading(true)
 
     try {
-      // Step 1: Sign in with email
+      // Step 1: Check if email exists in Firebase
+      const methods = await fetchSignInMethodsForEmail(auth, email)
+      if (!methods || methods.length === 0) {
+        setError('No account found with this email address. Please sign up first.')
+        setLoading(false)
+        return
+      }
+
+      // Step 2: Sign in with email + password
       const user = await signInWithEmail(email, password)
 
       console.log('👤 User signed in:', user.uid)
@@ -263,37 +215,17 @@ export default function SignInPage() {
         return
       }
 
-      // Step 6: All verified and onboarded - proceed to dashboard
-      console.log('✅ Authentication complete! Redirecting to dashboard...')
-
-      // Clear rate limiting on successful sign-in
-      setFailedAttempts(0)
-      setLockoutUntil(null)
-      localStorage.removeItem('signin_failed_attempts')
-      localStorage.removeItem('signin_lockout_until')
-
       router.replace('/dashboard')
 
     } catch (err: any) {
-      console.error('❌ Sign in error:', err)
-
-      // Increment failed attempts
-      const newAttempts = failedAttempts + 1
-      setFailedAttempts(newAttempts)
-      localStorage.setItem('signin_failed_attempts', newAttempts.toString())
-
-      // Check if we should lock out
-      if (newAttempts >= 5) {
-        const lockoutTime = Date.now() + (5 * 60 * 1000) // 5 minutes
-        setLockoutUntil(lockoutTime)
-        localStorage.setItem('signin_lockout_until', lockoutTime.toString())
-        setError(
-          `🔒 Too many failed sign-in attempts.\n\n` +
-          `⏱️ Your account is locked for 5 minutes.\n\n` +
-          `💡 Forgot your password? Click "Forgot Password" below to reset it and unlock your account.`
-        )
+      console.error('Sign in error:', err)
+      const code = err?.code || ''
+      if (code === 'auth/wrong-password' || code === 'auth/invalid-credential') {
+        setError('Incorrect password. Please try again or use Forgot Password to reset it.')
+      } else if (code === 'auth/too-many-requests') {
+        setError('Sign-in temporarily blocked by Firebase due to unusual activity. Please try again in a few minutes or reset your password.')
       } else {
-        setError(`❌ ${err.message || 'Failed to sign in'}\n\n⚠️ ${5 - newAttempts} attempts remaining before lockout.`)
+        setError(err.message || 'Failed to sign in. Please try again.')
       }
     } finally {
       setLoading(false)
@@ -414,13 +346,6 @@ export default function SignInPage() {
     try {
       await resetPassword(resetEmail)
       setResetSuccess(true)
-
-      // Clear rate limiting when password reset is sent
-      setFailedAttempts(0)
-      setLockoutUntil(null)
-      localStorage.removeItem('signin_failed_attempts')
-      localStorage.removeItem('signin_lockout_until')
-      setError('') // Clear any lockout error message
     } catch (err: any) {
       setResetError(err.message || 'Failed to send reset email')
     } finally {
