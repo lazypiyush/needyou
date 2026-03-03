@@ -127,12 +127,12 @@ export default function UserProfileSheet({ userId, isDark, onClose }: UserProfil
                                         {profile.photoURL ? (
                                             <img
                                                 src={getCompressedImageUrl(profile.photoURL)}
-                                                alt={profile.name}
+                                                alt={profile.kycData?.aadhaarName || profile.name}
                                                 className="w-full h-full object-cover"
                                             />
                                         ) : (
                                             <span style={{ color: isDark ? '#60a5fa' : '#2563eb' }}>
-                                                {profile.name?.[0]?.toUpperCase() || '?'}
+                                                {(profile.kycData?.aadhaarName || profile.name)?.[0]?.toUpperCase() || '?'}
                                             </span>
                                         )}
                                     </div>
@@ -150,7 +150,7 @@ export default function UserProfileSheet({ userId, isDark, onClose }: UserProfil
                                     )}
                                 </div>
                                 <div className="flex-1 min-w-0">
-                                    <h3 className="text-xl font-bold truncate" style={{ color: textPri }}>{profile.name || 'Unknown'}</h3>
+                                    <h3 className="text-xl font-bold truncate" style={{ color: textPri }}>{profile.kycData?.aadhaarName || profile.name || 'Unknown'}</h3>
                                     {profile.createdAt && (
                                         <p className="text-xs mt-0.5" style={{ color: textSec }}>
                                             Member since {new Date(profile.createdAt).toLocaleDateString('en-IN', { month: 'long', year: 'numeric' })}

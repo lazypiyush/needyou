@@ -134,7 +134,7 @@ export default function AdminDashboardPage() {
             } else {
                 const d = snap.docs[0]
                 const data = d.data()
-                setWalletUser({ uid: d.id, name: data.name || data.displayName || 'User', email: data.email, balance: data.walletBalance || 0 })
+                setWalletUser({ uid: d.id, name: data.kycData?.aadhaarName || data.name || 'User', email: data.email, balance: data.walletBalance || 0 })
             }
         } catch {
             setWalletMsg({ type: 'error', text: 'Search failed. Please try again.' })
@@ -354,8 +354,8 @@ export default function AdminDashboardPage() {
 
                         {walletMsg && (
                             <div className={`mt-3 p-3 rounded-xl text-sm font-medium ${walletMsg.type === 'success'
-                                    ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300 border border-green-300 dark:border-green-700'
-                                    : 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300 border border-red-300 dark:border-red-700'
+                                ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300 border border-green-300 dark:border-green-700'
+                                : 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300 border border-red-300 dark:border-red-700'
                                 }`}>{walletMsg.text}</div>
                         )}
                     </motion.div>
