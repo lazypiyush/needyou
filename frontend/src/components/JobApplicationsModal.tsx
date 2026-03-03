@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import { X, User, Clock, ChevronDown, ChevronUp, CheckCircle, XCircle, IndianRupee, MessageCircle, Loader2, MapPin, Wrench, Receipt, KeyRound, FileText, Map, Users } from 'lucide-react'
 import { getJobApplications } from '@/lib/auth'
-import { db } from '@/lib/firebase'
+import { auth, db } from '@/lib/firebase'
 import { collection, onSnapshot, query, where } from 'firebase/firestore'
 import { useTheme } from 'next-themes'
 import { renegotiateBudget } from '@/lib/renegotiation'
@@ -255,7 +255,7 @@ export default function JobApplicationsModal({ jobId, jobTitle, jobBudget, jobPo
             await createNotification({
                 userId: app.userId,
                 type: 'job_hired',
-                title: "🎉 Congratulations! You've Been Hired!",
+                title: 'You have been hired!',
                 message: `You were hired by ${jobPosterName} for "${jobTitle}"${amount ? ` at ₹${amount.toLocaleString()}` : ''}. Tap to view your application.`,
                 jobId,
                 jobTitle,
@@ -310,8 +310,8 @@ export default function JobApplicationsModal({ jobId, jobTitle, jobBudget, jobPo
 
     if (!mounted) return null
 
-    // ── Compute hired state before JSX ──
-    const hiredApp = applications.find((a: any) => a.status === 'hired' || a.negotiationStatus === 'accepted')
+    // Only status==='hired' means hired. negotiationStatus==='accepted' means budget agreed, not hired yet.
+    const hiredApp = applications.find((a: any) => a.status === 'hired')
     const isJobFilled = !!hiredApp
     const otherApps = applications.filter((a: any) => a.id !== hiredApp?.id)
 
@@ -391,8 +391,8 @@ export default function JobApplicationsModal({ jobId, jobTitle, jobBudget, jobPo
                                 const isExpanded = expandedId === app.id
                                 const isHiredCard = isJobFilled && app.id === hiredApp?.id
                                 const isOtherCard = isJobFilled && !isHiredCard
-                                // Hide other apps cards until tab is opened
-                                if (isOtherCard && !showOtherApps) return null
+                                // Other app cards now render in the dedicated section below (not here)
+                                if (isOtherCard) return null
 
                                 return (
                                     <div
@@ -560,7 +560,7 @@ export default function JobApplicationsModal({ jobId, jobTitle, jobBudget, jobPo
                                                         )}
 
                                                         {/* ── Hired badge for accepted applicant ── */}
-                                                        {(app.status === 'hired' || app.negotiationStatus === 'accepted') && (
+                                                        {app.status === 'hired' && (
                                                             <div className="mt-3 flex items-center gap-2 p-2 rounded-lg bg-green-50 dark:bg-green-900/20">
                                                                 <CheckCircle className="w-4 h-4 text-green-600" />
                                                                 <span className="text-sm font-semibold text-green-700 dark:text-green-400">Hired</span>
@@ -568,7 +568,7 @@ export default function JobApplicationsModal({ jobId, jobTitle, jobBudget, jobPo
                                                         )}
 
                                                         {/* ── Start Job (poster side) ── */}
-                                                        {(app.status === 'hired' || app.negotiationStatus === 'accepted') && (() => {
+                                                        {app.status === 'hired' && (() => {
                                                             const secondsLeft = app.startJobCodeExpiry
                                                                 ? Math.max(0, Math.floor((app.startJobCodeExpiry - Date.now()) / 1000))
                                                                 : 0
@@ -766,8 +766,8 @@ export default function JobApplicationsModal({ jobId, jobTitle, jobBudget, jobPo
                                                         )}
 
                                                         {/* ── Action buttons — only if job not yet filled ── */}
-                                                        {app.status !== 'hired' && app.status !== 'closed' && app.negotiationStatus !== 'accepted' && (() => {
-                                                            const jobFilled = applications.some((a: any) => a.status === 'hired' || a.negotiationStatus === 'accepted')
+                                                        {app.status !== 'hired' && app.status !== 'closed' && (() => {
+                                                            const jobFilled = applications.some((a: any) => a.status === 'hired')
                                                             if (jobFilled) return null
                                                             return (
                                                                 <>
@@ -824,11 +824,24 @@ export default function JobApplicationsModal({ jobId, jobTitle, jobBudget, jobPo
                                                                                 ) : (
                                                                                     <div className="flex gap-2">
                                                                                         <button
-                                                                                            onClick={() => handleHire(app, app.counterOffer)}
+                                                                                            onClick={async () => {
+                                                                                                if (!confirm(`Accept ₹${app.counterOffer.toLocaleString()} as the agreed price? You can then hire ${app.userName.split(' ')[0]} separately.`)) return
+                                                                                                try {
+                                                                                                    setNegotiating(true)
+                                                                                                    const { respondToRenegotiation } = await import('@/lib/renegotiation')
+                                                                                                    await respondToRenegotiation(app.id, jobId, jobTitle, auth.currentUser?.uid ?? '', true)
+                                                                                                    const apps = await getJobApplications(jobId)
+                                                                                                    setApplications(apps)
+                                                                                                } catch (e: any) {
+                                                                                                    alert(e.message || 'Failed to accept offer')
+                                                                                                } finally {
+                                                                                                    setNegotiating(false)
+                                                                                                }
+                                                                                            }}
                                                                                             disabled={negotiating}
-                                                                                            className="flex-1 px-4 py-2 bg-green-600 hover:bg-green-700 disabled:bg-gray-400 text-white rounded-lg font-medium transition-colors"
+                                                                                            className="flex-1 px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 text-white rounded-lg font-medium transition-colors"
                                                                                         >
-                                                                                            {negotiating ? 'Processing...' : `Accept ₹${app.counterOffer.toLocaleString()}`}
+                                                                                            {negotiating ? 'Accepting...' : `Agree ₹${app.counterOffer.toLocaleString()}`}
                                                                                         </button>
                                                                                         <button onClick={() => setNegotiatingId(app.id)} disabled={negotiating} className="flex-1 px-4 py-2 bg-orange-600 hover:bg-orange-700 disabled:bg-gray-400 text-white rounded-lg font-medium transition-colors">
                                                                                             Renegotiate
@@ -840,6 +853,24 @@ export default function JobApplicationsModal({ jobId, jobTitle, jobBudget, jobPo
                                                                 </>
                                                             )
                                                         })()}
+
+                                                        {/* ── Hire button shown AFTER negotiation is accepted (price agreed but not yet hired) ── */}
+                                                        {app.status !== 'hired' && app.status !== 'closed' && app.negotiationStatus === 'accepted' && !applications.some((a: any) => a.status === 'hired') && (
+                                                            <div className="mt-3">
+                                                                <div className="flex items-center gap-2 p-2 mb-2 rounded-lg" style={{ background: 'rgba(16,185,129,0.1)', border: '1px solid rgba(16,185,129,0.3)' }}>
+                                                                    <CheckCircle className="w-4 h-4 text-green-600" />
+                                                                    <span className="text-sm font-semibold text-green-700 dark:text-green-400">Price agreed — ₹{(app.currentOffer ?? app.counterOffer)?.toLocaleString()}. Ready to hire?</span>
+                                                                </div>
+                                                                <button
+                                                                    onClick={() => handleHire(app, app.currentOffer ?? app.counterOffer)}
+                                                                    disabled={negotiating}
+                                                                    className="w-full px-4 py-2.5 bg-green-600 hover:bg-green-700 disabled:bg-gray-400 text-white rounded-lg font-bold transition-colors flex items-center justify-center gap-2"
+                                                                >
+                                                                    <CheckCircle className="w-4 h-4" />
+                                                                    {negotiating ? 'Processing...' : `Hire ${app.userName.split(' ')[0]}`}
+                                                                </button>
+                                                            </div>
+                                                        )}
 
 
                                                         {/* Negotiation History */}
@@ -902,28 +933,82 @@ export default function JobApplicationsModal({ jobId, jobTitle, jobBudget, jobPo
                             })}
 
                             {/* ── Other Applications tab — only after hire ── */}
+                            {/* ── Other Applications tab — button first, then expanded cards below ── */}
                             {isJobFilled && otherApps.length > 0 && (
-                                <button
-                                    onClick={() => setShowOtherApps(v => !v)}
-                                    className="w-full flex items-center justify-between px-4 py-2.5 rounded-xl border transition-all"
-                                    style={{
-                                        backgroundColor: showOtherApps ? (isDark ? '#1e1e2e' : '#eff6ff') : (isDark ? '#1a1a1a' : '#f9fafb'),
-                                        borderColor: showOtherApps ? (isDark ? '#4b5cf6' : '#3b82f6') : (isDark ? '#2a2a2a' : '#e5e7eb'),
-                                        color: isDark ? '#9ca3af' : '#6b7280',
-                                    }}
-                                >
-                                    <span className="text-sm font-semibold flex items-center gap-2">
-                                        <Users className="w-4 h-4" />
-                                        Other Applications
-                                        <span className="px-1.5 py-0.5 rounded-full text-xs font-bold"
-                                            style={{ backgroundColor: isDark ? '#2a2a2a' : '#e5e7eb', color: isDark ? '#d1d5db' : '#374151' }}>
-                                            {otherApps.length}
+                                <>
+                                    <button
+                                        onClick={() => setShowOtherApps(v => !v)}
+                                        className="w-full flex items-center justify-between px-4 py-2.5 rounded-xl border transition-all"
+                                        style={{
+                                            backgroundColor: showOtherApps ? (isDark ? '#1e1e2e' : '#eff6ff') : (isDark ? '#1a1a1a' : '#f9fafb'),
+                                            borderColor: showOtherApps ? (isDark ? '#4b5cf6' : '#3b82f6') : (isDark ? '#2a2a2a' : '#e5e7eb'),
+                                            color: isDark ? '#9ca3af' : '#6b7280',
+                                        }}
+                                    >
+                                        <span className="text-sm font-semibold flex items-center gap-2">
+                                            <Users className="w-4 h-4" />
+                                            Other Applications
+                                            <span className="px-1.5 py-0.5 rounded-full text-xs font-bold"
+                                                style={{ backgroundColor: isDark ? '#2a2a2a' : '#e5e7eb', color: isDark ? '#d1d5db' : '#374151' }}>
+                                                {otherApps.length}
+                                            </span>
                                         </span>
-                                    </span>
-                                    {showOtherApps
-                                        ? <ChevronUp className="w-4 h-4" />
-                                        : <ChevronDown className="w-4 h-4" />}
-                                </button>
+                                        {showOtherApps
+                                            ? <ChevronUp className="w-4 h-4" />
+                                            : <ChevronDown className="w-4 h-4" />}
+                                    </button>
+                                    {/* Other app cards render BELOW the button when open */}
+                                    {showOtherApps && otherApps.map((app: any) => {
+                                        const isExpanded = expandedId === app.id
+                                        return (
+                                            <div
+                                                key={app.id + '-other'}
+                                                className="rounded-xl border overflow-hidden transition-all"
+                                                style={{
+                                                    backgroundColor: isDark ? '#2a2a2a' : '#f9fafb',
+                                                    borderColor: isDark ? '#3a3a3a' : '#e5e7eb',
+                                                }}
+                                            >
+                                                <div
+                                                    className="p-4 cursor-pointer hover:bg-opacity-80 transition-colors"
+                                                    onClick={() => setExpandedId(isExpanded ? null : app.id)}
+                                                >
+                                                    <div className="flex items-center justify-between">
+                                                        <div className="flex items-center gap-3">
+                                                            <div className="w-9 h-9 rounded-full overflow-hidden flex items-center justify-center font-bold text-sm"
+                                                                style={{ backgroundColor: isDark ? '#3a3a3a' : '#e5e7eb', color: isDark ? '#9ca3af' : '#6b7280' }}>
+                                                                {app.userPhotoURL
+                                                                    ? <img src={app.userPhotoURL} alt={app.userName} className="w-full h-full object-cover" />
+                                                                    : app.userName?.[0]?.toUpperCase() || '?'}
+                                                            </div>
+                                                            <div>
+                                                                <p className="text-sm font-semibold" style={{ color: isDark ? '#e5e7eb' : '#111827' }}>{app.userName}</p>
+                                                                <p className="text-xs" style={{ color: isDark ? '#6b7280' : '#9ca3af' }}>Applied {new Date(app.appliedAt).toLocaleDateString()}</p>
+                                                            </div>
+                                                        </div>
+                                                        <div className="flex items-center gap-2">
+                                                            <span className="px-2 py-0.5 rounded-full text-xs font-medium"
+                                                                style={{ backgroundColor: isDark ? '#1a1a1a' : '#f3f4f6', color: isDark ? '#6b7280' : '#9ca3af' }}>
+                                                                {app.status === 'closed' ? 'Closed' : 'Pending'}
+                                                            </span>
+                                                            {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                                {isExpanded && (
+                                                    <div className="px-4 pb-4 space-y-2 border-t" style={{ borderColor: isDark ? '#3a3a3a' : '#e5e7eb' }}>
+                                                        {app.coverLetter && <p className="text-sm pt-3" style={{ color: isDark ? '#d1d5db' : '#374151' }}>{app.coverLetter}</p>}
+                                                        {app.counterOffer && <p className="text-sm" style={{ color: isDark ? '#9ca3af' : '#6b7280' }}>Their offer: <span className="font-bold text-orange-500">₹{app.counterOffer.toLocaleString()}</span></p>}
+                                                        <div className="flex items-center gap-2 p-2 mt-2 rounded-lg" style={{ backgroundColor: isDark ? '#1a1a1a' : '#f3f4f6' }}>
+                                                            <XCircle className="w-4 h-4" style={{ color: isDark ? '#6b7280' : '#9ca3af' }} />
+                                                            <span className="text-sm" style={{ color: isDark ? '#6b7280' : '#9ca3af' }}>Position filled by another applicant</span>
+                                                        </div>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        )
+                                    })}
+                                </>
                             )}
                         </div>
                     )}
