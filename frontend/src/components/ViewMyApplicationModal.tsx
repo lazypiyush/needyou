@@ -162,17 +162,20 @@ export default function ViewMyApplicationModal({
                     lastPush = Date.now()
                     updateWorkerLocation(application.id, loc.lat, loc.lng).catch(console.error)
                 }
-                // ── Auto-detect arrival within 200m ──
+                // ── Auto-detect arrival within 500m ──
+                // GPS error on mobile is typically 50-150 m per device, so two phones
+                // at the same spot can read 100-300 m apart. 500 m is generous but
+                // still meaningful (won't trigger from a different neighbourhood).
                 if (status === 'active' && !application?.arrivalDetected && !arrivalNotifiedRef.current && jobDestinationRef.current) {
                     const dist = calcDistance(loc.lat, loc.lng, jobDestinationRef.current.lat, jobDestinationRef.current.lng)
-                    if (dist <= 200) {
+                    if (dist <= 500) {
                         arrivalNotifiedRef.current = true
                         notifyArrival(application.id, jobPosterId, jobTitle, application.userName || 'The worker', jobId).catch(console.error)
                     }
                 }
             },
             (err) => setGpsError(err.message),
-            { enableHighAccuracy: true, timeout: 15000, maximumAge: 5000 }
+            { enableHighAccuracy: true, timeout: 10000, maximumAge: 3000 }
         )
         return () => {
             if (watchIdRef.current !== null) { navigator.geolocation.clearWatch(watchIdRef.current); watchIdRef.current = null }
@@ -800,12 +803,28 @@ export default function ViewMyApplicationModal({
 
                                             {/* Phase: active — heading to client */}
                                             {application.startJobStatus === 'active' && (
-                                                <div className="flex items-center gap-2 p-3 rounded-lg bg-green-50 dark:bg-green-900/20">
-                                                    <CheckCircle className="w-5 h-5 text-green-600 flex-shrink-0" />
-                                                    <div>
-                                                        <p className="font-bold text-green-700 dark:text-green-400">Job is Active! 🎉</p>
-                                                        <p className="text-xs text-green-600 dark:text-green-500">Head to the client's location — we'll auto-detect when you arrive.</p>
+                                                <div className="space-y-2">
+                                                    <div className="flex items-center gap-2 p-3 rounded-lg bg-green-50 dark:bg-green-900/20">
+                                                        <CheckCircle className="w-5 h-5 text-green-600 flex-shrink-0" />
+                                                        <div>
+                                                            <p className="font-bold text-green-700 dark:text-green-400">Job is Active! 🎉</p>
+                                                            <p className="text-xs text-green-600 dark:text-green-500">Head to the client's location — we'll auto-detect when you arrive (within ~500m).</p>
+                                                        </div>
                                                     </div>
+                                                    {/* Manual fallback — in case GPS drift prevents auto-detection */}
+                                                    {!application?.arrivalDetected && (
+                                                        <button
+                                                            onClick={() => {
+                                                                if (!application?.id) return
+                                                                arrivalNotifiedRef.current = true
+                                                                notifyArrival(application.id, jobPosterId, jobTitle, application.userName || 'The worker', jobId).catch(console.error)
+                                                            }}
+                                                            className="w-full py-2.5 rounded-xl font-semibold text-sm border-2 transition-all flex items-center justify-center gap-2"
+                                                            style={{ borderColor: '#f59e0b', color: '#d97706', background: 'transparent' }}
+                                                        >
+                                                            📍 I'm at the Location (Manual)
+                                                        </button>
+                                                    )}
                                                 </div>
                                             )}
 
