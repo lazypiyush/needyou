@@ -400,32 +400,118 @@ public class MainActivity extends BridgeActivity {
                 popupView.getSettings().setJavaScriptEnabled(true);
                 popupView.getSettings().setDomStorageEnabled(true);
                 popupView.getSettings().setSupportMultipleWindows(true);
-                // Allow DigiLocker's mixed HTTP/HTTPS sub-resources on older Android
+                popupView.getSettings().setAllowFileAccess(true);
+                popupView.getSettings().setDatabaseEnabled(true);
+                // Strip WebView 'wv' marker — some auth providers (e.g. Google) block embedded
+                // WebViews
+                String ua = popupView.getSettings().getUserAgentString();
+                if (ua != null) {
+                    popupView.getSettings().setUserAgentString(
+                            ua.replace("; wv", "").replace(" wv", "").trim());
+                }
+                // Allow mixed HTTP/HTTPS resources (required for DigiLocker on older Android)
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
                     popupView.getSettings().setMixedContentMode(
                             android.webkit.WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE);
                 }
 
-                // ── Keep all navigation inside this popup — prevent Chrome from opening ──
-                // On Vivo/Samsung/Xiaomi, a default WebViewClient still lets Android
-                // intercept intent:// or custom-scheme URLs and fire them in Chrome.
-                // Override shouldOverrideUrlLoading to force everything to stay inside.
+                // ── Layer 1: JavascriptInterface bridge (popup → main WebView) ─
+                // Injected as 'NeedYouPopupBridge' into the popup's JS context.
+                // Works on ALL OEMs — no URL pattern needed.
+                popupView.addJavascriptInterface(new Object() {
+                    @android.webkit.JavascriptInterface
+                    public void onDone(String clientId, String url) {
+                        runOnUiThread(() -> {
+                            String safeId = clientId != null ? clientId.replace("'", "\\'") : "";
+                            String safeUrl = url != null ? url.replace("'", "\\'").replace("\n", "") : "";
+                            getBridge().getWebView().evaluateJavascript(
+                                    "window.dispatchEvent(new CustomEvent('digilocker_done'," +
+                                            "{ detail:{clientId:'" + safeId + "',url:'" + safeUrl + "'} }));",
+                                    null);
+                            popup.dismiss();
+                        });
+                    }
+
+                    @android.webkit.JavascriptInterface
+                    public void onMessage(String json) {
+                        // DigiBoost SDK used window.opener.postMessage() — relay to main WebView
+                        runOnUiThread(() -> getBridge().getWebView().evaluateJavascript(
+                                "window.dispatchEvent(new MessageEvent('message'," +
+                                        "{ data:" + (json != null ? json : "{}") + ",origin:'*' }));",
+                                null));
+                    }
+                }, "NeedYouPopupBridge");
+
+                // ── Layer 2: JS polyfill — injected on every page in the popup ─
+                // Patches window.opener (null in WebViewTransport) so postMessage
+                // and window.close flow through our JavascriptInterface.
+                // Applied in onPageFinished so it survives SPA page transitions.
+                final String POPUP_POLYFILL = "(function(){"
+                        + "if(window.__nyPatched)return;window.__nyPatched=true;"
+                // Patch window.opener so DigiBoost SDK's postMessage reaches Java
+                        + "window.opener={"
+                        + "  postMessage:function(data,o){"
+                        + "    try{"
+                        + "      var cid=data&&(data.client_id||data.clientId||data.code||'');"
+                        + "      NeedYouPopupBridge.onMessage(JSON.stringify(data));"
+                        + "      if(cid)NeedYouPopupBridge.onDone(String(cid),location.href);"
+                        + "    }catch(e){}"
+                        + "  }"
+                        + "};"
+                // Patch window.close so APK detects when SDK closes the auth window
+                        + "var _c=window.close;"
+                        + "window.close=function(){"
+                        + "  try{NeedYouPopupBridge.onDone('',location.href);}catch(e){}"
+                        + "  try{_c.call(window);}catch(e){}"
+                        + "};"
+                        + "})();";
+
+                // ── Layer 3: URL detection as a safety net ────────────────────
                 popupView.setWebViewClient(new WebViewClient() {
+                    @Override
+                    public void onPageFinished(WebView wv, String url) {
+                        super.onPageFinished(wv, url);
+                        // Re-inject polyfill on every page (survives redirects & SPAs)
+                        wv.evaluateJavascript(POPUP_POLYFILL, null);
+
+                        // Fallback URL-based detection for OEMs that sandbox addJavascriptInterface
+                        if (url != null
+                                && (url.contains("surepass") || url.contains("digilocker")
+                                        || url.contains("digitallocker"))
+                                && (url.contains("success") || url.contains("callback") || url.contains("complete"))) {
+                            String clientId = "";
+                            try {
+                                android.net.Uri uri = android.net.Uri.parse(url);
+                                String cid = uri.getQueryParameter("client_id");
+                                if (cid == null)
+                                    cid = uri.getQueryParameter("clientId");
+                                if (cid == null)
+                                    cid = uri.getQueryParameter("code");
+                                if (cid != null)
+                                    clientId = cid;
+                            } catch (Exception ignored) {
+                            }
+                            final String fid = clientId;
+                            runOnUiThread(() -> {
+                                getBridge().getWebView().evaluateJavascript(
+                                        "window.dispatchEvent(new CustomEvent('digilocker_done'," +
+                                                "{ detail:{clientId:'" + fid.replace("'", "\\'") + "',url:'"
+                                                + url.replace("'", "\\'").replace("\n", "") + "'} }));",
+                                        null);
+                                popup.dismiss();
+                            });
+                        }
+                    }
+
                     @Override
                     public boolean shouldOverrideUrlLoading(WebView wv,
                             android.webkit.WebResourceRequest request) {
                         String url = request.getUrl().toString();
-                        // DigiLocker uses its own HTTPS URLs — load them in-place.
-                        // Only send intent:// / market:// / tel:// etc. out to system.
-                        if (url.startsWith("http://") || url.startsWith("https://")) {
-                            wv.loadUrl(url);
-                            return true; // handled internally
-                        }
-                        // System intent (e.g. tel:, mailto:) — let OS handle
+                        if (url.startsWith("http://") || url.startsWith("https://"))
+                            return false; // all HTTP stays in popup
+                        // System schemes (tel:, mailto:, intent://) → OS
                         try {
-                            Intent sysIntent = new Intent(Intent.ACTION_VIEW,
-                                    android.net.Uri.parse(url));
-                            startActivity(sysIntent);
+                            startActivity(new Intent(Intent.ACTION_VIEW, android.net.Uri.parse(url)));
                         } catch (ActivityNotFoundException ignored) {
                         }
                         return true;
@@ -435,7 +521,13 @@ public class MainActivity extends BridgeActivity {
                 popupView.setWebChromeClient(new WebChromeClient() {
                     @Override
                     public void onCloseWindow(WebView window) {
-                        popup.dismiss();
+                        runOnUiThread(() -> {
+                            getBridge().getWebView().evaluateJavascript(
+                                    "window.dispatchEvent(new CustomEvent('digilocker_done'," +
+                                            "{ detail:{clientId:'',closed:true} }));",
+                                    null);
+                            popup.dismiss();
+                        });
                     }
                 });
                 LinearLayout.LayoutParams webParams = new LinearLayout.LayoutParams(

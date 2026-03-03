@@ -88,6 +88,8 @@ function VerifyKycContent() {
     const pitchBaseRef = useRef<number | null>(null)
 
     const sdkCleanup = useRef<(() => void) | null>(null)
+    const clientIdRef = useRef<string>('')   // kept in sync with latest session clientId
+    const digilockerDoneRef = useRef<EventListener | null>(null) // held so cleanup can remove it
 
     // ─── Auth + KYC load ──────────────────────────────────────────────────────
     useEffect(() => { if (!authLoading && !user) router.replace('/signin') }, [user, authLoading, router])
@@ -197,6 +199,28 @@ function VerifyKycContent() {
                 if (!res.ok) { setError(data.error || 'Could not connect to DigiLocker.'); return }
 
                 const { token: sessionToken, clientId } = data
+                clientIdRef.current = clientId ?? ''   // store for native event handler
+
+                // ── Native APK bridge: listen for DigiLocker completion ────────
+                // On Android WebView, window.opener is null in popup WebViews so
+                // the DigiBoost SDK's postMessage never reaches onSuccess.
+                // MainActivity.java fires a 'digilocker_done' CustomEvent on the
+                // main WebView instead — we listen for it here and call fetchAndComplete.
+                // Handler stored in ref so the useEffect cleanup can removeEventListener.
+                if (digilockerDoneRef.current)
+                    window.removeEventListener('digilocker_done', digilockerDoneRef.current)
+                const doneHandler: EventListener = (e: Event) => {
+                    const detail = (e as CustomEvent).detail ?? {}
+                    const cid = detail.clientId || clientIdRef.current
+                    if (!cid) return   // no clientId — let the normal onSuccess handle it
+                    if (sdkCleanup.current === null) return  // onSuccess already fired
+                    sdkCleanup.current?.(); sdkCleanup.current = null
+                    setDigilockerLaunching(false)
+                    setSuccess('✅ Authorized! Fetching your details...')
+                    fetchAndComplete(cid)
+                }
+                digilockerDoneRef.current = doneHandler
+                window.addEventListener('digilocker_done', doneHandler, { once: true })
 
                 // Ensure off-screen container exists
                 let container = document.getElementById('sp-digilocker-btn')
@@ -246,7 +270,11 @@ function VerifyKycContent() {
         }
         init()
 
-        return () => { sdkCleanup.current?.(); sdkCleanup.current = null }
+        return () => {
+            sdkCleanup.current?.(); sdkCleanup.current = null
+            if (digilockerDoneRef.current)
+                window.removeEventListener('digilocker_done', digilockerDoneRef.current)
+        }
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [phase, user?.uid, digilockerRetry])
 
