@@ -8,7 +8,8 @@ import Image from 'next/image'
 import Link from 'next/link'
 import ThemeToggle from '@/components/ThemeToggle'
 import { useTheme } from 'next-themes'
-import { db } from '@/lib/firebase'
+import { db, auth } from '@/lib/firebase'
+import { signInAnonymously } from 'firebase/auth'
 import { collection, getDocs, query, where } from 'firebase/firestore'
 
 export default function AccountantLoginPage() {
@@ -52,6 +53,9 @@ export default function AccountantLoginPage() {
                 setLoading(false)
                 return
             }
+
+            // Sign in anonymously so Firebase Storage rules (require auth) work for proof uploads
+            signInAnonymously(auth).catch(() => { /* non-fatal */ })
 
             // Save session
             sessionStorage.setItem('accountant_authenticated', 'true')

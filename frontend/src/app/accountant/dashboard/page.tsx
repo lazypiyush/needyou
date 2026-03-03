@@ -12,7 +12,8 @@ import Image from 'next/image'
 import Link from 'next/link'
 import ThemeToggle from '@/components/ThemeToggle'
 import { useTheme } from 'next-themes'
-import { db, storage } from '@/lib/firebase'
+import { db, storage, auth } from '@/lib/firebase'
+import { signInAnonymously } from 'firebase/auth'
 import {
     collection, query, orderBy, onSnapshot,
     doc, updateDoc, serverTimestamp, getDocs, where, increment
@@ -106,6 +107,9 @@ function RequestCard({ r, isDark, photoURL }: { r: WithdrawalRequest; isDark: bo
                 await updateDoc(doc(db, 'users', r.uid), { walletBalance: increment(r.amount) })
             }
             setShowRejectForm(false)
+        } catch (err: any) {
+            alert('Error updating status: ' + (err?.message || 'Permission denied. Try logging out and in again.'))
+            console.error('handleStatus error:', err)
         } finally {
             setProcessing(false)
         }
@@ -117,6 +121,8 @@ function RequestCard({ r, isDark, photoURL }: { r: WithdrawalRequest; isDark: bo
             const storageRef = ref(storage, `rejectionImages/${r.id}_${Date.now()}`)
             await uploadBytes(storageRef, file)
             setRejectImgUrl(await getDownloadURL(storageRef))
+        } catch (err: any) {
+            alert('Upload failed: ' + (err?.message || 'Storage permission denied. Please log out and log back in.'))
         } finally {
             setUploadingRejectImg(false)
         }
@@ -130,6 +136,8 @@ function RequestCard({ r, isDark, photoURL }: { r: WithdrawalRequest; isDark: bo
             const url = await getDownloadURL(storageRef)
             setProofUrl(url)
             await updateDoc(doc(db, 'withdrawalRequests', r.id), { paymentProofUrl: url })
+        } catch (err: any) {
+            alert('Upload failed: ' + (err?.message || 'Storage permission denied. Please log out and log back in.'))
         } finally {
             setUploading(false)
         }
@@ -308,7 +316,7 @@ function RequestCard({ r, isDark, photoURL }: { r: WithdrawalRequest; isDark: bo
                     </motion.div>
                 )}
             </AnimatePresence>
-        </motion.div>
+        </motion.div >
     )
 }
 
@@ -350,6 +358,8 @@ export default function AccountantDashboardPage() {
             setName(sessionStorage.getItem('accountant_name') || 'Accountant')
             setUsername(sessionStorage.getItem('accountant_username') || '')
             setMounted(true)
+            // Re-auth anonymously so Firebase Storage works even after page refresh
+            signInAnonymously(auth).catch(() => { /* non-fatal */ })
         }
     }, [router])
 
