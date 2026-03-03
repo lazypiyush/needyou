@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react'
 import { createPortal } from 'react-dom'
-import { X, User, Mail, Phone, Clock, CheckCircle, XCircle, IndianRupee, MessageCircle, Loader2, Zap, Play } from 'lucide-react'
+import { X, User, Mail, Phone, Clock, CheckCircle, XCircle, IndianRupee, MessageCircle, Loader2, Zap, Play, MapPin, Receipt, Eye, Map } from 'lucide-react'
 import { getUserOwnApplication } from '@/lib/auth'
 import { useTheme } from 'next-themes'
 import { useAuth } from '@/context/AuthContext'
@@ -823,7 +823,8 @@ export default function ViewMyApplicationModal({
                                                             className="w-full py-2.5 rounded-xl font-semibold text-sm border-2 transition-all flex items-center justify-center gap-2"
                                                             style={{ borderColor: '#f59e0b', color: '#d97706', background: 'transparent' }}
                                                         >
-                                                            📍 I'm at the Location (Manual)
+                                                            <MapPin className="w-4 h-4" />
+                                                            I'm at the Location (Manual)
                                                         </button>
                                                     )}
                                                 </div>
@@ -833,9 +834,9 @@ export default function ViewMyApplicationModal({
                                             {application.startJobStatus === 'arrived' && (
                                                 <div className="space-y-2">
                                                     <div className="flex items-center gap-2 p-3 rounded-lg" style={{ background: 'linear-gradient(135deg,#f59e0b20,#f59e0b08)', border: '1px solid #f59e0b80' }}>
-                                                        <span className="text-xl">📍</span>
+                                                        <MapPin className="w-5 h-5 text-amber-500 flex-shrink-0" />
                                                         <div>
-                                                            <p className="font-bold text-amber-700 dark:text-amber-300">You've Arrived! 🎯</p>
+                                                            <p className="font-bold text-amber-700 dark:text-amber-300">You've Arrived!</p>
                                                             <p className="text-xs text-amber-600 dark:text-amber-400">Tap below to request meeting confirmation from the client.</p>
                                                         </div>
                                                     </div>
@@ -843,7 +844,9 @@ export default function ViewMyApplicationModal({
                                                         onClick={() => requestMeeting(application.id).catch(console.error)}
                                                         className="w-full py-3 rounded-xl font-bold text-white flex items-center justify-center gap-2 transition-all"
                                                         style={{ background: 'linear-gradient(135deg,#f59e0b,#d97706)' }}
-                                                    >✋ Confirm I'm Here
+                                                    >
+                                                        <CheckCircle className="w-4 h-4" />
+                                                        Confirm I'm Here
                                                     </button>
                                                 </div>
                                             )}
@@ -888,7 +891,7 @@ export default function ViewMyApplicationModal({
                                                                 className="w-full rounded-xl bg-green-600 disabled:bg-gray-400 text-white font-bold transition-colors flex items-center justify-center gap-2"
                                                                 style={{ minHeight: 48 }}
                                                             >
-                                                                {meetingCodeSubmitting ? <Loader2 className="w-5 h-5 animate-spin" /> : '✓ Verify Meeting Code'}
+                                                                {meetingCodeSubmitting ? <Loader2 className="w-5 h-5 animate-spin" /> : <><CheckCircle className="w-4 h-4" />Verify Meeting Code</>}
                                                             </button>
                                                         </div>
                                                     )}
@@ -911,7 +914,7 @@ export default function ViewMyApplicationModal({
                                                     <div className="flex items-center gap-2 p-3 rounded-lg bg-green-50 dark:bg-green-900/20">
                                                         <CheckCircle className="w-5 h-5 text-green-600 flex-shrink-0" />
                                                         <div>
-                                                            <p className="font-bold text-green-700 dark:text-green-400">Meeting Confirmed! Job in progress 🛠️</p>
+                                                            <p className="font-bold text-green-700 dark:text-green-400">Meeting Confirmed — Job in Progress</p>
                                                             <p className="text-xs text-green-600 dark:text-green-500">Complete the job, then create a bill when done.</p>
                                                         </div>
                                                     </div>
@@ -919,7 +922,9 @@ export default function ViewMyApplicationModal({
                                                         onClick={() => setShowBillModal(true)}
                                                         className="w-full py-3 rounded-xl font-bold text-white flex items-center justify-center gap-2 transition-all"
                                                         style={{ background: 'linear-gradient(135deg,#6366f1,#8b5cf6)' }}
-                                                    >🧾 {application.billStatus === 'rejected' ? 'Create New Bill' : 'Create Bill'}
+                                                    >
+                                                        <Receipt className="w-4 h-4" />
+                                                        {application.billStatus === 'rejected' ? 'Create New Bill' : 'Create Bill'}
                                                     </button>
                                                 </div>
                                             )}
@@ -936,7 +941,9 @@ export default function ViewMyApplicationModal({
                                                                     <p className="text-xs text-yellow-600">Amount: ₹{application.bill?.total?.toLocaleString('en-IN') ?? '–'}</p>
                                                                 </div>
                                                             </div>
-                                                            <button onClick={() => setShowBillView(true)} className="w-full py-2.5 rounded-xl text-sm font-semibold border transition-colors" style={{ borderColor: isDark ? '#3a3a3a' : '#e5e7eb', color: isDark ? '#9ca3af' : '#6b7280' }}>👁️ View Submitted Bill</button>
+                                                            <button onClick={() => setShowBillView(true)} className="w-full py-2.5 rounded-xl text-sm font-semibold border transition-colors flex items-center justify-center gap-2" style={{ borderColor: isDark ? '#3a3a3a' : '#e5e7eb', color: isDark ? '#9ca3af' : '#6b7280' }}>
+                                                                <Eye className="w-4 h-4" />View Submitted Bill
+                                                            </button>
                                                         </>
                                                     )}
                                                     {application.billStatus === 'rejected' && (
@@ -948,8 +955,12 @@ export default function ViewMyApplicationModal({
                                                                     <p className="text-xs text-red-500">Create a new bill with updated amounts.</p>
                                                                 </div>
                                                             </div>
-                                                            <button onClick={() => setShowBillView(true)} className="w-full py-2 rounded-xl text-xs font-medium border" style={{ borderColor: isDark ? '#3a3a3a' : '#e5e7eb', color: isDark ? '#6b7280' : '#9ca3af' }}>👁️ View Rejected Bill</button>
-                                                            <button onClick={() => setShowBillModal(true)} className="w-full py-3 rounded-xl font-bold text-white flex items-center justify-center gap-2 transition-all" style={{ background: 'linear-gradient(135deg,#6366f1,#8b5cf6)' }}>🧾 Create New Bill</button>
+                                                            <button onClick={() => setShowBillView(true)} className="w-full py-2 rounded-xl text-xs font-medium border flex items-center justify-center gap-2" style={{ borderColor: isDark ? '#3a3a3a' : '#e5e7eb', color: isDark ? '#6b7280' : '#9ca3af' }}>
+                                                                <Eye className="w-4 h-4" />View Rejected Bill
+                                                            </button>
+                                                            <button onClick={() => setShowBillModal(true)} className="w-full py-3 rounded-xl font-bold text-white flex items-center justify-center gap-2 transition-all" style={{ background: 'linear-gradient(135deg,#6366f1,#8b5cf6)' }}>
+                                                                <Receipt className="w-4 h-4" />Create New Bill
+                                                            </button>
                                                         </>
                                                     )}
                                                 </div>
@@ -970,7 +981,7 @@ export default function ViewMyApplicationModal({
                                             {application.startJobStatus === 'completed' && (
                                                 <div className="space-y-3">
                                                     <div className="p-5 rounded-xl text-center space-y-2" style={{ background: 'linear-gradient(135deg,rgba(16,185,129,0.15),rgba(5,150,105,0.1))', border: '1px solid rgba(16,185,129,0.4)' }}>
-                                                        <p className="text-3xl">💰</p>
+                                                        <div className="flex justify-center"><IndianRupee className="w-10 h-10 text-green-500" /></div>
                                                         <p className="font-bold text-green-700 dark:text-green-400 text-lg">Payment Received!</p>
                                                         <p className="text-2xl font-black" style={{ color: isDark ? '#34d399' : '#059669' }}>₹{application.bill?.total?.toLocaleString('en-IN') ?? '–'}</p>
                                                         <p className="text-xs text-green-600 dark:text-green-500">Added to your wallet — check the Profile tab.</p>
@@ -980,7 +991,8 @@ export default function ViewMyApplicationModal({
                                                         className="w-full py-3 rounded-xl font-bold text-sm text-white flex items-center justify-center gap-2 transition-all"
                                                         style={{ background: 'linear-gradient(135deg,#4f46e5,#7c3aed)' }}
                                                     >
-                                                        🧾 View Receipt & Export PDF
+                                                        <Receipt className="w-4 h-4" />
+                                                        View Receipt & Export PDF
                                                     </button>
                                                 </div>
                                             )}
@@ -988,7 +1000,7 @@ export default function ViewMyApplicationModal({
                                             {/* GPS warning banner — tracking phases */}
                                             {(['active', 'arrived'] as string[]).includes(application.startJobStatus ?? '') && (
                                                 <div className="flex items-start gap-2 px-3 py-2 rounded-lg" style={{ background: 'linear-gradient(135deg,#f59e0b22,#f59e0b11)', border: '1px solid #f59e0b44' }}>
-                                                    <span className="text-base mt-0.5">📍</span>
+                                                    <MapPin className="w-4 h-4 text-amber-500 flex-shrink-0 mt-0.5" />
                                                     <p className="text-xs font-medium text-amber-700 dark:text-amber-300">Always keep your location ON for live tracking. Turning off GPS pauses tracking for the client.</p>
                                                 </div>
                                             )}
@@ -1000,7 +1012,9 @@ export default function ViewMyApplicationModal({
                                                         onClick={() => setShowTrackingMap(v => !v)}
                                                         className="w-full py-2.5 rounded-xl font-semibold text-sm transition-all flex items-center justify-center gap-2"
                                                         style={{ background: showTrackingMap ? (isDark ? '#1e3a8a' : '#dbeafe') : (isDark ? '#1a1a1a' : '#f3f4f6'), color: showTrackingMap ? (isDark ? '#93c5fd' : '#1d4ed8') : (isDark ? '#9ca3af' : '#6b7280') }}
-                                                    >🗺️ {showTrackingMap ? 'Hide Live Map' : 'View Live Tracking'}
+                                                    >
+                                                        <Map className="w-4 h-4" />
+                                                        {showTrackingMap ? 'Hide Live Map' : 'View Live Tracking'}
                                                     </button>
                                                     {showTrackingMap && (
                                                         <LiveTrackingMap
@@ -1019,7 +1033,9 @@ export default function ViewMyApplicationModal({
                                             {gpsError && (['active', 'arrived', 'meeting_requested', 'meeting_code_pending', 'working'] as string[]).includes(application.startJobStatus ?? '') && (
                                                 <div className="fixed inset-0 bg-black/70 z-[99999] flex items-center justify-center p-6">
                                                     <div className="rounded-2xl p-6 max-w-sm w-full text-center space-y-4" style={{ backgroundColor: isDark ? '#1c1c1c' : '#ffffff' }}>
-                                                        <div className="w-16 h-16 rounded-full flex items-center justify-center mx-auto" style={{ background: '#fef3c7' }}><span className="text-3xl">📍</span></div>
+                                                        <div className="w-16 h-16 rounded-full flex items-center justify-center mx-auto" style={{ background: '#fef3c7' }}>
+                                                            <MapPin className="w-8 h-8 text-amber-500" />
+                                                        </div>
                                                         <h3 className="text-lg font-bold" style={{ color: isDark ? '#fff' : '#111827' }}>Location Required</h3>
                                                         <p className="text-sm" style={{ color: isDark ? '#9ca3af' : '#6b7280' }}>Enable GPS and allow location permission to continue job tracking.</p>
                                                         <p className="text-xs text-red-500 break-words">{gpsError}</p>
@@ -1082,7 +1098,7 @@ export default function ViewMyApplicationModal({
                                                     className="w-full rounded-xl bg-green-600 disabled:bg-gray-400 text-white font-bold transition-colors flex items-center justify-center gap-2"
                                                     style={{ minHeight: 48 }}
                                                 >
-                                                    {codeSubmitting ? <Loader2 className="w-5 h-5 animate-spin" /> : '✓ Verify Code'}
+                                                    {codeSubmitting ? <Loader2 className="w-5 h-5 animate-spin" /> : <><CheckCircle className="w-4 h-4" />Verify Code</>}
                                                 </button>
                                             </div>
                                         </div>
