@@ -96,7 +96,7 @@ export default function ProfileSection({ user, isDark }: Props) {
                 if (snap.exists()) {
                     const d = snap.data()
                     setPhotoURL(d.photoURL || '')
-                    setDisplayName(d.kycData?.aadhaarName || d.name || '')
+                    setDisplayName(d['kycData.aadhaarName'] || d.kycData?.aadhaarName || '')
                     setAboutMe(d.aboutMe || '')
                     setAboutDraft(d.aboutMe || '')
                     setMemberSince(d.createdAt || null)
@@ -131,7 +131,7 @@ export default function ProfileSection({ user, isDark }: Props) {
             if (snap.exists()) {
                 const d = snap.data()
                 setWalletBalance(d.walletBalance || 0)
-                setDisplayName(d.kycData?.aadhaarName || d.name || '')
+                setDisplayName(d['kycData.aadhaarName'] || d.kycData?.aadhaarName || '')
             }
         })
         return () => unsub()

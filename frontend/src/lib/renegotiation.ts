@@ -129,7 +129,7 @@ export const respondToRenegotiation = async (
                 const userDoc = await getDoc(doc(dbInstance, 'users', application.userId))
                 if (userDoc.exists()) {
                     const userData = userDoc.data()
-                    applicantName = userData.name || 'Applicant'
+                    applicantName = userData['kycData.aadhaarName'] || userData.kycData?.aadhaarName || 'Applicant'
                 }
             } catch (error) {
                 console.warn('Could not fetch applicant name:', error)

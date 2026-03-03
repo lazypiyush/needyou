@@ -4,6 +4,8 @@ import { useState, useEffect } from 'react'
 import { useTheme } from 'next-themes'
 import { MapPin, User, Clock, Image as ImageIcon, Video, Trash2, Users, ChevronDown, Languages, XCircle } from 'lucide-react'
 import { Job, applyToJob, deleteJob, checkIfUserApplied } from '@/lib/auth'
+import { db } from '@/lib/firebase'
+import { doc, getDoc } from 'firebase/firestore'
 import { getCompressedImageUrl } from '@/lib/cloudinary'
 import { useAuth } from '@/context/AuthContext'
 import Image from 'next/image'
@@ -31,6 +33,18 @@ export default function JobCard({ job, onApply, onDelete, userLocation, highligh
     const [showMyApplication, setShowMyApplication] = useState(false)
     const [distance, setDistance] = useState<number | null>(null)
     const [captionExpanded, setCaptionExpanded] = useState(false)
+    const [posterName, setPosterName] = useState(job.userName || '')
+
+    // Live-fetch poster's aadhaarName so stored snapshots don't show old names
+    useEffect(() => {
+        if (user?.uid === job.userId) return
+        getDoc(doc(db, 'users', job.userId)).then(snap => {
+            if (snap.exists()) {
+                const d = snap.data()
+                setPosterName(d['kycData.aadhaarName'] || d.kycData?.aadhaarName || job.userName || '')
+            }
+        }).catch(() => { })
+    }, [job.userId, user?.uid, job.userName])
 
     // Translation states
     const [isTranslated, setIsTranslated] = useState(false)
@@ -399,7 +413,7 @@ export default function JobCard({ job, onApply, onDelete, userLocation, highligh
                 {/* Posted By */}
                 <div className="flex items-center gap-2 text-sm" style={{ color: isDark ? '#9ca3af' : '#6b7280' }}>
                     <User className="w-4 h-4" />
-                    <span>Posted by {isOwnJob ? 'You' : job.userName}</span>
+                    <span>Posted by {isOwnJob ? 'You' : (posterName || job.userName)}</span>
                 </div>
 
                 {/* Time */}
@@ -464,6 +478,7 @@ export default function JobCard({ job, onApply, onDelete, userLocation, highligh
                     jobId={job.id}
                     jobTitle={job.caption}
                     jobBudget={job.budget}
+                    jobPosterId={job.userId}
                     jobPosterName={job.userName}
                     onClose={() => setShowApplications(false)}
                 />

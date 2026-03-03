@@ -134,7 +134,7 @@ export default function AdminDashboardPage() {
             } else {
                 const d = snap.docs[0]
                 const data = d.data()
-                setWalletUser({ uid: d.id, name: data.kycData?.aadhaarName || data.name || 'User', email: data.email, balance: data.walletBalance || 0 })
+                setWalletUser({ uid: d.id, name: data['kycData.aadhaarName'] || data.kycData?.aadhaarName || 'User', email: data.email, balance: data.walletBalance || 0 })
             }
         } catch {
             setWalletMsg({ type: 'error', text: 'Search failed. Please try again.' })

@@ -5,7 +5,7 @@ import { createPortal } from 'react-dom'
 import { X, User, Clock, ChevronDown, ChevronUp, CheckCircle, XCircle, IndianRupee, MessageCircle, Loader2, MapPin, Wrench, Receipt, KeyRound, FileText, Map, Users } from 'lucide-react'
 import { getJobApplications } from '@/lib/auth'
 import { auth, db } from '@/lib/firebase'
-import { collection, onSnapshot, query, where } from 'firebase/firestore'
+import { collection, doc, getDoc, onSnapshot, query, where } from 'firebase/firestore'
 import { useTheme } from 'next-themes'
 import { renegotiateBudget } from '@/lib/renegotiation'
 import UserProfileSheet from './UserProfileSheet'
@@ -21,11 +21,12 @@ interface JobApplicationsModalProps {
     jobId: string
     jobTitle: string
     jobBudget: number | null
+    jobPosterId: string
     jobPosterName: string
     onClose: () => void
 }
 
-export default function JobApplicationsModal({ jobId, jobTitle, jobBudget, jobPosterName, onClose }: JobApplicationsModalProps) {
+export default function JobApplicationsModal({ jobId, jobTitle, jobBudget, jobPosterId, jobPosterName, onClose }: JobApplicationsModalProps) {
     const { theme, systemTheme } = useTheme()
     const [applications, setApplications] = useState<any[]>([])
     const [loading, setLoading] = useState(true)
@@ -55,6 +56,19 @@ export default function JobApplicationsModal({ jobId, jobTitle, jobBudget, jobPo
     const [paymentLoading, setPaymentLoading] = useState<Record<string, boolean>>({})
     // Other Applications tab - only visible after someone is hired
     const [showOtherApps, setShowOtherApps] = useState(false)
+    const [applicantNames, setApplicantNames] = useState<Record<string, string>>({})
+    const [livePosterName, setLivePosterName] = useState<string>('')
+
+    // Live-fetch job poster's aadhaarName
+    useEffect(() => {
+        if (!jobPosterId) return
+        getDoc(doc(db, 'users', jobPosterId)).then(snap => {
+            if (snap.exists()) {
+                const d = snap.data()
+                setLivePosterName(d['kycData.aadhaarName'] || d.kycData?.aadhaarName || '')
+            }
+        }).catch(() => { })
+    }, [jobPosterId])
 
     useEffect(() => {
         setMounted(true)
@@ -72,6 +86,18 @@ export default function JobApplicationsModal({ jobId, jobTitle, jobBudget, jobPo
             const apps = snap.docs.map(d => ({ id: d.id, ...d.data() }))
             setApplications(apps)
             setLoading(false)
+            // Fetch aadhaarName for each unique applicant
+            const uniqueUserIds = [...new Set(apps.map((a: any) => a.userId).filter(Boolean))]
+            uniqueUserIds.forEach(async (uid: string) => {
+                try {
+                    const userSnap = await getDoc(doc(db, 'users', uid))
+                    if (userSnap.exists()) {
+                        const d = userSnap.data()
+                        const name = d['kycData.aadhaarName'] || d.kycData?.aadhaarName || ''
+                        if (name) setApplicantNames(prev => ({ ...prev, [uid]: name }))
+                    }
+                } catch { }
+            })
             // Start tick if any app has a pending code or meeting code
             const hasPending = apps.some((a: any) =>
                 (a.startJobStatus === 'code_pending' && a.startJobCodeExpiry > Date.now()) ||
@@ -106,7 +132,7 @@ export default function JobApplicationsModal({ jobId, jobTitle, jobBudget, jobPo
     const handleAcceptStart = async (app: any) => {
         try {
             setAcceptingId(app.id)
-            await acceptStartRequest(app.id, jobId, jobTitle, app.userId, jobPosterName)
+            await acceptStartRequest(app.id, jobId, jobTitle, app.userId, livePosterName || jobPosterName)
         } catch (err) {
             console.error(err)
             alert('Failed to accept start request. Please try again.')
@@ -129,7 +155,7 @@ export default function JobApplicationsModal({ jobId, jobTitle, jobBudget, jobPo
 
     const handleRejectBill = async (app: any) => {
         try {
-            await rejectBill(app.id, app.userId, jobId, jobTitle, jobPosterName)
+            await rejectBill(app.id, app.userId, jobId, jobTitle, livePosterName || jobPosterName)
         } catch (err) {
             console.error(err)
             alert('Failed to reject bill.')
@@ -184,7 +210,7 @@ export default function JobApplicationsModal({ jobId, jobTitle, jobBudget, jobPo
                             await failPayment(app.id)
                             return
                         }
-                        await completePayment(app.id, jobId, app.userId, total, response.razorpay_payment_id, jobPosterName, jobTitle)
+                        await completePayment(app.id, jobId, app.userId, total, response.razorpay_payment_id, livePosterName || jobPosterName, jobTitle)
                         setShowBillReviewForApp(null)
                     } catch (e) {
                         console.error('Payment completion error', e)
@@ -375,7 +401,7 @@ export default function JobApplicationsModal({ jobId, jobTitle, jobBudget, jobPo
                                     style={{ background: 'linear-gradient(135deg,rgba(16,185,129,0.15),rgba(5,150,105,0.08))', border: '1.5px solid rgba(16,185,129,0.5)' }}>
                                     <CheckCircle className="w-5 h-5 text-green-600 flex-shrink-0" />
                                     <div className="flex-1">
-                                        <p className="text-sm font-bold text-green-700 dark:text-green-400">{hiredApp.userName} — Hired</p>
+                                        <p className="text-sm font-bold text-green-700 dark:text-green-400">{applicantNames[hiredApp.userId] || hiredApp.userName} — Hired</p>
                                         <p className="text-xs text-green-600 dark:text-green-500">This applicant has been selected for the job</p>
                                     </div>
                                     <span className="px-2 py-0.5 rounded-full text-xs font-bold bg-green-600 text-white">Hired</span>
@@ -420,10 +446,10 @@ export default function JobApplicationsModal({ jobId, jobTitle, jobBudget, jobPo
                                                             title="View profile"
                                                         >
                                                             {app.userPhotoURL ? (
-                                                                <img src={getCompressedImageUrl(app.userPhotoURL)} alt={app.userName} className="w-full h-full object-cover" />
+                                                                <img src={getCompressedImageUrl(app.userPhotoURL)} alt={applicantNames[app.userId] || app.userName} className="w-full h-full object-cover" />
                                                             ) : (
                                                                 <span style={{ color: isDark ? '#60a5fa' : '#2563eb' }}>
-                                                                    {app.userName?.[0]?.toUpperCase() || '?'}
+                                                                    {(applicantNames[app.userId] || app.userName)?.[0]?.toUpperCase() || '?'}
                                                                 </span>
                                                             )}
                                                         </button>
@@ -435,7 +461,7 @@ export default function JobApplicationsModal({ jobId, jobTitle, jobBudget, jobPo
                                                                 className="font-semibold hover:underline text-left"
                                                                 style={{ color: isDark ? '#ffffff' : '#111827' }}
                                                             >
-                                                                {app.userName}
+                                                                {applicantNames[app.userId] || app.userName}
                                                             </button>
                                                             <button
                                                                 onClick={(e) => {
@@ -444,7 +470,7 @@ export default function JobApplicationsModal({ jobId, jobTitle, jobBudget, jobPo
                                                                         jobId,
                                                                         jobTitle,
                                                                         otherUserId: app.userId,
-                                                                        otherUserName: app.userName,
+                                                                        otherUserName: applicantNames[app.userId] || app.userName,
                                                                         otherUserEmail: app.userEmail,
                                                                         otherUserPhone: app.userPhone,
                                                                     })
@@ -667,7 +693,7 @@ export default function JobApplicationsModal({ jobId, jobTitle, jobBudget, jobPo
                                                                                         <Receipt className="w-4 h-4 text-amber-600 flex-shrink-0" />
                                                                                         <div>
                                                                                             <p className="text-sm font-bold text-amber-700 dark:text-amber-300">Bill received — ₹{app.bill?.total?.toLocaleString('en-IN') ?? '–'}</p>
-                                                                                            <p className="text-xs text-amber-600">{app.userName?.split(' ')[0]} submitted a bill. Review and pay.</p>
+                                                                                            <p className="text-xs text-amber-600">{(applicantNames[app.userId] || app.userName)?.split(' ')[0]} submitted a bill. Review and pay.</p>
                                                                                         </div>
                                                                                     </div>
                                                                                     <button onClick={() => setShowBillReviewForApp(app.id)} className="w-full py-2 rounded-lg text-sm font-bold text-white flex items-center justify-center gap-2" style={{ background: 'linear-gradient(135deg,#6366f1,#8b5cf6)' }}><FileText className="w-4 h-4" />Review &amp; Pay Bill</button>
@@ -900,7 +926,7 @@ export default function JobApplicationsModal({ jobId, jobTitle, jobBudget, jobPo
                                                             Why They're Suitable
                                                         </h4>
                                                         <p
-                                                            className="text-sm leading-relaxed p-3 rounded-lg"
+                                                            className="text-sm leading-relaxed p-3 rounded-lg break-words overflow-wrap-anywhere"
                                                             style={{
                                                                 backgroundColor: isDark ? '#1a1a1a' : '#ffffff',
                                                                 color: isDark ? '#d1d5db' : '#374151',
@@ -966,11 +992,11 @@ export default function JobApplicationsModal({ jobId, jobTitle, jobBudget, jobPo
                                                             <div className="w-9 h-9 rounded-full overflow-hidden flex items-center justify-center font-bold text-sm"
                                                                 style={{ backgroundColor: isDark ? '#3a3a3a' : '#e5e7eb', color: isDark ? '#9ca3af' : '#6b7280' }}>
                                                                 {app.userPhotoURL
-                                                                    ? <img src={app.userPhotoURL} alt={app.userName} className="w-full h-full object-cover" />
-                                                                    : app.userName?.[0]?.toUpperCase() || '?'}
+                                                                    ? <img src={app.userPhotoURL} alt={applicantNames[app.userId] || app.userName} className="w-full h-full object-cover" />
+                                                                    : (applicantNames[app.userId] || app.userName)?.[0]?.toUpperCase() || '?'}
                                                             </div>
                                                             <div>
-                                                                <p className="text-sm font-semibold" style={{ color: isDark ? '#e5e7eb' : '#111827' }}>{app.userName}</p>
+                                                                <p className="text-sm font-semibold" style={{ color: isDark ? '#e5e7eb' : '#111827' }}>{applicantNames[app.userId] || app.userName}</p>
                                                                 <p className="text-xs" style={{ color: isDark ? '#6b7280' : '#9ca3af' }}>Applied {new Date(app.appliedAt).toLocaleDateString()}</p>
                                                             </div>
                                                         </div>
@@ -1022,7 +1048,7 @@ export default function JobApplicationsModal({ jobId, jobTitle, jobBudget, jobPo
                         onClose={() => setShowBillReviewForApp(null)}
                         bill={app.bill}
                         billStatus={app.billStatus}
-                        workerName={app.userName}
+                        workerName={applicantNames[app.userId] || app.userName}
                         jobTitle={jobTitle}
                         onAccept={() => handleAcceptBillAndPay(app)}
                         onReject={() => handleRejectBill(app).then(() => setShowBillReviewForApp(null))}
@@ -1041,7 +1067,7 @@ export default function JobApplicationsModal({ jobId, jobTitle, jobBudget, jobPo
                         onClose={() => setShowReceiptForApp(null)}
                         bill={receiptApp.bill}
                         jobTitle={jobTitle}
-                        workerName={receiptApp.userName}
+                        workerName={applicantNames[receiptApp.userId] || receiptApp.userName}
                         clientName={jobPosterName}
                         paymentId={receiptApp.razorpayPaymentId}
                         paidAt={receiptApp.paidAt}

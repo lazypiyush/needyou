@@ -67,7 +67,8 @@ function StatusBadge({ status }: { status: string }) {
     )
 }
 
-function RequestCard({ r, isDark, photoURL }: { r: WithdrawalRequest; isDark: boolean; photoURL?: string }) {
+function RequestCard({ r, isDark, photoURL, aadhaarName }: { r: WithdrawalRequest; isDark: boolean; photoURL?: string; aadhaarName?: string }) {
+    const displayName = aadhaarName || r.userName || r.uid
     const [expanded, setExpanded] = useState(false)
     const [processing, setProcessing] = useState(false)
     const [uploading, setUploading] = useState(false)
@@ -160,11 +161,11 @@ function RequestCard({ r, isDark, photoURL }: { r: WithdrawalRequest; isDark: bo
                         <img src={photoURL} alt={r.userName} className="w-8 h-8 rounded-full object-cover flex-shrink-0 border border-white/20" />
                     ) : (
                         <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center text-white font-bold text-sm flex-shrink-0">
-                            {(r.userName || r.uid).charAt(0).toUpperCase()}
+                            {(displayName).charAt(0).toUpperCase()}
                         </div>
                     )}
                     <div>
-                        <p className="font-bold text-sm" style={{ color: textPri }}>{r.userName || r.uid}</p>
+                        <p className="font-bold text-sm" style={{ color: textPri }}>{displayName}</p>
                         {r.createdAt?.toDate && (
                             <p className="text-xs" style={{ color: textSec }}>
                                 {r.createdAt.toDate().toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' })}
@@ -343,7 +344,7 @@ export default function AccountantDashboardPage() {
     const [username, setUsername] = useState('')
     const [mounted, setMounted] = useState(false)
     const [requests, setRequests] = useState<WithdrawalRequest[]>([])
-    const [userProfiles, setUserProfiles] = useState<Record<string, { email?: string; phone?: string; photoURL?: string }>>({})
+    const [userProfiles, setUserProfiles] = useState<Record<string, { email?: string; phone?: string; photoURL?: string; aadhaarName?: string }>>({})
     const [searchQuery, setSearchQuery] = useState('')
     const [mainTab, setMainTab] = useState<'pending' | 'history'>('pending')
     const router = useRouter()
@@ -375,10 +376,10 @@ export default function AccountantDashboardPage() {
             // Firestore 'in' query supports up to 30 items
             const chunks: string[][] = []
             for (let i = 0; i < uids.length; i += 30) chunks.push(uids.slice(i, i + 30))
-            const profiles: Record<string, { email?: string; phone?: string; photoURL?: string }> = {}
+            const profiles: Record<string, { email?: string; phone?: string; photoURL?: string; aadhaarName?: string }> = {}
             await Promise.all(chunks.map(async chunk => {
                 const snap2 = await getDocs(query(collection(db, 'users'), where('__name__', 'in', chunk)))
-                snap2.forEach(d => { profiles[d.id] = { email: d.data().email, phone: d.data().phoneNumber, photoURL: d.data().photoURL } })
+                snap2.forEach(d => { const ud = d.data(); profiles[d.id] = { email: ud.email, phone: ud.phoneNumber, photoURL: ud.photoURL, aadhaarName: ud['kycData.aadhaarName'] || ud.kycData?.aadhaarName || '' } })
             }))
             setUserProfiles(profiles)
         })
@@ -397,13 +398,13 @@ export default function AccountantDashboardPage() {
     const border = isDark ? 'rgba(255,255,255,0.08)' : 'rgba(229,231,235,0.8)'
 
     // Unique users for filter
-    const uniqueUsers = Array.from(new Map(requests.map(r => [r.uid, r.userName || r.uid])).entries())
+    const uniqueUsers = Array.from(new Map(requests.map(r => [r.uid, userProfiles[r.uid]?.aadhaarName || r.userName || r.uid])).entries())
 
     const filtered = requests.filter(r => {
         const q = searchQuery.trim().toLowerCase()
         const profile = userProfiles[r.uid] || {}
         const matchUser = !q || (
-            (r.userName || '').toLowerCase().includes(q) ||
+            (userProfiles[r.uid]?.aadhaarName || r.userName || '').toLowerCase().includes(q) ||
             r.uid.toLowerCase().includes(q) ||
             (profile.email || '').toLowerCase().includes(q) ||
             (profile.phone || '').toLowerCase().includes(q)
@@ -506,7 +507,7 @@ export default function AccountantDashboardPage() {
                         </motion.div>
                     ) : (
                         <div className="space-y-4">
-                            {filtered.map(r => <RequestCard key={r.id} r={r} isDark={isDark} photoURL={userProfiles[r.uid]?.photoURL} />)}
+                            {filtered.map(r => <RequestCard key={r.id} r={r} isDark={isDark} photoURL={userProfiles[r.uid]?.photoURL} aadhaarName={userProfiles[r.uid]?.aadhaarName} />)}
                         </div>
                     )}
                 </AnimatePresence>

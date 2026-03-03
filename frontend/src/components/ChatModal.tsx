@@ -65,6 +65,7 @@ export default function ChatModal({
     const recordingTimerRef = useRef<NodeJS.Timeout | null>(null)
     const recordingStartTimeRef = useRef<number>(0)
     const messageAudioRefs = useRef<Record<string, HTMLAudioElement>>({})
+    const [senderName, setSenderName] = useState('User')
 
     const currentTheme = theme === 'system' ? systemTheme : theme
     const isDark = currentTheme === 'dark'
@@ -72,6 +73,21 @@ export default function ChatModal({
     useEffect(() => {
         setMounted(true)
     }, [])
+
+    // Fetch current user's aadhaarName for message sender name
+    useEffect(() => {
+        if (!user) return
+        import('@/lib/firebase').then(({ db }) => {
+            import('firebase/firestore').then(({ getDoc, doc }) => {
+                getDoc(doc(db, 'users', user.uid)).then(snap => {
+                    if (snap.exists()) {
+                        const d = snap.data()
+                        setSenderName(d['kycData.aadhaarName'] || d.kycData?.aadhaarName || 'User')
+                    }
+                })
+            })
+        })
+    }, [user])
 
     // Back button closes modal (Android WebView)
     useModalHistory(!fullPage, onClose)
@@ -85,7 +101,7 @@ export default function ChatModal({
                         jobId,
                         jobTitle,
                         user.uid,
-                        user.displayName || 'User',
+                        senderName,
                         user.email || '',
                         otherUserId,
                         otherUserName,
@@ -156,7 +172,7 @@ export default function ChatModal({
             await sendMessage(
                 conversationId,
                 user.uid,
-                user.displayName || 'User',
+                senderName,
                 messageToSend
             )
         } catch (error) {
@@ -242,7 +258,7 @@ export default function ChatModal({
                 await sendMediaMessage(
                     conversationId,
                     user.uid,
-                    user.displayName || 'User',
+                    senderName,
                     mediaUrl,
                     item.type,
                     fileName,
@@ -403,7 +419,7 @@ export default function ChatModal({
             await sendMediaMessage(
                 conversationId,
                 user.uid,
-                user.displayName || 'User',
+                senderName,
                 mediaUrl,
                 'audio',
                 fileName,

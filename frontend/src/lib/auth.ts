@@ -409,7 +409,7 @@ export const updateKycStatus = async (
       updateData.kycVerified = true
     }
 
-    await setDoc(doc(db, 'users', userId), updateData, { merge: true })
+    await updateDoc(doc(db, 'users', userId), updateData)
     console.log(`✅ KYC step '${step}' updated for user:`, userId)
   } catch (error: any) {
     console.error('❌ Update KYC Status Error:', error)
@@ -703,7 +703,7 @@ export const getUserByPhoneNumber = async (phoneNumber: string) => {
     return {
       uid: userData.uid,
       email: userData.email,
-      name: userData.name,
+      name: userData['kycData.aadhaarName'] || userData.kycData?.aadhaarName || '',
       emailVerified: userData.emailVerified || false,
       phoneVerified: userData.phoneVerified || false,
       profileComplete: userData.profileComplete || false
@@ -1158,7 +1158,7 @@ export const createJob = async (userId: string, jobData: CreateJobData): Promise
     const job: Job = {
       id: jobId,
       userId,
-      userName: userData.kycData?.aadhaarName || userData.name || 'User',
+      userName: userData['kycData.aadhaarName'] || userData.kycData?.aadhaarName || 'User',
       userEmail: userData.email || '',
       caption: jobData.caption,
       budget: jobData.budget,
@@ -1287,7 +1287,7 @@ export const applyToJob = async (
     const applicationData: any = {
       jobId,
       userId: userId,
-      userName: userData?.kycData?.aadhaarName || userData?.name || 'User',
+      userName: userData?.['kycData.aadhaarName'] || userData?.kycData?.aadhaarName || 'User',
       userEmail: userData?.email || '',
       userPhone: userData?.phoneNumber || '',
       description,
@@ -1307,7 +1307,7 @@ export const applyToJob = async (
     // Create notification for job poster
     try {
       const { createNotification } = await import('./notifications')
-      const workerName = userData?.kycData?.aadhaarName || userData?.name || 'Someone'
+      const workerName = userData?.['kycData.aadhaarName'] || userData?.kycData?.aadhaarName || 'Someone'
       const notificationMessage = budgetSatisfied
         ? `${workerName} applied to your job "${job.caption}"`
         : `${workerName} applied with counter-offer of ₹${counterOffer?.toLocaleString()} for "${job.caption}"`

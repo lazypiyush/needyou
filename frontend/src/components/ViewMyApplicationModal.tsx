@@ -46,6 +46,7 @@ export default function ViewMyApplicationModal({
     const [mounted, setMounted] = useState(false)
     const [jobPosterPhone, setJobPosterPhone] = useState<string | undefined>(undefined)
     const [jobPosterAvatar, setJobPosterAvatar] = useState<string | null>(null)
+    const [livePosterName, setLivePosterName] = useState<string>('')
     const [viewingProfileId, setViewingProfileId] = useState<string | null>(null)
     const [selfAvatar, setSelfAvatar] = useState<string | null>(null)
     const [selfName, setSelfName] = useState<string>('')
@@ -214,6 +215,7 @@ export default function ViewMyApplicationModal({
                 if (userDoc.exists()) {
                     const userData = userDoc.data()
                     setJobPosterPhone(userData?.phoneNumber)
+                    setLivePosterName(userData?.['kycData.aadhaarName'] || userData?.kycData?.aadhaarName || jobPosterName || '')
                     if (userData?.photoURL) {
                         setJobPosterAvatar(getCompressedImageUrl(userData.photoURL))
                     }
@@ -233,7 +235,7 @@ export default function ViewMyApplicationModal({
                 const userDoc = await getDoc(doc(db, 'users', user.uid))
                 if (userDoc.exists()) {
                     const userData = userDoc.data()
-                    setSelfName(userData?.kycData?.aadhaarName || userData?.name || '')
+                    setSelfName(userData?.['kycData.aadhaarName'] || userData?.kycData?.aadhaarName || '')
                     if (userData?.photoURL) {
                         setSelfAvatar(getCompressedImageUrl(userData.photoURL))
                     }
@@ -373,7 +375,7 @@ export default function ViewMyApplicationModal({
         await submitBill(
             application.id, jobId, items, total,
             jobPosterId,
-            application.userName || user.displayName || 'Worker',
+            selfName || application.userName || 'Worker',
             jobTitle
         )
         setShowBillModal(false)
@@ -478,11 +480,11 @@ export default function ViewMyApplicationModal({
                                                 className="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 text-sm font-bold"
                                                 style={{ backgroundColor: isDark ? '#3a3a3a' : '#e5e7eb', color: isDark ? '#ffffff' : '#374151' }}
                                             >
-                                                {jobPosterName?.[0]?.toUpperCase() || '?'}
+                                                {(livePosterName || jobPosterName)?.[0]?.toUpperCase() || '?'}
                                             </div>
                                         )}
                                         <div className="text-left min-w-0">
-                                            <p className="font-semibold truncate" style={{ color: isDark ? '#ffffff' : '#111827' }}>{jobPosterName}</p>
+                                            <p className="font-semibold truncate" style={{ color: isDark ? '#ffffff' : '#111827' }}>{livePosterName || jobPosterName}</p>
                                             <p className="text-xs" style={{ color: isDark ? '#6b7280' : '#9ca3af' }}>Tap to view profile</p>
                                         </div>
                                     </button>
@@ -491,7 +493,7 @@ export default function ViewMyApplicationModal({
                                             jobId,
                                             jobTitle,
                                             otherUserId: jobPosterId,
-                                            otherUserName: jobPosterName,
+                                            otherUserName: livePosterName || jobPosterName,
                                             otherUserEmail: jobPosterEmail,
                                             otherUserPhone: jobPosterPhone,
                                         })}
@@ -714,7 +716,7 @@ export default function ViewMyApplicationModal({
                                         Why You're Suitable
                                     </h3>
                                     <p
-                                        className="text-sm leading-relaxed p-3 rounded-lg"
+                                        className="text-sm leading-relaxed p-3 rounded-lg break-words overflow-wrap-anywhere"
                                         style={{
                                             backgroundColor: isDark ? '#1a1a1a' : '#ffffff',
                                             color: isDark ? '#d1d5db' : '#374151',
@@ -1159,8 +1161,8 @@ export default function ViewMyApplicationModal({
                     onClose={() => setShowPaidReceipt(false)}
                     bill={application.bill as any}
                     jobTitle={jobTitle}
-                    workerName={selfName || user?.displayName || undefined}
-                    clientName={jobPosterName}
+                    workerName={selfName || undefined}
+                    clientName={livePosterName || jobPosterName}
                     paymentId={application.razorpayPaymentId}
                     paidAt={application.paidAt}
                 />,
