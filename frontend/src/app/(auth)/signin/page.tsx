@@ -18,7 +18,8 @@ import {
 } from '@/lib/auth'
 import { useAuth } from '@/context/AuthContext'
 import { ConfirmationResult } from 'firebase/auth'
-import { auth } from '@/lib/firebase'
+import { auth, db } from '@/lib/firebase'
+import { collection, query, where, getDocs } from 'firebase/firestore'
 import Link from 'next/link'
 import Image from 'next/image'
 import ThemeToggle from '@/components/ThemeToggle'
@@ -216,11 +217,9 @@ export default function SignInPage() {
       } else if (code === 'auth/user-not-found') {
         setError('No account found with this email address. Please sign up first.')
       } else if (code === 'auth/invalid-credential') {
-        // Modern Firebase merges wrong-email and wrong-password into one code.
-        // Check Firestore to give a specific message.
+        // Modern Firebase uses this for both wrong email AND wrong password.
+        // Query Firestore to give a specific, helpful message.
         try {
-          const { collection, query, where, getDocs } = await import('firebase/firestore')
-          const { db } = await import('@/lib/firebase')
           const q = query(collection(db!, 'users'), where('email', '==', email))
           const snap = await getDocs(q)
           if (snap.empty) {
