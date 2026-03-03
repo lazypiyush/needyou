@@ -53,6 +53,8 @@ export default function JobApplicationsModal({ jobId, jobTitle, jobBudget, jobPo
     const [showBillReviewForApp, setShowBillReviewForApp] = useState<string | null>(null)
     const [showReceiptForApp, setShowReceiptForApp] = useState<string | null>(null)
     const [paymentLoading, setPaymentLoading] = useState<Record<string, boolean>>({})
+    // Other Applications tab - only visible after someone is hired
+    const [showOtherApps, setShowOtherApps] = useState(false)
 
     useEffect(() => {
         setMounted(true)
@@ -308,6 +310,11 @@ export default function JobApplicationsModal({ jobId, jobTitle, jobBudget, jobPo
 
     if (!mounted) return null
 
+    // ── Compute hired state before JSX ──
+    const hiredApp = applications.find((a: any) => a.status === 'hired' || a.negotiationStatus === 'accepted')
+    const isJobFilled = !!hiredApp
+    const otherApps = applications.filter((a: any) => a.id !== hiredApp?.id)
+
     const modalContent = (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[9999] flex items-center justify-center p-4"
             onTouchStart={e => e.stopPropagation()} onTouchEnd={e => e.stopPropagation()} onTouchMove={e => e.stopPropagation()}>
@@ -361,36 +368,39 @@ export default function JobApplicationsModal({ jobId, jobTitle, jobBudget, jobPo
                         </div>
                     ) : (
                         <div className="space-y-4">
-                            {/* Derive filled state from accepted application */}
-                            {(() => {
-                                const acceptedApp = applications.find((a: any) => a.status === 'hired' || a.negotiationStatus === 'accepted')
-                                const isJobFilled = !!acceptedApp
-                                return (
-                                    <>
-                                        {isJobFilled && (
-                                            <div className="p-3 rounded-xl flex items-center gap-2 bg-green-50 dark:bg-green-900/20 border border-green-300 dark:border-green-700">
-                                                <CheckCircle className="w-5 h-5 text-green-600 flex-shrink-0" />
-                                                <p className="text-sm font-semibold text-green-700 dark:text-green-400">
-                                                    Job filled — {acceptedApp.userName} was hired
-                                                </p>
-                                            </div>
-                                        )}
-                                        <p className="text-sm font-medium" style={{ color: isDark ? '#9ca3af' : '#6b7280' }}>
-                                            {applications.length} application{applications.length !== 1 ? 's' : ''}
-                                        </p>
-                                    </>
-                                )
-                            })()}
 
-                            {applications.map((app) => {
+                            {/* ── Hired banner — pinned at top when job is filled ── */}
+                            {isJobFilled && hiredApp && (
+                                <div className="flex items-center gap-2 px-3 py-2.5 rounded-xl"
+                                    style={{ background: 'linear-gradient(135deg,rgba(16,185,129,0.15),rgba(5,150,105,0.08))', border: '1.5px solid rgba(16,185,129,0.5)' }}>
+                                    <CheckCircle className="w-5 h-5 text-green-600 flex-shrink-0" />
+                                    <div className="flex-1">
+                                        <p className="text-sm font-bold text-green-700 dark:text-green-400">✅ {hiredApp.userName} is hired</p>
+                                        <p className="text-xs text-green-600 dark:text-green-500">Job filled — this applicant was selected</p>
+                                    </div>
+                                    <span className="px-2 py-0.5 rounded-full text-xs font-bold bg-green-600 text-white">Hired</span>
+                                </div>
+                            )}
+
+                            {/* ── Application list: hired first, then others ── */}
+                            {/* Sort: hired app first, rest after; or flat list if not filled */}
+                            {(isJobFilled
+                                ? [hiredApp!, ...otherApps]  // hired pinned to top
+                                : applications
+                            ).map((app) => {
                                 const isExpanded = expandedId === app.id
+                                const isHiredCard = isJobFilled && app.id === hiredApp?.id
+                                const isOtherCard = isJobFilled && !isHiredCard
+                                // Hide other apps cards until tab is opened
+                                if (isOtherCard && !showOtherApps) return null
+
                                 return (
                                     <div
                                         key={app.id}
-                                        className="rounded-xl border overflow-hidden transition-all"
+                                        className={`rounded-xl border${isHiredCard ? '-2' : ''} overflow-hidden transition-all`}
                                         style={{
-                                            backgroundColor: isDark ? '#2a2a2a' : '#f9fafb',
-                                            borderColor: isDark ? '#3a3a3a' : '#e5e7eb',
+                                            backgroundColor: isHiredCard ? (isDark ? '#0f2a1f' : '#f0fdf4') : (isDark ? '#2a2a2a' : '#f9fafb'),
+                                            borderColor: isHiredCard ? '#16a34a' : (isDark ? '#3a3a3a' : '#e5e7eb'),
                                         }}
                                     >
                                         {/* Main Info - Always Visible */}
@@ -888,6 +898,28 @@ export default function JobApplicationsModal({ jobId, jobTitle, jobBudget, jobPo
                                     </div>
                                 )
                             })}
+
+                            {/* ── Other Applications tab — only after hire ── */}
+                            {isJobFilled && otherApps.length > 0 && (
+                                <button
+                                    onClick={() => setShowOtherApps(v => !v)}
+                                    className="w-full flex items-center justify-between px-4 py-2.5 rounded-xl border transition-all"
+                                    style={{
+                                        backgroundColor: showOtherApps ? (isDark ? '#1e1e2e' : '#eff6ff') : (isDark ? '#1a1a1a' : '#f9fafb'),
+                                        borderColor: showOtherApps ? (isDark ? '#4b5cf6' : '#3b82f6') : (isDark ? '#2a2a2a' : '#e5e7eb'),
+                                        color: isDark ? '#9ca3af' : '#6b7280',
+                                    }}
+                                >
+                                    <span className="text-sm font-semibold flex items-center gap-2">
+                                        📋 Other Applications
+                                        <span className="px-1.5 py-0.5 rounded-full text-xs font-bold"
+                                            style={{ backgroundColor: isDark ? '#2a2a2a' : '#e5e7eb', color: isDark ? '#d1d5db' : '#374151' }}>
+                                            {otherApps.length}
+                                        </span>
+                                    </span>
+                                    <span className="text-xs">{showOtherApps ? '▲ Hide' : '▼ Show'}</span>
+                                </button>
+                            )}
                         </div>
                     )}
                 </div>
