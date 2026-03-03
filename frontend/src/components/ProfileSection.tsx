@@ -52,7 +52,7 @@ export default function ProfileSection({ user, isDark }: Props) {
 
     // Profile data
     const [photoURL, setPhotoURL] = useState('')
-    const [displayName, setDisplayName] = useState(user.displayName || '')
+    const [displayName, setDisplayName] = useState('')
     const [aboutMe, setAboutMe] = useState('')
     const [editingAbout, setEditingAbout] = useState(false)
     const [aboutDraft, setAboutDraft] = useState('')
@@ -128,7 +128,11 @@ export default function ProfileSection({ user, isDark }: Props) {
     // ── Real-time wallet balance listener ────────────────────────────────────
     useEffect(() => {
         const unsub = onSnapshot(doc(db, 'users', user.uid), snap => {
-            if (snap.exists()) setWalletBalance(snap.data().walletBalance || 0)
+            if (snap.exists()) {
+                const d = snap.data()
+                setWalletBalance(d.walletBalance || 0)
+                setDisplayName(d.kycData?.aadhaarName || d.name || '')
+            }
         })
         return () => unsub()
     }, [user.uid])
