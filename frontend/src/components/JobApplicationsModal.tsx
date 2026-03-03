@@ -465,7 +465,7 @@ export default function JobApplicationsModal({ jobId, jobTitle, jobBudget, jobPo
                                                     </div>
                                                 </div>
 
-                                                <div className="flex flex-col items-end gap-2">
+                                                <div className="flex flex-col items-end gap-1.5">
                                                     <span
                                                         className="px-3 py-1 rounded-full text-xs font-medium"
                                                         style={{
@@ -475,6 +475,23 @@ export default function JobApplicationsModal({ jobId, jobTitle, jobBudget, jobPo
                                                     >
                                                         {app.status}
                                                     </span>
+                                                    {/* ── Single hire button in header top-right ── */}
+                                                    {!isJobFilled &&
+                                                        app.status !== 'hired' &&
+                                                        app.status !== 'closed' &&
+                                                        (app.budgetSatisfied || app.negotiationStatus === 'accepted') && (
+                                                            <button
+                                                                onClick={(e) => {
+                                                                    e.stopPropagation()
+                                                                    handleHire(app, app.currentOffer ?? app.counterOffer ?? jobBudget ?? undefined)
+                                                                }}
+                                                                disabled={negotiating}
+                                                                className="px-3 py-1 bg-green-600 hover:bg-green-700 disabled:bg-gray-400 text-white rounded-full text-xs font-bold transition-colors flex items-center gap-1"
+                                                            >
+                                                                <CheckCircle className="w-3 h-3" />
+                                                                {negotiating ? '...' : `Hire`}
+                                                            </button>
+                                                        )}
                                                     {isExpanded ? (
                                                         <ChevronUp className="w-5 h-5" style={{ color: isDark ? '#9ca3af' : '#6b7280' }} />
                                                     ) : (
@@ -771,18 +788,7 @@ export default function JobApplicationsModal({ jobId, jobTitle, jobBudget, jobPo
                                                             if (jobFilled) return null
                                                             return (
                                                                 <>
-                                                                    {/* Hire button for budget-satisfied applicants */}
-                                                                    {app.budgetSatisfied && (
-                                                                        <div className="mt-3">
-                                                                            <button
-                                                                                onClick={() => handleHire(app, jobBudget ?? undefined)}
-                                                                                disabled={negotiating}
-                                                                                className="w-full px-4 py-2 bg-green-600 hover:bg-green-700 disabled:bg-gray-400 text-white rounded-lg font-semibold transition-colors"
-                                                                            >
-                                                                                {negotiating ? 'Processing...' : `Hire ${app.userName.split(' ')[0]}`}
-                                                                            </button>
-                                                                        </div>
-                                                                    )}
+                                                                    {/* Hire button for budget-satisfied applicants — now in card header, skip here */}
 
                                                                     {/* Renegotiation actions for counter-offer applicants */}
                                                                     {!app.budgetSatisfied && app.counterOffer &&
@@ -853,24 +859,6 @@ export default function JobApplicationsModal({ jobId, jobTitle, jobBudget, jobPo
                                                                 </>
                                                             )
                                                         })()}
-
-                                                        {/* ── Hire button shown AFTER negotiation is accepted (price agreed but not yet hired) ── */}
-                                                        {app.status !== 'hired' && app.status !== 'closed' && app.negotiationStatus === 'accepted' && !applications.some((a: any) => a.status === 'hired') && (
-                                                            <div className="mt-3">
-                                                                <div className="flex items-center gap-2 p-2 mb-2 rounded-lg" style={{ background: 'rgba(16,185,129,0.1)', border: '1px solid rgba(16,185,129,0.3)' }}>
-                                                                    <CheckCircle className="w-4 h-4 text-green-600" />
-                                                                    <span className="text-sm font-semibold text-green-700 dark:text-green-400">Price agreed — ₹{(app.currentOffer ?? app.counterOffer)?.toLocaleString()}. Ready to hire?</span>
-                                                                </div>
-                                                                <button
-                                                                    onClick={() => handleHire(app, app.currentOffer ?? app.counterOffer)}
-                                                                    disabled={negotiating}
-                                                                    className="w-full px-4 py-2.5 bg-green-600 hover:bg-green-700 disabled:bg-gray-400 text-white rounded-lg font-bold transition-colors flex items-center justify-center gap-2"
-                                                                >
-                                                                    <CheckCircle className="w-4 h-4" />
-                                                                    {negotiating ? 'Processing...' : `Hire ${app.userName.split(' ')[0]}`}
-                                                                </button>
-                                                            </div>
-                                                        )}
 
 
                                                         {/* Negotiation History */}

@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { useTheme } from 'next-themes'
-import { MapPin, User, Clock, Image as ImageIcon, Video, Trash2, Users, ChevronDown, Languages } from 'lucide-react'
+import { MapPin, User, Clock, Image as ImageIcon, Video, Trash2, Users, ChevronDown, Languages, XCircle } from 'lucide-react'
 import { Job, applyToJob, deleteJob, checkIfUserApplied } from '@/lib/auth'
 import { getCompressedImageUrl } from '@/lib/cloudinary'
 import { useAuth } from '@/context/AuthContext'
@@ -181,6 +181,9 @@ export default function JobCard({ job, onApply, onDelete, userLocation, highligh
         : languages
 
     const isHighlighted = highlightJobId === job.id
+
+    // Hide filled jobs from the feed for non-owners (poster still sees their own job)
+    if ((job.status as string) === 'filled' && !isOwnJob) return null
 
     return (
         <div
@@ -429,15 +432,18 @@ export default function JobCard({ job, onApply, onDelete, userLocation, highligh
                                 {deleting ? 'Deleting...' : 'Delete Job'}
                             </button>
                         </div>
+                    ) : (job.status as string) === 'filled' ? (
+                        <div className="w-full py-3 flex items-center justify-center gap-2 rounded-xl font-semibold text-sm"
+                            style={{ backgroundColor: isDark ? '#1a1a1a' : '#f3f4f6', color: isDark ? '#6b7280' : '#9ca3af', border: `1px solid ${isDark ? '#2a2a2a' : '#e5e7eb'}` }}>
+                            <XCircle className="w-4 h-4" />
+                            Position Filled
+                        </div>
                     ) : (
                         <button
                             onClick={() => {
-                                console.log('🔘 Button clicked! Applied:', applied)
                                 if (applied) {
-                                    console.log('📱 Opening Review Application modal')
                                     setShowMyApplication(true)
                                 } else {
-                                    console.log('📝 Opening Apply modal')
                                     setShowApplicationModal(true)
                                 }
                             }}

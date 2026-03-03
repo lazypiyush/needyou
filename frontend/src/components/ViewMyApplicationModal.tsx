@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react'
 import { createPortal } from 'react-dom'
-import { X, User, Mail, Phone, Clock, CheckCircle, XCircle, IndianRupee, MessageCircle, Loader2 } from 'lucide-react'
+import { X, User, Mail, Phone, Clock, CheckCircle, XCircle, IndianRupee, MessageCircle, Loader2, Zap, Play } from 'lucide-react'
 import { getUserOwnApplication } from '@/lib/auth'
 import { useTheme } from 'next-themes'
 import { useAuth } from '@/context/AuthContext'
@@ -788,13 +788,14 @@ export default function ViewMyApplicationModal({
                             </div>
 
                             {/* ── Start Job — only for hired applicants ── */}
-                            {(application.status === 'hired' || application.negotiationStatus === 'accepted') && (
+                            {application.status === 'hired' && (
                                 <div
                                     className="p-4 rounded-xl border"
                                     style={{ backgroundColor: isDark ? '#2a2a2a' : '#f9fafb', borderColor: isDark ? '#3a3a3a' : '#e5e7eb' }}
                                 >
                                     <h3 className="text-sm font-semibold mb-3 flex items-center gap-2" style={{ color: isDark ? '#ffffff' : '#111827' }}>
-                                        🚀 Start Job
+                                        <Zap className="w-4 h-4 text-green-500" />
+                                        Start Job
                                     </h3>
 
                                     {/* ── All post-start tracking phases ── */}
@@ -807,7 +808,7 @@ export default function ViewMyApplicationModal({
                                                     <div className="flex items-center gap-2 p-3 rounded-lg bg-green-50 dark:bg-green-900/20">
                                                         <CheckCircle className="w-5 h-5 text-green-600 flex-shrink-0" />
                                                         <div>
-                                                            <p className="font-bold text-green-700 dark:text-green-400">Job is Active! 🎉</p>
+                                                            <p className="font-bold text-green-700 dark:text-green-400">Job is Active</p>
                                                             <p className="text-xs text-green-600 dark:text-green-500">Head to the client's location — we'll auto-detect when you arrive (within ~500m).</p>
                                                         </div>
                                                     </div>
@@ -1040,7 +1041,8 @@ export default function ViewMyApplicationModal({
                                             className="w-full py-3 rounded-xl font-bold text-white flex items-center justify-center gap-2 transition-all hover:shadow-lg"
                                             style={{ background: 'linear-gradient(135deg, #10b981, #059669)' }}
                                         >
-                                            🚀 Request to Start Job
+                                            <Play className="w-4 h-4" />
+                                            Request to Start Job
                                         </button>
                                     )}
 
