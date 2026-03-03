@@ -15,11 +15,10 @@ import {
   getUserByPhoneNumber,
   checkOnboardingStatus,
   getUserKycStatus,
-  upgradeToPersistentSession,
-  clearPersistentSession,
 } from '@/lib/auth'
 import { useAuth } from '@/context/AuthContext'
 import { ConfirmationResult } from 'firebase/auth'
+import { auth } from '@/lib/firebase'
 import Link from 'next/link'
 import Image from 'next/image'
 import ThemeToggle from '@/components/ThemeToggle'
@@ -112,25 +111,26 @@ export default function SignInPage() {
     }
   }, [lockoutUntil])
 
-  // Check if user is already logged in with complete profile
+  // Already logged in — redirect to the appropriate page based on completion status
   useEffect(() => {
     if (user && !authLoading) {
-      const checkProfileAndRedirect = async () => {
-        const status = await getUserVerificationStatus(user.uid)
-        const onboarding = await checkOnboardingStatus(user.uid)
+      const redirectUser = async () => {
+        try {
+          const status = await getUserVerificationStatus(user.uid)
+          const onboarding = await checkOnboardingStatus(user.uid)
 
-        // Only persist + redirect if FULLY complete (profile + onboarding + kyc)
-        if (status?.profileComplete && status?.emailVerified && status?.phoneVerified && onboarding?.onboardingComplete) {
-          console.log('✅ Profile complete, upgrading persistence & redirecting to dashboard')
-          await upgradeToPersistentSession()
+          if (!status?.kycVerified) {
+            router.replace('/verify-kyc')
+          } else if (!onboarding?.onboardingComplete) {
+            router.replace('/onboarding/education')
+          } else {
+            router.replace('/dashboard')
+          }
+        } catch {
           router.replace('/dashboard')
-        } else {
-          console.log('⚠️ Profile incomplete, clearing persist flag')
-          clearPersistentSession()
         }
       }
-
-      checkProfileAndRedirect()
+      redirectUser()
     }
   }, [user, authLoading, router])
 
@@ -294,9 +294,15 @@ export default function SignInPage() {
     try {
       const formattedPhone = phoneNumber.startsWith('+91') ? phoneNumber : `+91${phoneNumber}`
 
-      // Skip Firestore pre-check — cross-user collection queries are blocked by
-      // security rules and return 0 results silently. Just send OTP; if the
-      // number isn't linked to any account, the OTP verify step will catch it.
+      // Pre-check: verify this phone number exists in our users collection
+      // before wasting an SMS OTP on an unregistered number.
+      const phoneExists = await checkPhoneNumberExists(formattedPhone)
+      if (!phoneExists) {
+        setError('❌ No account found with this phone number.\n\nPlease sign up first or use Email sign-in.')
+        setLoading(false)
+        return
+      }
+
       clearRecaptcha()
       await new Promise(resolve => setTimeout(resolve, 300))
 
@@ -327,12 +333,15 @@ export default function SignInPage() {
       const phoneUser = await verifyOTPSignIn(confirmationResult, otp)
       console.log('✅ Phone OTP verified, UID:', phoneUser.uid)
 
-      // Single-doc read — allowed by Firestore rules (auth.uid == userId)
+      // Single-doc read — check if this UID has a matching Firestore user doc
       const verificationStatus = await getUserVerificationStatus(phoneUser.uid)
       console.log('🔍 Verification status:', verificationStatus)
 
       if (!verificationStatus) {
-        // No Firestore doc for this UID means the phone isn't linked to any account
+        // No Firestore doc means Firebase created a brand-new phantom account
+        // for an unregistered number. Sign it out immediately to prevent orphan
+        // accounts from accumulating in Firebase Auth.
+        try { await auth.signOut() } catch { }
         setError('❌ No account linked to this phone number.\n\nPlease sign in with email or sign up first.')
         setLoading(false)
         return

@@ -19,6 +19,13 @@ const config: CapacitorConfig = {
       '*.razorpay.com',
       'api.razorpay.com',
       'checkout.razorpay.com',
+      // DigiLocker / Surepass KYC domains
+      'digilocker.gov.in',
+      '*.digilocker.gov.in',
+      'api.digitallocker.gov.in',
+      'surepass.io',
+      '*.surepass.io',
+      'cdn.jsdelivr.net',
     ],
   },
 

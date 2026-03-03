@@ -228,6 +228,13 @@ export default function DashboardPage() {
                         return
                     }
 
+                    // ── Guard 1.5: Onboarding must be complete ────────────────
+                    if (!userData.onboardingComplete) {
+                        redirected = true
+                        router.replace('/onboarding/education')
+                        return
+                    }
+
                     // ── Guard 2: Location must be set ─────────────────────────
                     if (userData.location) {
                         setUserLocation({

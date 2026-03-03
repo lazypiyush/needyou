@@ -13,7 +13,7 @@ import {
     avgEAR, earLeft, earRight, computeYaw, computePitch, computeRoll,
     smileRatio, mouthOpenRatio, browsRaised, winkLeft, winkRight,
     countFingers, isThumbUp, isThumbDown, isFist, isOpenPalm,
-    isPeace, isRockOn, isCallMe, isOkSign, isLShape, isCrossedFingers, isPointUp,
+    isRockOn, isCallMe, isOkSign, isLShape, isCrossedFingers, isPointUp,
     type ChallengeSpec
 } from './challenges'
 
@@ -62,22 +62,18 @@ function VerifyKycContent() {
     const [currentIdx, setCurrentIdx] = useState(0)
     const [currentChallenge, setCurrentChallenge] = useState<ActiveChallenge>(CHALLENGE_POOL[0])
     const [progress, setProgress] = useState(0)
-    const [phoneAlert, setPhoneAlert] = useState(false)
     const [faceInFrame, setFaceInFrame] = useState(false)
 
     const videoRef = useRef<HTMLVideoElement>(null)
     const streamRef = useRef<MediaStream | null>(null)
     const rafRef = useRef<number | null>(null)
     const stepTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-    const phoneTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
     const faceLandmarkerRef = useRef<any>(null)
     const handLandmarkerRef = useRef<any>(null)
-    const objectDetectorRef = useRef<any>(null)
     const recognitionRef = useRef<any>(null)
     const mediaRecorderRef = useRef<MediaRecorder | null>(null)
     const videoChunksRef = useRef<Blob[]>([])
-    const prevFrameRef = useRef<Uint8ClampedArray | null>(null)  // for temporal shimmer detection
 
     // Per-step tracking refs
     const sessionRef = useRef<ActiveChallenge[]>([])
@@ -260,7 +256,6 @@ function VerifyKycContent() {
         stepActiveRef.current = false
         if (rafRef.current) { cancelAnimationFrame(rafRef.current); rafRef.current = null }
         if (stepTimerRef.current) { clearTimeout(stepTimerRef.current); stepTimerRef.current = null }
-        if (phoneTimerRef.current) { clearInterval(phoneTimerRef.current); phoneTimerRef.current = null }
         recognitionRef.current?.abort?.(); recognitionRef.current = null
         // Discard recording — video is only saved in finishLiveness() on verified pass
         if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
@@ -268,14 +263,13 @@ function VerifyKycContent() {
         }
         mediaRecorderRef.current = null
         videoChunksRef.current = []   // clear chunks so nothing leaks to next attempt
-        prevFrameRef.current = null    // clear temporal shimmer baseline
         streamRef.current?.getTracks().forEach(t => t.stop()); streamRef.current = null
         if (videoRef.current) videoRef.current.srcObject = null
     }, [])
 
     // ─── Load models ──────────────────────────────────────────────────────────
     const loadModels = async (needHand: boolean) => {
-        const { FaceLandmarker, HandLandmarker, ObjectDetector, FilesetResolver } = await import('@mediapipe/tasks-vision')
+        const { FaceLandmarker, HandLandmarker, FilesetResolver } = await import('@mediapipe/tasks-vision')
         const fs = await FilesetResolver.forVisionTasks('https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest/wasm')
         const baseOpts = (mp: string) => ({ baseOptions: { modelAssetPath: mp, delegate: 'GPU' as const }, runningMode: 'VIDEO' as const })
 
@@ -290,165 +284,13 @@ function VerifyKycContent() {
                 ...baseOpts('https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task'),
                 numHands: 1, minHandDetectionConfidence: 0.5, minHandPresenceConfidence: 0.5, minTrackingConfidence: 0.5,
             })
-
-        if (!objectDetectorRef.current)
-            objectDetectorRef.current = await ObjectDetector.createFromOptions(fs, {
-                baseOptions: {
-                    modelAssetPath: 'https://storage.googleapis.com/mediapipe-models/object_detector/efficientdet_lite0/float16/1/efficientdet_lite0.tflite',
-                    delegate: 'CPU' as const,  // CPU more reliable cross-device
-                },
-                runningMode: 'VIDEO' as const,
-                scoreThreshold: 0.35,  // lower = catch more devices
-                maxResults: 8,
-            })
     }
 
-    // ─── Canvas pixel analysis: detects screens by their pixel signature ─────
-    // Three independent signals:
-    // A) SubPixel pattern  — adjacent pixels alternate dominant R/G/B (medium distance)
-    // B) Luminance banding — row-to-row oscillation from refresh vs frame rate
-    // C) Channel saturation — screen pixels are pure R/G/B; skin is desaturated (close range)
-    const analyzePixelsForScreen = (): boolean => {
-        const video = videoRef.current
-        if (!video || video.videoWidth === 0) return false
-        try {
-            const W = 240, H = 180  // higher res catches close-range phones better
-            const canvas = document.createElement('canvas')
-            canvas.width = W; canvas.height = H
-            const ctx = canvas.getContext('2d')!
-            ctx.drawImage(video, 0, 0, W, H)
-            const { data } = ctx.getImageData(0, 0, W, H)
 
-            // Signal A: subpixel colour channel alternation (medium range)
-            let subpixelHits = 0
-            // Signal C: high per-pixel channel saturation (close range)
-            let saturatedHits = 0
-            let nonBlackPixels = 0
-            const innerPixels = (H - 20) * (W - 2)
-
-            for (let y = 10; y < H - 10; y++) {
-                for (let x = 1; x < W - 1; x++) {
-                    const i = (y * W + x) * 4
-                    const r0 = data[i - 4], g0 = data[i - 3], b0 = data[i - 2]
-                    const r1 = data[i], g1 = data[i + 1], b1 = data[i + 2]
-                    const lum0 = (r0 + g0 + b0) / 3
-                    const lum1 = (r1 + g1 + b1) / 3
-
-                    if (lum0 < 15 || lum1 < 15) continue  // skip near-black
-                    nonBlackPixels++
-
-                    // Signal A: adjacent pixels have different dominant channel
-                    const ch0 = r0 > g0 && r0 > b0 ? 0 : g0 > b0 ? 1 : 2
-                    const ch1 = r1 > g1 && r1 > b1 ? 0 : g1 > b1 ? 1 : 2
-                    if (ch0 !== ch1) subpixelHits++
-
-                    // Signal C: current pixel is highly saturated (one channel dominates)
-                    // Screen subpixels emit pure R, G, or B light
-                    // Skin tones: R≈G≈B (low max-min difference vs max)
-                    const maxC = Math.max(r1, g1, b1)
-                    const minC = Math.min(r1, g1, b1)
-                    if (maxC > 50 && (maxC - minC) / maxC > 0.6) saturatedHits++
-                }
-            }
-
-            const subpixelRatio = nonBlackPixels > 0 ? subpixelHits / innerPixels : 0
-            const saturationRatio = nonBlackPixels > 0 ? saturatedHits / nonBlackPixels : 0
-
-            // Signal B: horizontal luminance banding
-            const rowLum: number[] = []
-            for (let y = 0; y < H; y++) {
-                let lum = 0
-                for (let x = 0; x < W; x++) {
-                    const i = (y * W + x) * 4
-                    lum += data[i] * 0.299 + data[i + 1] * 0.587 + data[i + 2] * 0.114
-                }
-                rowLum.push(lum / W)
-            }
-            let bandHits = 0
-            for (let y = 2; y < H - 2; y++) {
-                if ((rowLum[y] > rowLum[y - 1] + 1.5 && rowLum[y] > rowLum[y + 1] + 1.5) ||
-                    (rowLum[y] < rowLum[y - 1] - 1.5 && rowLum[y] < rowLum[y + 1] - 1.5)) bandHits++
-            }
-            const bandingRatio = bandHits / (H - 4)
-
-            // Signal D: temporal shimmer (catches static screens)
-            // Screen subpixels refresh one channel at a time → small single-channel deltas
-            // Camera sensor noise = random across all channels, not single-channel
-            let shimmerHits = 0
-            const totalPx = W * H
-            if (prevFrameRef.current && prevFrameRef.current.length === data.length) {
-                const prev = prevFrameRef.current
-                for (let i = 0; i < data.length; i += 4) {
-                    const dr = Math.abs(data[i] - prev[i])
-                    const dg = Math.abs(data[i + 1] - prev[i + 1])
-                    const db = Math.abs(data[i + 2] - prev[i + 2])
-                    const mx = Math.max(dr, dg, db)
-                    const mn = Math.min(dr, dg, db)
-                    // One channel changed (5-40), others stable (<4) = screen pixel refresh
-                    if (mx > 5 && mx < 40 && mn < 4) shimmerHits++
-                }
-            }
-            prevFrameRef.current = new Uint8ClampedArray(data)
-            const shimmerRatio = shimmerHits / totalPx
-
-            // Any strong signal = screen present
-            return subpixelRatio > 0.26 || bandingRatio > 0.42 || saturationRatio > 0.55 || shimmerRatio > 0.18
-        } catch { return false }
-    }
-
-    // ─── Phone watchdog ───────────────────────────────────────────────────────
-    // Runs two independent checks every 800ms:
-    // 1. ObjectDetector: catches phones, laptops, tablets, TVs
-    // 2. Canvas pixel analysis: catches ANY display by its pixel signature
-    const SCREEN_LABELS = new Set([
-        'cell phone', 'mobile phone', 'telephone', 'smartphone',
-        'laptop', 'laptop computer', 'notebook computer',
-        'tablet', 'tablet computer', 'ipad',
-        'television', 'tv', 'monitor', 'computer monitor',
-        'remote', 'remote control',
-        'screen', 'display',
-    ])
-    const startPhoneWatchdog = () => {
-        // On native Android/iOS (Capacitor APK) the user IS on their phone — skip entirely.
-        // Phone detection is only meaningful on desktop where someone might hold a phone
-        // in front of a webcam to spoof liveness using a recorded video.
-        if ((window as any).Capacitor?.isNativePlatform?.()) return
-
-        phoneTimerRef.current = setInterval(() => {
-            if (!streamRef.current) return
-            const video = videoRef.current
-            if (!video || video.readyState < 2) return
-
-            let detected = false
-
-            // Check 1: ML object detection — threshold raised to 0.65 to avoid partial-device false positives
-            if (objectDetectorRef.current) {
-                try {
-                    const result = objectDetectorRef.current.detectForVideo(video, performance.now())
-                    const hit = result.detections?.find((d: any) =>
-                        d.categories?.some((c: any) => SCREEN_LABELS.has(c.categoryName?.toLowerCase?.() ?? '') && c.score > 0.65)
-                    )
-                    if (hit) { detected = true }
-                } catch { }
-            }
-
-            // Check 2: Canvas pixel analysis (works even without ObjectDetector)
-            if (!detected && analyzePixelsForScreen()) {
-                detected = true
-            }
-
-            if (detected) {
-                setPhoneAlert(true)
-                stopAll()
-                setLivenessState('failed')
-                setError('📱 Electronic display detected in frame. Remove all screens and retry.')
-            }
-        }, 800)
-    }
 
     // ─── Main start ───────────────────────────────────────────────────────────
     const startLiveness = async () => {
-        setError(''); setPhoneAlert(false); setLivenessState('loading')
+        setError(''); setLivenessState('loading')
 
         try {
             const session = pickChallenges(SESSION_STEPS)
@@ -501,7 +343,6 @@ function VerifyKycContent() {
 
             await new Promise(r => setTimeout(r, 1500))
             setLivenessState('challenge')
-            startPhoneWatchdog()
             runStep(session[0], 0)
         } catch (err: any) {
             setLivenessState('failed')
@@ -736,7 +577,7 @@ function VerifyKycContent() {
     }
 
     const retryLiveness = () => {
-        stopAll(); setLivenessState('idle'); setProgress(0); setCurrentIdx(0); setError(''); setPhoneAlert(false)
+        stopAll(); setLivenessState('idle'); setProgress(0); setCurrentIdx(0); setError('')
     }
 
     // ─── Launch DigiLocker: synchronous click so popup isn't blocked ──────────
@@ -919,12 +760,6 @@ function VerifyKycContent() {
 
                 <div className="bg-white/80 dark:bg-[#1c1c1c]/80 backdrop-blur-xl p-8 rounded-3xl shadow-2xl border border-gray-200 dark:border-gray-700">
 
-                    {phoneAlert && (
-                        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}
-                            className="mb-4 p-3 bg-orange-100 dark:bg-orange-900/40 border border-orange-400 rounded-xl text-orange-800 dark:text-orange-200 text-sm font-semibold text-center">
-                            📱 Phone detected — verification terminated
-                        </motion.div>
-                    )}
                     {error && (
                         <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }}
                             className="mb-5 p-4 bg-red-50 dark:bg-red-900/30 border border-red-300 dark:border-red-700 rounded-xl text-red-700 dark:text-red-300 text-sm flex items-start gap-3">

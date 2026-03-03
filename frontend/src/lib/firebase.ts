@@ -1,5 +1,5 @@
 import { initializeApp, getApps, FirebaseApp } from 'firebase/app';
-import { initializeAuth, GoogleAuthProvider, Auth, indexedDBLocalPersistence, browserSessionPersistence } from 'firebase/auth';
+import { initializeAuth, GoogleAuthProvider, Auth, indexedDBLocalPersistence } from 'firebase/auth';
 import { getFirestore, Firestore } from 'firebase/firestore'
 import { getStorage, FirebaseStorage } from 'firebase/storage'
 
@@ -27,10 +27,13 @@ if (typeof window !== 'undefined') {
     firebaseApp = getApps()[0];
   }
 
-  // Use indexedDB persistence only if user previously completed profile (ny_persist flag)
-  const shouldPersist = typeof window !== 'undefined' && localStorage.getItem('ny_persist') === '1'
+  // Always use IndexedDB persistence so the session survives:
+  //  - browser tab closes / browser restarts
+  //  - APK being removed from recents and cold-started
+  // Previously this was gated on a ny_persist localStorage flag which caused
+  // session-only auth for phone-auth users and on first loads, forcing re-login.
   firebaseAuth = initializeAuth(firebaseApp, {
-    persistence: shouldPersist ? [indexedDBLocalPersistence] : [browserSessionPersistence]
+    persistence: [indexedDBLocalPersistence]
   })
   firebaseGoogleProvider = new GoogleAuthProvider();
   firebaseDb = getFirestore(firebaseApp);
@@ -42,4 +45,3 @@ export const auth = firebaseAuth as Auth;
 export const googleProvider = firebaseGoogleProvider as GoogleAuthProvider;
 export const db = firebaseDb as Firestore;
 export const storage = firebaseStorage as FirebaseStorage;
-

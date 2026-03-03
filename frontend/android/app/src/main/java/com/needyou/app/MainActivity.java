@@ -34,7 +34,6 @@ import android.webkit.WebView;
 import android.webkit.WebViewClient;
 import android.app.Dialog;
 import android.graphics.Color;
-import android.graphics.Typeface;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 import android.widget.Button;
@@ -249,19 +248,12 @@ public class MainActivity extends BridgeActivity {
         if (controller == null)
             return;
 
-        if (isAggressiveOemRom()) {
-            // On aggressive OEM ROMs (Vivo, Xiaomi, Oppo, Realme, Samsung, etc.)
-            // hiding the navigation bar causes the back/home buttons and gesture
-            // navigation to stop responding. Only hide the status bar here so
-            // that navigation stays fully functional on those devices.
-            controller.hide(WindowInsetsCompat.Type.statusBars());
-        } else {
-            // On stock-like devices (Motorola, Google Pixel, Nokia, Sony, OnePlus)
-            // full immersive mode works correctly — hide both bars.
-            controller.hide(WindowInsetsCompat.Type.systemBars());
-        }
-
-        // Swipe from edge to reveal bars transiently on all devices.
+        // Hide BOTH status bar and navigation bar on all devices.
+        // BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE means bars stay hidden
+        // and only appear briefly when the user swipes from the edge —
+        // this is the correct approach that works on OEM ROMs (Vivo, Samsung,
+        // Xiaomi, Oppo, Realme) without breaking touch events on back/home.
+        controller.hide(WindowInsetsCompat.Type.systemBars());
         controller.setSystemBarsBehavior(
                 WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE);
     }
@@ -395,33 +387,55 @@ public class MainActivity extends BridgeActivity {
                 LinearLayout header = new LinearLayout(MainActivity.this);
                 header.setOrientation(LinearLayout.HORIZONTAL);
                 header.setBackgroundColor(0xFF1E5EFF);
-                header.setPadding(48, 56, 16, 24);
-
-                TextView titleView = new TextView(MainActivity.this);
-                titleView.setText("DigiLocker Verification");
-                titleView.setTextColor(Color.WHITE);
-                titleView.setTextSize(17);
-                titleView.setTypeface(null, Typeface.BOLD);
-                LinearLayout.LayoutParams titleParams = new LinearLayout.LayoutParams(
-                        0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f);
-                titleView.setLayoutParams(titleParams);
+                header.setPadding(16, 48, 16, 8);
+                header.setGravity(android.view.Gravity.END);
 
                 Button closeBtn = new Button(MainActivity.this);
                 closeBtn.setText("\u2715");
                 closeBtn.setTextColor(Color.WHITE);
-                closeBtn.setTextSize(18);
+                closeBtn.setTextSize(20);
                 closeBtn.setBackgroundColor(Color.TRANSPARENT);
                 closeBtn.setOnClickListener(v -> popup.dismiss());
 
-                header.addView(titleView);
                 header.addView(closeBtn);
 
-                // ── WebView fills the rest ─────────────────────────────────────
+                // ── Popup WebView fills the rest ───────────────────────────────
                 final WebView popupView = new WebView(MainActivity.this);
                 popupView.getSettings().setJavaScriptEnabled(true);
                 popupView.getSettings().setDomStorageEnabled(true);
                 popupView.getSettings().setSupportMultipleWindows(true);
-                popupView.setWebViewClient(new WebViewClient());
+                // Allow DigiLocker's mixed HTTP/HTTPS sub-resources on older Android
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                    popupView.getSettings().setMixedContentMode(
+                            android.webkit.WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE);
+                }
+
+                // ── Keep all navigation inside this popup — prevent Chrome from opening ──
+                // On Vivo/Samsung/Xiaomi, a default WebViewClient still lets Android
+                // intercept intent:// or custom-scheme URLs and fire them in Chrome.
+                // Override shouldOverrideUrlLoading to force everything to stay inside.
+                popupView.setWebViewClient(new WebViewClient() {
+                    @Override
+                    public boolean shouldOverrideUrlLoading(WebView wv,
+                            android.webkit.WebResourceRequest request) {
+                        String url = request.getUrl().toString();
+                        // DigiLocker uses its own HTTPS URLs — load them in-place.
+                        // Only send intent:// / market:// / tel:// etc. out to system.
+                        if (url.startsWith("http://") || url.startsWith("https://")) {
+                            wv.loadUrl(url);
+                            return true; // handled internally
+                        }
+                        // System intent (e.g. tel:, mailto:) — let OS handle
+                        try {
+                            Intent sysIntent = new Intent(Intent.ACTION_VIEW,
+                                    android.net.Uri.parse(url));
+                            startActivity(sysIntent);
+                        } catch (ActivityNotFoundException ignored) {
+                        }
+                        return true;
+                    }
+                });
+
                 popupView.setWebChromeClient(new WebChromeClient() {
                     @Override
                     public void onCloseWindow(WebView window) {
@@ -788,8 +802,13 @@ public class MainActivity extends BridgeActivity {
 
                     String url = APP_URL; // default: dashboard
                     if (!doc.exists() || !Boolean.TRUE.equals(doc.getBoolean("kycVerified"))) {
+                        // KYC not complete → must verify identity first
                         url = "https://need-you.xyz/verify-kyc";
+                    } else if (!Boolean.TRUE.equals(doc.getBoolean("onboardingComplete"))) {
+                        // KYC done, but education/skills onboarding not done yet
+                        url = "https://need-you.xyz/onboarding/education";
                     } else if (doc.get("location") == null) {
+                        // Onboarding done, but location not set
                         url = "https://need-you.xyz/onboarding/location";
                     }
 
