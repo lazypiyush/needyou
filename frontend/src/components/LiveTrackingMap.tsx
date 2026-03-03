@@ -249,7 +249,7 @@ export default function LiveTrackingMap({
     )
 
     return (
-        <div className="relative rounded-xl overflow-hidden border" style={{ height, borderColor: isDark ? '#3a3a3a' : '#e5e7eb' }}>
+        <div className="relative rounded-xl overflow-hidden border" style={{ height, borderColor: isDark ? '#3a3a3a' : '#e5e7eb', touchAction: 'none' }}>
             {/* Waiting overlay */}
             {(!workerLat || !workerLng) && (
                 <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-2"
@@ -261,7 +261,10 @@ export default function LiveTrackingMap({
                 </div>
             )}
 
-            <div ref={containerRef} style={{ width: '100%', height: '100%' }} />
+            <div
+                ref={containerRef}
+                style={{ width: '100%', height: '100%', touchAction: 'none' }}
+            />
 
             {/* Route info badge */}
             {routeInfo && (
