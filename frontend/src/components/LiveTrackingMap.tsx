@@ -106,6 +106,7 @@ export default function LiveTrackingMap({
             streetViewControl: false,
             fullscreenControl: false,
             zoomControl: true,
+            gestureHandling: 'greedy',   // 1-finger pan on mobile (no two-finger warning)
         })
     }, [ready]) // eslint-disable-line react-hooks/exhaustive-deps
 
