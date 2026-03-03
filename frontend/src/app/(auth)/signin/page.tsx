@@ -17,7 +17,7 @@ import {
   getUserKycStatus,
 } from '@/lib/auth'
 import { useAuth } from '@/context/AuthContext'
-import { ConfirmationResult, fetchSignInMethodsForEmail } from 'firebase/auth'
+import { ConfirmationResult } from 'firebase/auth'
 import { auth } from '@/lib/firebase'
 import Link from 'next/link'
 import Image from 'next/image'
@@ -113,15 +113,7 @@ export default function SignInPage() {
     setLoading(true)
 
     try {
-      // Step 1: Check if email exists in Firebase
-      const methods = await fetchSignInMethodsForEmail(auth, email)
-      if (!methods || methods.length === 0) {
-        setError('No account found with this email address. Please sign up first.')
-        setLoading(false)
-        return
-      }
-
-      // Step 2: Sign in with email + password
+      // Sign in directly — Firebase enumeration protection makes pre-checks unreliable
       const user = await signInWithEmail(email, password)
 
       console.log('👤 User signed in:', user.uid)
@@ -218,12 +210,29 @@ export default function SignInPage() {
       router.replace('/dashboard')
 
     } catch (err: any) {
-      console.error('Sign in error:', err)
       const code = err?.code || ''
-      if (code === 'auth/wrong-password' || code === 'auth/invalid-credential') {
+      if (code === 'auth/wrong-password') {
         setError('Incorrect password. Please try again or use Forgot Password to reset it.')
+      } else if (code === 'auth/user-not-found') {
+        setError('No account found with this email address. Please sign up first.')
+      } else if (code === 'auth/invalid-credential') {
+        // Modern Firebase merges wrong-email and wrong-password into one code.
+        // Check Firestore to give a specific message.
+        try {
+          const { collection, query, where, getDocs } = await import('firebase/firestore')
+          const { db } = await import('@/lib/firebase')
+          const q = query(collection(db!, 'users'), where('email', '==', email))
+          const snap = await getDocs(q)
+          if (snap.empty) {
+            setError('No account found with this email address. Please sign up first.')
+          } else {
+            setError('Incorrect password. Please try again or use Forgot Password to reset it.')
+          }
+        } catch {
+          setError('Incorrect email or password. Please try again.')
+        }
       } else if (code === 'auth/too-many-requests') {
-        setError('Sign-in temporarily blocked by Firebase due to unusual activity. Please try again in a few minutes or reset your password.')
+        setError('Too many attempts. Please try again in a few minutes or reset your password.')
       } else {
         setError(err.message || 'Failed to sign in. Please try again.')
       }
