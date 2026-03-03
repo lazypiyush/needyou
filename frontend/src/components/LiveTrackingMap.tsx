@@ -82,6 +82,7 @@ export default function LiveTrackingMap({
     const destMarkerRef = useRef<any>(null)
     const directionsRendererRef = useRef<any>(null)
     const polylineRef = useRef<any>(null)
+    const boundsInitialisedRef = useRef(false)  // fitBounds only once — never on live location updates
     const [ready, setReady] = useState(false)
     const [loadError, setLoadError] = useState<string | null>(null)
     const [secAgo, setSecAgo] = useState<number | null>(null)
@@ -198,8 +199,11 @@ export default function LiveTrackingMap({
                         }
                     }
 
-                    // Fit map to show full route
-                    mapRef.current.fitBounds(result.routes[0].bounds)
+                    // Fit map to show full route — only on very first load, never when live location updates
+                    if (!boundsInitialisedRef.current) {
+                        boundsInitialisedRef.current = true
+                        mapRef.current.fitBounds(result.routes[0].bounds)
+                    }
                 } else {
                     // Fallback: straight dashed line
                     if (!polylineRef.current) {
@@ -217,11 +221,14 @@ export default function LiveTrackingMap({
                         })
                         polylineRef.current.setMap(mapRef.current)
 
-                        // Fit both points
-                        const bounds = new gm.LatLngBounds()
-                        bounds.extend(origin)
-                        bounds.extend(destination)
-                        mapRef.current.fitBounds(bounds)
+                        // Fit both points — only on very first load
+                        if (!boundsInitialisedRef.current) {
+                            boundsInitialisedRef.current = true
+                            const bounds = new gm.LatLngBounds()
+                            bounds.extend(origin)
+                            bounds.extend(destination)
+                            mapRef.current.fitBounds(bounds)
+                        }
                     } else {
                         polylineRef.current.setPath([origin, destination])
                     }
