@@ -39,6 +39,14 @@ import android.widget.TextView;
 import android.widget.Button;
 import android.widget.Toast;
 import android.util.Log;
+import android.provider.MediaStore;
+import java.io.File;
+import java.io.IOException;
+import java.text.SimpleDateFormat;
+import java.util.Arrays;
+import java.util.Date;
+import java.util.Locale;
+
 import androidx.core.view.WindowCompat;
 import androidx.core.view.WindowInsetsCompat;
 import androidx.core.view.WindowInsetsControllerCompat;
@@ -72,6 +80,12 @@ public class MainActivity extends BridgeActivity {
     private static final int FILE_CHOOSER_REQUEST_CODE = 2000;
     private static final int MEDIA_PERMISSION_CODE = 3000;
     private static final int CAMERA_PERMISSION_CODE = 4000; // for getUserMedia / liveness
+    private static final int CAMERA_CAPTURE_REQUEST_CODE = 5000; // photo capture via ACTION_IMAGE_CAPTURE
+    private static final int VIDEO_CAPTURE_REQUEST_CODE = 6000; // video capture via ACTION_VIDEO_CAPTURE
+    private static final int MIC_PERMISSION_CODE = 7000; // microphone for chat voice recording
+
+    // URI for the temp file created for ACTION_IMAGE_CAPTURE
+    private Uri cameraImageUri = null;
 
     // Held while we ask the user for CAMERA runtime permission during getUserMedia
     private PermissionRequest pendingCameraPermissionRequest = null;
@@ -343,23 +357,31 @@ public class MainActivity extends BridgeActivity {
                 }
             }
 
-            // ── Camera / microphone for getUserMedia (liveness detection) ──────
+            // ── Camera / microphone for getUserMedia (liveness detection + chat voice) ──
             // Without this override the WebView silently denies any getUserMedia
-            // call, even if CAMERA is listed in AndroidManifest.xml.
+            // call, even if CAMERA / RECORD_AUDIO are listed in AndroidManifest.xml.
             @Override
             public void onPermissionRequest(PermissionRequest request) {
                 runOnUiThread(() -> {
                     boolean hasCam = ContextCompat.checkSelfPermission(
                             MainActivity.this, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED;
-                    if (hasCam) {
-                        // Runtime permission already granted — allow immediately
+                    boolean hasMic = ContextCompat.checkSelfPermission(
+                            MainActivity.this, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED;
+
+                    if (hasCam && hasMic) {
+                        // Both permissions granted — allow all requested resources immediately
                         request.grant(request.getResources());
                     } else {
-                        // Ask for native camera permission, then grant once user accepts
+                        // Ask for whichever permissions are missing
                         pendingCameraPermissionRequest = request;
+                        java.util.List<String> missing = new java.util.ArrayList<>();
+                        if (!hasCam)
+                            missing.add(Manifest.permission.CAMERA);
+                        if (!hasMic)
+                            missing.add(Manifest.permission.RECORD_AUDIO);
                         ActivityCompat.requestPermissions(
                                 MainActivity.this,
-                                new String[] { Manifest.permission.CAMERA },
+                                missing.toArray(new String[0]),
                                 CAMERA_PERMISSION_CODE);
                     }
                 });
@@ -578,13 +600,51 @@ public class MainActivity extends BridgeActivity {
                     WebView webView,
                     ValueCallback<Uri[]> filePathCallback,
                     FileChooserParams fileChooserParams) {
-                // Cancel any pending callback
+
+                // Cancel any pending callback first
                 if (fileUploadCallback != null) {
                     fileUploadCallback.onReceiveValue(null);
                 }
                 fileUploadCallback = filePathCallback;
 
-                // Check media permission before launching picker
+                // ── Detect capture mode ──────────────────────────────────────
+                // isCaptureEnabled() == true when the <input> had a capture attribute.
+                // Accept types tell us whether it's a photo (image/*) or video (video/*).
+                boolean captureEnabled = fileChooserParams.isCaptureEnabled();
+                String[] acceptTypes = fileChooserParams.getAcceptTypes();
+                boolean wantsVideo = acceptTypes != null &&
+                        Arrays.asList(acceptTypes).toString().contains("video");
+                boolean wantsImage = !wantsVideo && captureEnabled;
+
+                if (captureEnabled && !wantsVideo) {
+                    // ── Camera Photo ─────────────────────────────────────────
+                    boolean hasCam = ContextCompat.checkSelfPermission(MainActivity.this,
+                            Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED;
+                    if (!hasCam) {
+                        pendingCameraPermissionRequest = null; // not a getUserMedia request
+                        ActivityCompat.requestPermissions(MainActivity.this,
+                                new String[] { Manifest.permission.CAMERA }, CAMERA_PERMISSION_CODE);
+                        // Will be handled in onRequestPermissionsResult → launchCameraForPhoto
+                        return true;
+                    }
+                    launchCameraForPhoto();
+                    return true;
+                }
+
+                if (captureEnabled && wantsVideo) {
+                    // ── Camera Video ─────────────────────────────────────────
+                    boolean hasCam = ContextCompat.checkSelfPermission(MainActivity.this,
+                            Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED;
+                    if (!hasCam) {
+                        ActivityCompat.requestPermissions(MainActivity.this,
+                                new String[] { Manifest.permission.CAMERA }, CAMERA_PERMISSION_CODE);
+                        return true;
+                    }
+                    launchCameraForVideo();
+                    return true;
+                }
+
+                // ── Gallery / file picker (no capture attribute) ──────────────
                 boolean hasPermission;
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                     hasPermission = ContextCompat.checkSelfPermission(MainActivity.this,
@@ -595,9 +655,8 @@ public class MainActivity extends BridgeActivity {
                 }
 
                 if (!hasPermission) {
-                    // Store the callback and request permission
                     pendingFileCallback = filePathCallback;
-                    fileUploadCallback = null; // will be set after permission grant
+                    fileUploadCallback = null;
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                         ActivityCompat.requestPermissions(MainActivity.this,
                                 new String[] {
@@ -671,7 +730,53 @@ public class MainActivity extends BridgeActivity {
 
     // ─── File chooser result ─────────────────────────────────────────────────
 
-    /** Launches the system file/media picker for WebView file inputs. */
+    /** Launches ACTION_IMAGE_CAPTURE — opens camera app in PHOTO mode. */
+    private void launchCameraForPhoto() {
+        File photoFile = null;
+        try {
+            String ts = new SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(new Date());
+            File dir = getExternalFilesDir(android.os.Environment.DIRECTORY_PICTURES);
+            photoFile = File.createTempFile("IMG_" + ts, ".jpg", dir);
+        } catch (IOException e) {
+            Log.e("NeedYou", "Camera temp file error", e);
+            if (fileUploadCallback != null) {
+                fileUploadCallback.onReceiveValue(null);
+                fileUploadCallback = null;
+            }
+            return;
+        }
+        cameraImageUri = androidx.core.content.FileProvider.getUriForFile(
+                this, getPackageName() + ".fileprovider", photoFile);
+        Intent intent = new Intent(MediaStore.ACTION_IMAGE_CAPTURE);
+        intent.putExtra(MediaStore.EXTRA_OUTPUT, cameraImageUri);
+        intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_WRITE_URI_PERMISSION);
+        try {
+            startActivityForResult(intent, CAMERA_CAPTURE_REQUEST_CODE);
+        } catch (ActivityNotFoundException e) {
+            Log.e("NeedYou", "No camera app", e);
+            if (fileUploadCallback != null) {
+                fileUploadCallback.onReceiveValue(null);
+                fileUploadCallback = null;
+            }
+        }
+    }
+
+    /** Launches ACTION_VIDEO_CAPTURE — opens camera app in VIDEO RECORDING mode. */
+    private void launchCameraForVideo() {
+        Intent intent = new Intent(MediaStore.ACTION_VIDEO_CAPTURE);
+        intent.putExtra(MediaStore.EXTRA_VIDEO_QUALITY, 1); // high quality
+        try {
+            startActivityForResult(intent, VIDEO_CAPTURE_REQUEST_CODE);
+        } catch (ActivityNotFoundException e) {
+            Log.e("NeedYou", "No camera app for video", e);
+            if (fileUploadCallback != null) {
+                fileUploadCallback.onReceiveValue(null);
+                fileUploadCallback = null;
+            }
+        }
+    }
+
+    /** Launches the system file/media picker for WebView file inputs (gallery). */
     private void launchFilePicker(ValueCallback<Uri[]> callback) {
         fileUploadCallback = callback;
         Intent galleryIntent = new Intent(Intent.ACTION_GET_CONTENT);
@@ -690,6 +795,35 @@ public class MainActivity extends BridgeActivity {
 
     @Override
     public void onActivityResult(int requestCode, int resultCode, Intent data) {
+
+        // ── Photo captured via ACTION_IMAGE_CAPTURE ──────────────────────────
+        if (requestCode == CAMERA_CAPTURE_REQUEST_CODE) {
+            Uri[] results = null;
+            if (resultCode == Activity.RESULT_OK && cameraImageUri != null) {
+                results = new Uri[] { cameraImageUri };
+            }
+            cameraImageUri = null;
+            if (fileUploadCallback != null) {
+                fileUploadCallback.onReceiveValue(results);
+                fileUploadCallback = null;
+            }
+            return;
+        }
+
+        // ── Video captured via ACTION_VIDEO_CAPTURE ──────────────────────────
+        if (requestCode == VIDEO_CAPTURE_REQUEST_CODE) {
+            Uri[] results = null;
+            if (resultCode == Activity.RESULT_OK && data != null && data.getData() != null) {
+                results = new Uri[] { data.getData() };
+            }
+            if (fileUploadCallback != null) {
+                fileUploadCallback.onReceiveValue(results);
+                fileUploadCallback = null;
+            }
+            return;
+        }
+
+        // ── Gallery / file picker ────────────────────────────────────────────
         if (requestCode == FILE_CHOOSER_REQUEST_CODE) {
             Uri[] results = null;
             if (resultCode == Activity.RESULT_OK && data != null) {
