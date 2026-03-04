@@ -278,15 +278,11 @@ export default function ChatModal({
     }
 
     const startRecording = async () => {
-        // ── Pre-request mic permission on APK (proactive, avoids WebView race) ──
-        // On mobile APK the WebView's PermissionRequest has a short timeout.
-        // If RECORD_AUDIO wasn't granted before getUserMedia fires, Android
-        // denies it even after the user taps Allow. We pre-check here as well.
-        if (typeof window !== 'undefined' && (window as any).NeedYouBridge?.requestMicPermission) {
-            (window as any).NeedYouBridge.requestMicPermission();
-            // Small pause so the OS dialog can be shown & accepted before we proceed
-            await new Promise(r => setTimeout(r, 800));
-        }
+        // Directly call getUserMedia — the native MainActivity.onPermissionRequest
+        // handles RECORD_AUDIO via the WebView PermissionRequest callback.
+        // If the OS permission dialog appears, the user taps Allow, and
+        // onRequestPermissionsResult calls request.grant() – getUserMedia then resolves.
+        // NO pre-request is needed here (it caused two overlapping OS dialogs).
 
         const tryGetMic = async (): Promise<MediaStream> => {
             return navigator.mediaDevices.getUserMedia({ audio: true });
@@ -297,10 +293,13 @@ export default function ChatModal({
             try {
                 stream = await tryGetMic();
             } catch (firstErr: any) {
-                // On first NotAllowedError, wait a moment and retry once —
-                // the OS permission dialog may have just been granted.
-                if (firstErr?.name === 'NotAllowedError' || firstErr?.name === 'PermissionDeniedError') {
-                    await new Promise(r => setTimeout(r, 1200));
+                // If denied – wait a moment and retry once in case the permission
+                // was just granted (e.g., user accepted the OS dialog and the grant
+                // propagated asynchronously).
+                if (firstErr?.name === 'NotAllowedError' ||
+                    firstErr?.name === 'PermissionDeniedError' ||
+                    firstErr?.name === 'SecurityError') {
+                    await new Promise(r => setTimeout(r, 1500));
                     stream = await tryGetMic(); // will throw again if truly denied
                 } else {
                     throw firstErr;
@@ -343,11 +342,9 @@ export default function ChatModal({
             }, 100)
         } catch (error: any) {
             console.error('Error accessing microphone:', error)
-            if (error?.name === 'NotAllowedError' || error?.name === 'PermissionDeniedError') {
-                alert('Microphone access was denied. Please go to Settings → Apps → NeedYou → Permissions and enable the Microphone.')
-            } else {
-                alert('Could not access microphone. Please check your permissions.')
-            }
+            // Always show the permissions message – any getUserMedia failure in the
+            // APK is because the RECORD_AUDIO permission was denied or not granted yet.
+            alert('Microphone access was denied.\n\nPlease go to Settings → Apps → NeedYou → Permissions and enable Microphone, then try again.')
         }
     }
 

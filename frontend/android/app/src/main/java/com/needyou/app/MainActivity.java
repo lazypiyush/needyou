@@ -90,6 +90,11 @@ public class MainActivity extends BridgeActivity {
     // Held while we ask the user for CAMERA runtime permission during getUserMedia
     private PermissionRequest pendingCameraPermissionRequest = null;
 
+    // Track what file-chooser camera action to resume after permission is granted.
+    // "photo" → launchCameraForPhoto(), "video" → launchCameraForVideo(), null =
+    // getUserMedia
+    private String pendingCameraAction = null;
+
     // Prevents the battery-optimisation dialog from re-appearing on EVERY onResume
     // (e.g. when returning from the Settings screen it just opened).
     // Reset to false each time a fresh Activity instance is created.
@@ -647,10 +652,10 @@ public class MainActivity extends BridgeActivity {
                     boolean hasCam = ContextCompat.checkSelfPermission(MainActivity.this,
                             Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED;
                     if (!hasCam) {
-                        pendingCameraPermissionRequest = null; // not a getUserMedia request
+                        pendingCameraPermissionRequest = null;
+                        pendingCameraAction = "photo"; // resume launchCameraForPhoto after grant
                         ActivityCompat.requestPermissions(MainActivity.this,
                                 new String[] { Manifest.permission.CAMERA }, CAMERA_PERMISSION_CODE);
-                        // Will be handled in onRequestPermissionsResult → launchCameraForPhoto
                         return true;
                     }
                     launchCameraForPhoto();
@@ -662,6 +667,8 @@ public class MainActivity extends BridgeActivity {
                     boolean hasCam = ContextCompat.checkSelfPermission(MainActivity.this,
                             Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED;
                     if (!hasCam) {
+                        pendingCameraPermissionRequest = null;
+                        pendingCameraAction = "video"; // resume launchCameraForVideo after grant
                         ActivityCompat.requestPermissions(MainActivity.this,
                                 new String[] { Manifest.permission.CAMERA }, CAMERA_PERMISSION_CODE);
                         return true;
@@ -882,31 +889,40 @@ public class MainActivity extends BridgeActivity {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
 
         if (requestCode == CAMERA_PERMISSION_CODE) {
-            // Grant or deny the pending WebView getUserMedia permission request.
-            // We may have requested [CAMERA], [RECORD_AUDIO], or both.
-            // Grant WebView access only if ALL requested permissions were granted.
+            // Case 1: getUserMedia WebView permission request
             if (pendingCameraPermissionRequest != null) {
-                boolean allGranted = grantResults.length > 0;
-                for (int r : grantResults) {
-                    if (r != PackageManager.PERMISSION_GRANTED) {
-                        allGranted = false;
-                        break;
-                    }
-                }
-                // Additionally verify the current OS state for both cam + mic
                 boolean camOk = ContextCompat.checkSelfPermission(this,
                         Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED;
                 boolean micOk = ContextCompat.checkSelfPermission(this,
                         Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED;
-
-                // Grant all resources the WebView requested — as long as the
-                // relevant OS permission is now held (allow partial grants).
                 if (camOk || micOk) {
                     pendingCameraPermissionRequest.grant(pendingCameraPermissionRequest.getResources());
                 } else {
                     pendingCameraPermissionRequest.deny();
                 }
                 pendingCameraPermissionRequest = null;
+                return;
+            }
+
+            // Case 2: file-chooser camera photo/video — resume launch after permission
+            // grant
+            if (pendingCameraAction != null) {
+                boolean camGranted = ContextCompat.checkSelfPermission(this,
+                        Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED;
+                if (camGranted) {
+                    if ("photo".equals(pendingCameraAction))
+                        launchCameraForPhoto();
+                    else if ("video".equals(pendingCameraAction))
+                        launchCameraForVideo();
+                } else {
+                    // User denied — cancel the pending file upload callback
+                    if (fileUploadCallback != null) {
+                        fileUploadCallback.onReceiveValue(null);
+                        fileUploadCallback = null;
+                    }
+                }
+                pendingCameraAction = null;
+                return;
             }
             return;
         }

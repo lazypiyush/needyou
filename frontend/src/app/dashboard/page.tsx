@@ -853,7 +853,7 @@ export default function DashboardPage() {
                             ) : (
                                 <>
                                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 max-w-md md:max-w-none mx-auto">
-                                        {filteredJobs.filter(j => j.status !== 'completed').slice(0, displayedJobsCount).map((job) => (
+                                        {filteredJobs.filter(j => j.status !== 'completed' && (j.status as string) !== 'filled').slice(0, displayedJobsCount).map((job) => (
                                             <JobCard
                                                 key={job.id}
                                                 job={job}
