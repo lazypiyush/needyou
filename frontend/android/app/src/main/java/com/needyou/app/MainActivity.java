@@ -378,21 +378,27 @@ public class MainActivity extends BridgeActivity {
             }
 
             // ── Camera / microphone for getUserMedia (liveness detection + chat voice) ──
-            // Without this override the WebView silently denies any getUserMedia
-            // call, even if CAMERA / RECORD_AUDIO are listed in AndroidManifest.xml.
+            // Without this override the WebView silently denies any getUserMedia call.
+            // We inspect the exact resources requested so we only ask for the OS
+            // permissions that are actually needed (mic-only, camera-only, or both).
             @Override
             public void onPermissionRequest(PermissionRequest request) {
                 runOnUiThread(() -> {
-                    boolean hasCam = ContextCompat.checkSelfPermission(
+                    java.util.List<String> resourceList = java.util.Arrays.asList(request.getResources());
+
+                    boolean needsCam = resourceList.contains(PermissionRequest.RESOURCE_VIDEO_CAPTURE);
+                    boolean needsMic = resourceList.contains(PermissionRequest.RESOURCE_AUDIO_CAPTURE);
+
+                    boolean hasCam = !needsCam || ContextCompat.checkSelfPermission(
                             MainActivity.this, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED;
-                    boolean hasMic = ContextCompat.checkSelfPermission(
+                    boolean hasMic = !needsMic || ContextCompat.checkSelfPermission(
                             MainActivity.this, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED;
 
                     if (hasCam && hasMic) {
-                        // Both permissions granted — allow all requested resources immediately
+                        // All required OS permissions already granted — allow immediately
                         request.grant(request.getResources());
                     } else {
-                        // Ask for whichever permissions are missing
+                        // Store the WebView request and ask the OS for missing permissions
                         pendingCameraPermissionRequest = request;
                         java.util.List<String> missing = new java.util.ArrayList<>();
                         if (!hasCam)
