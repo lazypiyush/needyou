@@ -9,7 +9,7 @@ import Link from 'next/link'
 import ThemeToggle from '@/components/ThemeToggle'
 import { useTheme } from 'next-themes'
 import { db, auth } from '@/lib/firebase'
-import { signInAnonymously } from 'firebase/auth'
+import { signInAnonymously, signOut } from 'firebase/auth'
 import { collection, getDocs, query, where } from 'firebase/firestore'
 
 export default function AccountantLoginPage() {
@@ -54,7 +54,11 @@ export default function AccountantLoginPage() {
                 return
             }
 
-            // Sign in anonymously so Firebase Storage rules (require auth) work for proof uploads
+            // Sign out any existing session first, then sign in anonymously so
+            // Firebase Storage rules (require auth) work for proof uploads.
+            // Without signOut first, if a regular user session is active the
+            // anonymous signIn call hits a 400 on identitytoolkit/accounts:signUp.
+            await signOut(auth).catch(() => { })
             signInAnonymously(auth).catch(() => { /* non-fatal */ })
 
             // Save session
