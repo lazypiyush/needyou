@@ -578,6 +578,8 @@ function VerifyKycContent() {
     // ─── Finish + save ────────────────────────────────────────────────────────
     const finishLiveness = async () => {
         if (!user) return
+
+        // Collect any final video chunks
         let videoBlob: Blob | null = null
         if (mediaRecorderRef.current?.state !== 'inactive') {
             mediaRecorderRef.current?.stop()
@@ -587,20 +589,30 @@ function VerifyKycContent() {
             mediaRecorderRef.current = null
         }
         stopAll(); setLivenessState('passed')
+
         try {
-            let videoUrl: string | undefined
-            if (videoBlob) {
-                try {
-                    const { ref, uploadBytes, getDownloadURL } = await import('firebase/storage')
-                    const { storage } = await import('@/lib/firebase')
-                    const sr = ref(storage, `liveness-videos/${user.uid}/${Date.now()}.webm`)
-                    const snap = await uploadBytes(sr, videoBlob, { contentType: 'video/webm' })
-                    videoUrl = await getDownloadURL(snap.ref)
-                } catch { }
-            }
-            await updateKycStatus(user.uid, 'liveness', videoUrl ? { livenessVideoUrl: videoUrl } : undefined)
+            // ⚡ Mark liveness verified immediately — do NOT wait for video upload.
+            // On slow connections the upload can take 5-15 s, blocking DigiLocker.
+            // Video is uploaded in the background and the URL is patched in once done.
+            await updateKycStatus(user.uid, 'liveness')
             setSuccess('✅ Liveness verified!')
             setTimeout(() => { setSuccess(''); setPhase('digilocker') }, 1200)
+
+            // Upload video in background (fire-and-forget) — non-blocking
+            if (videoBlob) {
+                const blob = videoBlob
+                const uid = user.uid
+                    ; (async () => {
+                        try {
+                            const { ref, uploadBytes, getDownloadURL } = await import('firebase/storage')
+                            const { storage } = await import('@/lib/firebase')
+                            const sr = ref(storage, `liveness-videos/${uid}/${Date.now()}.webm`)
+                            const snap = await uploadBytes(sr, blob, { contentType: 'video/webm' })
+                            const videoUrl = await getDownloadURL(snap.ref)
+                            await updateKycStatus(uid, 'liveness', { livenessVideoUrl: videoUrl })
+                        } catch { /* non-critical — liveness is already marked as verified */ }
+                    })()
+            }
         } catch { setError('Save failed. Please contact support.'); setLivenessState('idle') }
     }
 
@@ -756,7 +768,11 @@ function VerifyKycContent() {
 
     return (
         <div className="min-h-screen w-full flex items-center justify-center px-4 py-12"
-            style={{ background: 'linear-gradient(to bottom right, rgb(var(--gradient-from)), rgb(var(--gradient-via)), rgb(var(--gradient-to)))' }}>
+            style={{
+                background: 'linear-gradient(to bottom right, rgb(var(--gradient-from)), rgb(var(--gradient-via)), rgb(var(--gradient-to)))',
+                // Push content above the Android navigation bar on APK builds
+                paddingBottom: 'calc(3rem + env(safe-area-inset-bottom))',
+            }}>
             <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="w-full max-w-md">
 
                 <div className="text-center mb-8">
@@ -955,7 +971,9 @@ function VerifyKycContent() {
                                     </div>
                                 ) : (
                                     <button onClick={launchDigiLocker}
-                                        className="w-full py-4 bg-gradient-to-r from-purple-600 to-indigo-600 text-white font-bold rounded-xl hover:shadow-xl transition-all flex items-center justify-center gap-3 text-lg">
+                                        disabled={aadhaarFetching}
+                                        className="w-full py-4 bg-gradient-to-r from-purple-600 to-indigo-600 text-white font-bold rounded-xl hover:shadow-xl transition-all flex items-center justify-center gap-3 text-lg disabled:opacity-50 disabled:cursor-not-allowed"
+                                    >
                                         <ShieldCheck className="w-6 h-6" /> Continue with DigiLocker <ArrowRight className="w-5 h-5" />
                                     </button>
                                 )}

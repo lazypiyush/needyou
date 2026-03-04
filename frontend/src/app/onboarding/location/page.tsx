@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef, useCallback, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { motion } from 'framer-motion'
-import { MapPin, Navigation, Home, Building2, ArrowRight, Loader2, AlertCircle, Check, Search } from 'lucide-react'
+import { MapPin, Navigation, Home, Building2, ArrowRight, ArrowLeft, Loader2, AlertCircle, Check, Search } from 'lucide-react'
 import { useAuth } from '@/context/AuthContext'
 import {
     updateUserLocation,
@@ -219,15 +219,20 @@ function LocationContent() {
         setError('')
         setDetecting(true)
 
+        // Timeout promise — shows friendly error for slow internet connections
+        const timeoutPromise = new Promise<never>((_, reject) =>
+            setTimeout(() => reject(new Error('Location detection timed out. Please check your internet connection and try again, or search manually.')), 15000)
+        )
+
         try {
             if (!GOOGLE_MAPS_API_KEY) {
                 throw new Error('Google Maps API key not configured. Please contact support.')
             }
 
-            const position = await detectUserLocation()
+            const position = await Promise.race([detectUserLocation(), timeoutPromise])
             const { latitude, longitude } = position.coords
 
-            const locationData = await reverseGeocode(latitude, longitude, GOOGLE_MAPS_API_KEY)
+            const locationData = await Promise.race([reverseGeocode(latitude, longitude, GOOGLE_MAPS_API_KEY), timeoutPromise])
 
             setLocation(locationData)
             // Auto-fill with area if available
@@ -387,6 +392,18 @@ function LocationContent() {
                     background: 'linear-gradient(to bottom right, rgb(var(--gradient-from)), rgb(var(--gradient-via)), rgb(var(--gradient-to)))'
                 }}
             >
+                {/* Back button — shown only in edit mode */}
+                {editMode && (
+                    <button
+                        onClick={() => router.back()}
+                        className="fixed top-4 left-4 z-50 p-2 rounded-full bg-white/80 dark:bg-gray-800/80 backdrop-blur shadow-lg border border-gray-200 dark:border-gray-700 hover:bg-white dark:hover:bg-gray-800 transition-colors"
+                        title="Go back"
+                        aria-label="Go back"
+                    >
+                        <ArrowLeft className="w-5 h-5 text-gray-700 dark:text-gray-300" />
+                    </button>
+                )}
+
                 {/* Theme Toggle - Fixed Position */}
                 <div className="fixed top-4 right-4 z-50">
                     <ThemeToggle />

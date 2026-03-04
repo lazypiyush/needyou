@@ -820,7 +820,12 @@ export default function ChatModal({
                 {/* Input */}
                 <div
                     className="p-4 border-t"
-                    style={{ borderColor: isDark ? '#2a2a2a' : '#e5e7eb' }}
+                    style={{
+                        borderColor: isDark ? '#2a2a2a' : '#e5e7eb',
+                        // Push input bar above the Android navigation bar (back/home/recents)
+                        // env(safe-area-inset-bottom) works on all OEMs (Samsung, Vivo, Moto, etc.)
+                        paddingBottom: 'calc(1rem + env(safe-area-inset-bottom))',
+                    }}
                 >
                     <div className="flex gap-2 items-end">
                         {/* Gallery input - no capture attribute */}
@@ -832,21 +837,23 @@ export default function ChatModal({
                             onChange={handleFileSelect}
                             className="hidden"
                         />
-                        {/* Camera input - with capture attribute */}
+                        {/* Camera input - capture="camera" forces photo mode on Android APK */}
                         <input
                             id="camera-input"
                             type="file"
                             accept="image/*"
-                            capture="environment"
+                            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                            capture={"camera" as any}
                             onChange={handleFileSelect}
                             className="hidden"
                         />
-                        {/* Video input - with capture attribute */}
+                        {/* Video input - capture="camcorder" forces video recording mode on Android APK */}
                         <input
                             id="video-input"
                             type="file"
                             accept="video/*"
-                            capture="environment"
+                            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                            capture={"camcorder" as any}
                             onChange={handleFileSelect}
                             className="hidden"
                         />
