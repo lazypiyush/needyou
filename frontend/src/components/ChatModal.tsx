@@ -56,6 +56,7 @@ export default function ChatModal({
     const [showMediaPreview, setShowMediaPreview] = useState(false)
     const [selectedVideo, setSelectedVideo] = useState<string | null>(null)
     const [showAttachmentMenu, setShowAttachmentMenu] = useState(false)
+    const [micPermError, setMicPermError] = useState(false) // true when mic is denied — shows inline retry
     const messagesEndRef = useRef<HTMLDivElement>(null)
     const fileInputRef = useRef<HTMLInputElement>(null)
     const mediaRecorderRef = useRef<MediaRecorder | null>(null)
@@ -283,28 +284,10 @@ export default function ChatModal({
         // If the OS permission dialog appears, the user taps Allow, and
         // onRequestPermissionsResult calls request.grant() – getUserMedia then resolves.
         // NO pre-request is needed here (it caused two overlapping OS dialogs).
-
-        const tryGetMic = async (): Promise<MediaStream> => {
-            return navigator.mediaDevices.getUserMedia({ audio: true });
-        };
+        setMicPermError(false) // clear any previous error on retry
 
         try {
-            let stream: MediaStream;
-            try {
-                stream = await tryGetMic();
-            } catch (firstErr: any) {
-                // If denied – wait a moment and retry once in case the permission
-                // was just granted (e.g., user accepted the OS dialog and the grant
-                // propagated asynchronously).
-                if (firstErr?.name === 'NotAllowedError' ||
-                    firstErr?.name === 'PermissionDeniedError' ||
-                    firstErr?.name === 'SecurityError') {
-                    await new Promise(r => setTimeout(r, 1500));
-                    stream = await tryGetMic(); // will throw again if truly denied
-                } else {
-                    throw firstErr;
-                }
-            }
+            const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
 
             const mediaRecorder = new MediaRecorder(stream)
             mediaRecorderRef.current = mediaRecorder
@@ -342,9 +325,9 @@ export default function ChatModal({
             }, 100)
         } catch (error: any) {
             console.error('Error accessing microphone:', error)
-            // Always show the permissions message – any getUserMedia failure in the
-            // APK is because the RECORD_AUDIO permission was denied or not granted yet.
-            alert('Microphone access was denied.\n\nPlease go to Settings → Apps → NeedYou → Permissions and enable Microphone, then try again.')
+            // Show inline retry UI instead of alert — user enables mic in Settings,
+            // returns to the app and taps the mic button again to retry cleanly.
+            setMicPermError(true)
         }
     }
 
@@ -964,9 +947,20 @@ export default function ChatModal({
                         )}
                     </div>
                     {!newMessage.trim() && !isRecording && !recordedAudio && (
-                        <p className="text-xs mt-2 text-center" style={{ color: isDark ? '#6b7280' : '#9ca3af' }}>
-                            Click the microphone to record a voice message
-                        </p>
+                        micPermError ? (
+                            <div className="mt-2 mx-1 p-3 rounded-xl border border-orange-300 dark:border-orange-700 bg-orange-50 dark:bg-orange-900/20 text-left">
+                                <p className="text-xs font-semibold text-orange-700 dark:text-orange-400 mb-1">🎙 Microphone permission required</p>
+                                <p className="text-xs text-orange-600 dark:text-orange-300 leading-relaxed">
+                                    1. Go to <strong>Settings → Apps → NeedYou → Permissions</strong>{'\n'}
+                                    2. Enable <strong>Microphone</strong>{'\n'}
+                                    3. Come back and tap 🎙 to retry
+                                </p>
+                            </div>
+                        ) : (
+                            <p className="text-xs mt-2 text-center" style={{ color: isDark ? '#6b7280' : '#9ca3af' }}>
+                                Click the microphone to record a voice message
+                            </p>
+                        )
                     )}
                     {isRecording && (
                         <div className="mt-2">

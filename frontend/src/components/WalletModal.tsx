@@ -8,7 +8,7 @@ import {
     Clock, History, Ban, IndianRupee
 } from 'lucide-react'
 import { db } from '@/lib/firebase'
-import { collection, addDoc, serverTimestamp, doc, updateDoc, increment, query, where, orderBy, onSnapshot, writeBatch, Timestamp } from 'firebase/firestore'
+import { collection, addDoc, serverTimestamp, doc, updateDoc, getDoc, setDoc, increment, query, where, orderBy, onSnapshot, writeBatch, Timestamp } from 'firebase/firestore'
 
 // ── Indian Banks ──────────────────────────────────────────────────────────────
 const INDIAN_BANKS = [
@@ -168,17 +168,47 @@ export default function WalletModal({ isDark, onClose, balance = 0, uid = '', us
     const [tab, setTab] = useState<'methods' | 'addBank' | 'addUpi' | 'withdraw' | 'history'>('methods')
     const [editingMethod, setEditingMethod] = useState<PaymentMethod | null>(null)
 
-    // Saved methods — persisted to localStorage (will move to Firestore later)
-    const [methods, setMethods] = useState<PaymentMethod[]>(() => {
-        try {
-            const stored = localStorage.getItem('wallet_methods')
-            return stored ? JSON.parse(stored) : []
-        } catch { return [] }
-    })
+    // Saved methods — persisted to Firestore under users/{uid}.paymentMethods
+    const [methods, setMethods] = useState<PaymentMethod[]>([])
+    const [methodsLoading, setMethodsLoading] = useState(true)
 
+    // Load methods from Firestore on mount; migrate any legacy localStorage methods once
     useEffect(() => {
-        try { localStorage.setItem('wallet_methods', JSON.stringify(methods)) } catch { }
-    }, [methods])
+        if (!uid) { setMethodsLoading(false); return }
+        const loadMethods = async () => {
+            try {
+                const userRef = doc(db, 'users', uid)
+                const snap = await getDoc(userRef)
+                if (snap.exists()) {
+                    const data = snap.data()
+                    let saved: PaymentMethod[] = data.paymentMethods || []
+                    // One-time migration from localStorage
+                    try {
+                        const legacy = localStorage.getItem('wallet_methods')
+                        if (legacy) {
+                            const legacyMethods: PaymentMethod[] = JSON.parse(legacy)
+                            if (legacyMethods.length > 0 && saved.length === 0) {
+                                saved = legacyMethods
+                                await updateDoc(userRef, { paymentMethods: legacyMethods })
+                            }
+                            localStorage.removeItem('wallet_methods')
+                        }
+                    } catch { /* ignore migration errors */ }
+                    setMethods(saved)
+                }
+            } catch { /* ignore load errors */ }
+            setMethodsLoading(false)
+        }
+        loadMethods()
+    }, [uid])
+
+    // Save methods to Firestore whenever they change (skip initial empty load)
+    const methodsInitialized = methodsLoading === false
+    useEffect(() => {
+        if (!uid || !methodsInitialized) return
+        const userRef = doc(db, 'users', uid)
+        updateDoc(userRef, { paymentMethods: methods }).catch(() => { })
+    }, [methods, uid, methodsInitialized])
 
     // Bank form
     const [bankId, setBankId] = useState('')
