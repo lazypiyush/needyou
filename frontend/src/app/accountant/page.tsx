@@ -8,8 +8,7 @@ import Image from 'next/image'
 import Link from 'next/link'
 import ThemeToggle from '@/components/ThemeToggle'
 import { useTheme } from 'next-themes'
-import { db, auth } from '@/lib/firebase'
-import { signInAnonymously, signOut } from 'firebase/auth'
+import { db } from '@/lib/firebase'
 import { collection, getDocs, query, where } from 'firebase/firestore'
 
 export default function AccountantLoginPage() {
@@ -37,12 +36,6 @@ export default function AccountantLoginPage() {
         setError('')
         setLoading(true)
         try {
-            // Sign out any existing session, then sign in anonymously BEFORE
-            // querying Firestore — this ensures the accountants collection read
-            // isn't blocked by Firestore security rules (require auth != null).
-            await signOut(auth).catch(() => { })
-            await signInAnonymously(auth).catch(() => { })
-
             const q = query(
                 collection(db, 'accountants'),
                 where('username', '==', username.trim().toLowerCase())

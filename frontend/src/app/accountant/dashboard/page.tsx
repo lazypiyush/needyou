@@ -12,8 +12,7 @@ import Image from 'next/image'
 import Link from 'next/link'
 import ThemeToggle from '@/components/ThemeToggle'
 import { useTheme } from 'next-themes'
-import { db, storage, auth } from '@/lib/firebase'
-import { signInAnonymously } from 'firebase/auth'
+import { db, storage } from '@/lib/firebase'
 import {
     collection, query, orderBy, onSnapshot,
     doc, updateDoc, serverTimestamp, getDocs, where, increment
@@ -358,18 +357,7 @@ export default function AccountantDashboardPage() {
             }
             setName(sessionStorage.getItem('accountant_name') || 'Accountant')
             setUsername(sessionStorage.getItem('accountant_username') || '')
-
-            // Ensure anonymous auth is active before allowing uploads.
-            // signInAnonymously resolves with the anonymous user if already signed in.
-            const { onAuthStateChanged } = require('firebase/auth')
-            const unsubAuth = onAuthStateChanged(auth, async (user: any) => {
-                if (!user) {
-                    // Not signed in yet — sign in anonymously
-                    try { await signInAnonymously(auth) } catch { /* ignore */ }
-                }
-                setMounted(true)
-            })
-            return () => unsubAuth()
+            setMounted(true)
         }
     }, [router])
 
