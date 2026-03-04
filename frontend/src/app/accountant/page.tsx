@@ -37,6 +37,12 @@ export default function AccountantLoginPage() {
         setError('')
         setLoading(true)
         try {
+            // Sign out any existing session, then sign in anonymously BEFORE
+            // querying Firestore — this ensures the accountants collection read
+            // isn't blocked by Firestore security rules (require auth != null).
+            await signOut(auth).catch(() => { })
+            await signInAnonymously(auth).catch(() => { })
+
             const q = query(
                 collection(db, 'accountants'),
                 where('username', '==', username.trim().toLowerCase())
@@ -53,13 +59,6 @@ export default function AccountantLoginPage() {
                 setLoading(false)
                 return
             }
-
-            // Sign out any existing session first, then sign in anonymously so
-            // Firebase Storage rules (require auth) work for proof uploads.
-            // Without signOut first, if a regular user session is active the
-            // anonymous signIn call hits a 400 on identitytoolkit/accounts:signUp.
-            await signOut(auth).catch(() => { })
-            signInAnonymously(auth).catch(() => { /* non-fatal */ })
 
             // Save session
             sessionStorage.setItem('accountant_authenticated', 'true')
