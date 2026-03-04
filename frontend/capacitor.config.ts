@@ -44,8 +44,18 @@ const config: CapacitorConfig = {
     },
     StatusBar: {
       style: 'DARK',
-      backgroundColor: '#0f172a',
-      overlaysWebView: false,
+      backgroundColor: '#00000000', // fully transparent
+      // overlaysWebView: true makes the app draw behind the status bar AND nav bar
+      // So the web content fills the entire screen edge-to-edge.
+      // env(safe-area-inset-*) CSS vars compensate so content isn't hidden.
+      overlaysWebView: true,
+    },
+    // NavigationBar: transparent + overlay so the 3-button bar (back/home/recents)
+    // draws OVER the web content rather than shrinking the viewport.
+    // This is the same immersive behaviour as splashImmersive: true.
+    NavigationBar: {
+      backgroundColor: '#00000000',
+      visible: false,
     },
   },
 

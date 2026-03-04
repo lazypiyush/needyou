@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { motion } from 'framer-motion'
-import { Mail, Lock, Phone, ArrowRight, Loader2, AlertCircle, Eye, EyeOff, X } from 'lucide-react'
+import { Mail, Lock, Phone, ArrowRight, Loader2, AlertCircle, Eye, EyeOff, X, RefreshCw } from 'lucide-react'
 import {
   signInWithEmail,
   sendOTP,
@@ -596,6 +596,17 @@ export default function SignInPage() {
                       <ArrowRight className="w-5 h-5" />
                     </>
                   )}
+                </button>
+
+                {/* Refresh button — reloads page if reCAPTCHA / form gets stuck on mobile */}
+                <button
+                  type="button"
+                  onClick={() => window.location.reload()}
+                  disabled={loading}
+                  className="w-full text-sm text-gray-500 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 flex items-center justify-center gap-1.5 disabled:opacity-50"
+                >
+                  <RefreshCw className="w-3.5 h-3.5" />
+                  Refresh Page
                 </button>
               </form>
             )}

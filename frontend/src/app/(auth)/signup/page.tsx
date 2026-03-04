@@ -764,6 +764,17 @@ function SignUpPageContent() {
                     </>
                   )}
                 </button>
+
+                {/* Refresh button — reloads page if reCAPTCHA / form gets stuck on mobile */}
+                <button
+                  type="button"
+                  onClick={() => window.location.reload()}
+                  disabled={loading}
+                  className="w-full text-sm text-gray-500 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 flex items-center justify-center gap-1.5 disabled:opacity-50"
+                >
+                  <RefreshCw className="w-3.5 h-3.5" />
+                  Refresh Page
+                </button>
               </form>
             )}
 
