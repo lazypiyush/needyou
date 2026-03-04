@@ -358,9 +358,18 @@ export default function AccountantDashboardPage() {
             }
             setName(sessionStorage.getItem('accountant_name') || 'Accountant')
             setUsername(sessionStorage.getItem('accountant_username') || '')
-            setMounted(true)
-            // Re-auth anonymously so Firebase Storage works even after page refresh
-            signInAnonymously(auth).catch(() => { /* non-fatal */ })
+
+            // Ensure anonymous auth is active before allowing uploads.
+            // signInAnonymously resolves with the anonymous user if already signed in.
+            const { onAuthStateChanged } = require('firebase/auth')
+            const unsubAuth = onAuthStateChanged(auth, async (user: any) => {
+                if (!user) {
+                    // Not signed in yet — sign in anonymously
+                    try { await signInAnonymously(auth) } catch { /* ignore */ }
+                }
+                setMounted(true)
+            })
+            return () => unsubAuth()
         }
     }, [router])
 
