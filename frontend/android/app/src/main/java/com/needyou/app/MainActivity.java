@@ -539,6 +539,34 @@ public class MainActivity extends BridgeActivity {
                 popup.setContentView(root);
                 popup.show();
 
+                // ── Hide system nav bar in the popup window ───────────────────
+                // The main window already runs in immersive mode via hideSystemUI().
+                // The Dialog has its OWN Window, so we must apply the same flags
+                // here — otherwise the 3-button nav bar (back/home/recents) creeps
+                // back into view when DigiLocker opens on all OEM devices.
+                if (popup.getWindow() != null) {
+                    android.view.Window popupWindow = popup.getWindow();
+                    WindowCompat.setDecorFitsSystemWindows(popupWindow, false);
+                    WindowInsetsControllerCompat popupCtrl = WindowCompat.getInsetsController(popupWindow,
+                            popupWindow.getDecorView());
+                    if (popupCtrl != null) {
+                        popupCtrl.hide(WindowInsetsCompat.Type.systemBars());
+                        popupCtrl.setSystemBarsBehavior(
+                                WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE);
+                    }
+                    // Re-apply on every focus change so bars stay hidden after
+                    // any OEM gesture / notification shade interaction.
+                    popupWindow.getDecorView().setOnSystemUiVisibilityChangeListener(visibility -> {
+                        WindowInsetsControllerCompat c = WindowCompat.getInsetsController(popupWindow,
+                                popupWindow.getDecorView());
+                        if (c != null) {
+                            c.hide(WindowInsetsCompat.Type.systemBars());
+                            c.setSystemBarsBehavior(
+                                    WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE);
+                        }
+                    });
+                }
+
                 WebView.WebViewTransport transport = (WebView.WebViewTransport) resultMsg.obj;
                 transport.setWebView(popupView);
                 resultMsg.sendToTarget();
