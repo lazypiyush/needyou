@@ -227,6 +227,26 @@ public class MainActivity extends BridgeActivity {
             getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
                     .edit().remove("pendingDeepLink").apply();
         }
+
+        /**
+         * Proactively requests RECORD_AUDIO runtime permission before getUserMedia.
+         * Call this when the chat modal mounts so the OS dialog fires BEFORE the
+         * user taps the mic button — preventing the WebView PermissionRequest timeout
+         * race that causes NotAllowedError even after the user taps "Allow".
+         * Usage: window.NeedYouBridge?.requestMicPermission?.()
+         */
+        @JavascriptInterface
+        public void requestMicPermission() {
+            runOnUiThread(() -> {
+                if (ContextCompat.checkSelfPermission(MainActivity.this,
+                        Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+                    ActivityCompat.requestPermissions(
+                            MainActivity.this,
+                            new String[] { Manifest.permission.RECORD_AUDIO },
+                            MIC_PERMISSION_CODE);
+                }
+            });
+        }
     }
 
     /**
@@ -856,15 +876,40 @@ public class MainActivity extends BridgeActivity {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
 
         if (requestCode == CAMERA_PERMISSION_CODE) {
-            // Grant or deny the pending WebView camera permission request
+            // Grant or deny the pending WebView getUserMedia permission request.
+            // We may have requested [CAMERA], [RECORD_AUDIO], or both.
+            // Grant WebView access only if ALL requested permissions were granted.
             if (pendingCameraPermissionRequest != null) {
-                if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+                boolean allGranted = grantResults.length > 0;
+                for (int r : grantResults) {
+                    if (r != PackageManager.PERMISSION_GRANTED) {
+                        allGranted = false;
+                        break;
+                    }
+                }
+                // Additionally verify the current OS state for both cam + mic
+                boolean camOk = ContextCompat.checkSelfPermission(this,
+                        Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED;
+                boolean micOk = ContextCompat.checkSelfPermission(this,
+                        Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED;
+
+                // Grant all resources the WebView requested — as long as the
+                // relevant OS permission is now held (allow partial grants).
+                if (camOk || micOk) {
                     pendingCameraPermissionRequest.grant(pendingCameraPermissionRequest.getResources());
                 } else {
                     pendingCameraPermissionRequest.deny();
                 }
                 pendingCameraPermissionRequest = null;
             }
+            return;
+        }
+
+        if (requestCode == MIC_PERMISSION_CODE) {
+            // Proactive mic pre-request from JS bridge — no WebView PermissionRequest
+            // pending.
+            // Nothing extra to do; the OS permission is now in the grant table and
+            // the next getUserMedia call will hit the fast-path (hasMic == true).
             return;
         }
 

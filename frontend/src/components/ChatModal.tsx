@@ -278,8 +278,35 @@ export default function ChatModal({
     }
 
     const startRecording = async () => {
+        // ── Pre-request mic permission on APK (proactive, avoids WebView race) ──
+        // On mobile APK the WebView's PermissionRequest has a short timeout.
+        // If RECORD_AUDIO wasn't granted before getUserMedia fires, Android
+        // denies it even after the user taps Allow. We pre-check here as well.
+        if (typeof window !== 'undefined' && (window as any).NeedYouBridge?.requestMicPermission) {
+            (window as any).NeedYouBridge.requestMicPermission();
+            // Small pause so the OS dialog can be shown & accepted before we proceed
+            await new Promise(r => setTimeout(r, 800));
+        }
+
+        const tryGetMic = async (): Promise<MediaStream> => {
+            return navigator.mediaDevices.getUserMedia({ audio: true });
+        };
+
         try {
-            const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+            let stream: MediaStream;
+            try {
+                stream = await tryGetMic();
+            } catch (firstErr: any) {
+                // On first NotAllowedError, wait a moment and retry once —
+                // the OS permission dialog may have just been granted.
+                if (firstErr?.name === 'NotAllowedError' || firstErr?.name === 'PermissionDeniedError') {
+                    await new Promise(r => setTimeout(r, 1200));
+                    stream = await tryGetMic(); // will throw again if truly denied
+                } else {
+                    throw firstErr;
+                }
+            }
+
             const mediaRecorder = new MediaRecorder(stream)
             mediaRecorderRef.current = mediaRecorder
             audioChunksRef.current = []
@@ -314,9 +341,13 @@ export default function ChatModal({
                 const elapsed = Math.floor((Date.now() - recordingStartTimeRef.current) / 1000)
                 setRecordingDuration(elapsed)
             }, 100)
-        } catch (error) {
+        } catch (error: any) {
             console.error('Error accessing microphone:', error)
-            alert('Could not access microphone. Please check your permissions.')
+            if (error?.name === 'NotAllowedError' || error?.name === 'PermissionDeniedError') {
+                alert('Microphone access was denied. Please go to Settings → Apps → NeedYou → Permissions and enable the Microphone.')
+            } else {
+                alert('Could not access microphone. Please check your permissions.')
+            }
         }
     }
 
