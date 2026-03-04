@@ -643,7 +643,7 @@ export default function DashboardPage() {
                     {activeTab === 'home' && (
                         <div>
                             <h1 className="text-2xl font-bold mb-2" style={{ color: mounted && isDark ? '#ffffff' : '#111827' }}>
-                                {filteredJobs.filter(j => j.status !== 'completed').length} {filteredJobs.filter(j => j.status !== 'completed').length === 1 ? 'Job' : 'Jobs'} Available
+                                {filteredJobs.filter(j => j.status !== 'completed' && (j.status as string) !== 'filled').length} {filteredJobs.filter(j => j.status !== 'completed' && (j.status as string) !== 'filled').length === 1 ? 'Job' : 'Jobs'} Available
                             </h1>
 
                             {/* Category Filter Buttons */}
