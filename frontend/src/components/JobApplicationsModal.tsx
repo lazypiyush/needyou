@@ -9,7 +9,7 @@ import { collection, doc, getDoc, onSnapshot, query, where } from 'firebase/fire
 import { useTheme } from 'next-themes'
 import { renegotiateBudget } from '@/lib/renegotiation'
 import UserProfileSheet from './UserProfileSheet'
-import { getCompressedImageUrl } from '@/lib/cloudinary'
+import { getCompressedImageUrl, getAvatarImageUrl } from '@/lib/cloudinary'
 import { useModalHistory } from '@/hooks/useModalHistory'
 import { pushChatState } from '@/lib/chatNavigation'
 import { acceptStartRequest } from '@/lib/startJob'
@@ -57,6 +57,7 @@ export default function JobApplicationsModal({ jobId, jobTitle, jobBudget, jobPo
     // Other Applications tab - only visible after someone is hired
     const [showOtherApps, setShowOtherApps] = useState(false)
     const [applicantNames, setApplicantNames] = useState<Record<string, string>>({})
+    const [applicantPhotos, setApplicantPhotos] = useState<Record<string, string>>({})
     const [livePosterName, setLivePosterName] = useState<string>('')
 
     // Live-fetch job poster's aadhaarName
@@ -86,18 +87,24 @@ export default function JobApplicationsModal({ jobId, jobTitle, jobBudget, jobPo
             const apps = snap.docs.map(d => ({ id: d.id, ...d.data() }))
             setApplications(apps)
             setLoading(false)
-            // Fetch aadhaarName for each unique applicant
-            const uniqueUserIds = [...new Set(apps.map((a: any) => a.userId).filter(Boolean))]
-            uniqueUserIds.forEach(async (uid: string) => {
-                try {
-                    const userSnap = await getDoc(doc(db, 'users', uid))
-                    if (userSnap.exists()) {
-                        const d = userSnap.data()
-                        const name = d['kycData.aadhaarName'] || d.kycData?.aadhaarName || ''
-                        if (name) setApplicantNames(prev => ({ ...prev, [uid]: name }))
-                    }
-                } catch { }
-            })
+            // Fetch aadhaarName + photoURL for each unique applicant in parallel
+            const uniqueUserIds = [...new Set(apps.map((a: any) => a.userId).filter(Boolean))];
+            void (async () => {
+                await Promise.all(
+                    uniqueUserIds.map(async (uid: string) => {
+                        try {
+                            const userSnap = await getDoc(doc(db, 'users', uid))
+                            if (userSnap.exists()) {
+                                const d = userSnap.data()
+                                const name = d['kycData.aadhaarName'] || d.kycData?.aadhaarName || ''
+                                const photo = d.photoURL || ''
+                                setApplicantNames(prev => name ? { ...prev, [uid]: name } : prev)
+                                setApplicantPhotos(prev => photo ? { ...prev, [uid]: photo } : prev)
+                            }
+                        } catch { }
+                    })
+                )
+            })()
             // Start tick if any app has a pending code or meeting code
             const hasPending = apps.some((a: any) =>
                 (a.startJobStatus === 'code_pending' && a.startJobCodeExpiry > Date.now()) ||
@@ -445,8 +452,8 @@ export default function JobApplicationsModal({ jobId, jobTitle, jobBudget, jobPo
                                                             style={{ backgroundColor: isDark ? '#2a2a2a' : '#eff6ff' }}
                                                             title="View profile"
                                                         >
-                                                            {app.userPhotoURL ? (
-                                                                <img src={getCompressedImageUrl(app.userPhotoURL)} alt={applicantNames[app.userId] || app.userName} className="w-full h-full object-cover" />
+                                                            {applicantPhotos[app.userId] ? (
+                                                                <img src={getAvatarImageUrl(applicantPhotos[app.userId])} alt={applicantNames[app.userId] || app.userName} className="w-full h-full object-cover" />
                                                             ) : (
                                                                 <span style={{ color: isDark ? '#60a5fa' : '#2563eb' }}>
                                                                     {(applicantNames[app.userId] || app.userName)?.[0]?.toUpperCase() || '?'}
@@ -991,8 +998,8 @@ export default function JobApplicationsModal({ jobId, jobTitle, jobBudget, jobPo
                                                         <div className="flex items-center gap-3">
                                                             <div className="w-9 h-9 rounded-full overflow-hidden flex items-center justify-center font-bold text-sm"
                                                                 style={{ backgroundColor: isDark ? '#3a3a3a' : '#e5e7eb', color: isDark ? '#9ca3af' : '#6b7280' }}>
-                                                                {app.userPhotoURL
-                                                                    ? <img src={app.userPhotoURL} alt={applicantNames[app.userId] || app.userName} className="w-full h-full object-cover" />
+                                                                {applicantPhotos[app.userId]
+                                                                    ? <img src={getAvatarImageUrl(applicantPhotos[app.userId])} alt={applicantNames[app.userId] || app.userName} className="w-full h-full object-cover" />
                                                                     : (applicantNames[app.userId] || app.userName)?.[0]?.toUpperCase() || '?'}
                                                             </div>
                                                             <div>

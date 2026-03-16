@@ -143,3 +143,15 @@ export function getCompressedImageUrl(url: string): string {
     if (url.includes('/upload/w_') || url.includes('/upload/q_')) return url
     return url.replace('/upload/', '/upload/w_700,q_auto:low,f_auto/')
 }
+
+/**
+ * Get a tiny avatar-optimised URL from Cloudinary.
+ * Returns an 80×80 face-centred crop at aggressive compression (~2-4 KB).
+ * Falls back to getCompressedImageUrl for non-Cloudinary URLs.
+ */
+export function getAvatarImageUrl(url: string): string {
+    if (!url) return url
+    if (!url.includes('res.cloudinary.com')) return url
+    if (url.includes('/upload/w_') || url.includes('/upload/q_')) return url
+    return url.replace('/upload/', '/upload/w_80,h_80,c_fill,g_face,q_auto:low,f_auto/')
+}
