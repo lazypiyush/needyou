@@ -16,7 +16,6 @@ import { acceptStartRequest } from '@/lib/startJob'
 import { acceptMeetingRequest, rejectBill, acceptBillForPayment, completePayment, failPayment } from '@/lib/jobBilling'
 import LiveTrackingMap from './LiveTrackingMap'
 import JobBillModal from './JobBillModal'
-import UpiPaymentSheet, { UpiSelection } from './UpiPaymentSheet'
 
 interface JobApplicationsModalProps {
     jobId: string
@@ -55,9 +54,6 @@ export default function JobApplicationsModal({ jobId, jobTitle, jobBudget, jobPo
     const [showBillReviewForApp, setShowBillReviewForApp] = useState<string | null>(null)
     const [showReceiptForApp, setShowReceiptForApp] = useState<string | null>(null)
     const [paymentLoading, setPaymentLoading] = useState<Record<string, boolean>>({})
-    // UPI app picker
-    const [upiSheetApp, setUpiSheetApp] = useState<any | null>(null)
-    const upiSheetAppRef = useRef<any | null>(null)
     // Other Applications tab - only visible after someone is hired
     const [showOtherApps, setShowOtherApps] = useState(false)
     const [applicantNames, setApplicantNames] = useState<Record<string, string>>({})
@@ -182,25 +178,12 @@ export default function JobApplicationsModal({ jobId, jobTitle, jobBudget, jobPo
         document.body.appendChild(s)
     })
 
-    // ── Step 1: Show UPI app picker ────────────────────────────────────────────
-    const handleAcceptBillAndPay = (app: any) => {
-        if (!app.bill?.total) return
-        upiSheetAppRef.current = app
-        setUpiSheetApp(app)
-    }
-
-    // ── Step 2: User tapped an app icon → create order → open Razorpay ────────
-    // With flows:['intent'] + apps:[packageName], Razorpay triggers the UPI
-    // intent for that exact app. The app opens, user pays, app closes
-    // automatically, then Razorpay calls handler() which credits the wallet.
-    const handleUpiSelection = async (selection: UpiSelection) => {
-        const app = upiSheetAppRef.current
-        if (!app) return
+    // Open Razorpay directly — on mobile it shows UPI intent app list natively,
+    // on desktop it shows a QR code. No custom app picker needed.
+    const handleAcceptBillAndPay = async (app: any) => {
         const total = app.bill?.total
         if (!total) return
 
-        upiSheetAppRef.current = null
-        setUpiSheetApp(null)
         setPaymentLoading(prev => ({ ...prev, [app.id]: true }))
 
         const fail = async (msg: string) => {
@@ -254,7 +237,6 @@ export default function JobApplicationsModal({ jobId, jobTitle, jobBudget, jobPo
                         await fail('Payment signature invalid — contact support with ID: ' + response.razorpay_payment_id)
                         return
                     }
-                    // completePayment: marks job paid in Firestore AND credits worker wallet
                     await completePayment(app.id, jobId, app.userId, total, response.razorpay_payment_id, livePosterName || jobPosterName, jobTitle)
                     setShowBillReviewForApp(null)
                     setPaymentLoading(prev => ({ ...prev, [app.id]: false }))
@@ -265,33 +247,19 @@ export default function JobApplicationsModal({ jobId, jobTitle, jobBudget, jobPo
                 }
             }
 
-            const base: any = {
+            // Open Razorpay — it handles UPI intent natively on mobile
+            new (window as any).Razorpay({
                 key: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID,
-                amount: order.amount, currency: order.currency,
-                name: 'NeedYou', description: `Payment for: ${jobTitle}`,
-                order_id: order.orderId, prefill: { name: jobPosterName },
-                theme: { color: '#6366f1' }, handler: onSuccess,
+                amount: order.amount,
+                currency: order.currency,
+                name: 'NeedYou',
+                description: `Payment for: ${jobTitle}`,
+                order_id: order.orderId,
+                prefill: { name: jobPosterName },
+                theme: { color: '#6366f1' },
+                handler: onSuccess,
                 modal: { ondismiss: () => setPaymentLoading(prev => ({ ...prev, [app.id]: false })) },
-            }
-
-            if (selection.type === 'app') {
-                // Intent flow: targets the specific UPI app by Android package name.
-                // Razorpay triggers the UPI intent → app opens → user pays →
-                // app closes automatically → onSuccess() fires → wallet credited.
-                new (window as any).Razorpay({
-                    ...base,
-                    config: {
-                        display: {
-                            blocks: { utib: { name: `Pay via ${selection.app.name}`, instruments: [{ method: 'upi', flows: ['intent'], apps: [selection.app.packageName] }] } },
-                            sequence: ['block.utib'],
-                            preferences: { show_default_blocks: false }
-                        }
-                    }
-                }).open()
-            } else {
-                // Manual UPI ID: all payment methods shown, UPI ID pre-filled
-                new (window as any).Razorpay({ ...base, prefill: { ...base.prefill, vpa: selection.upiId } }).open()
-            }
+            }).open()
 
         } catch (err: any) {
             console.error('Unexpected payment error', err)
@@ -1144,17 +1112,7 @@ export default function JobApplicationsModal({ jobId, jobTitle, jobBudget, jobPo
                     document.body
                 )
             })()}
-            {/* UPI App Picker — shown when user taps Accept & Pay */}
-            {upiSheetApp && mounted && createPortal(
-                <UpiPaymentSheet
-                    amount={upiSheetApp.bill?.total ?? 0}
-                    jobTitle={jobTitle}
-                    isDark={isDark}
-                    onSelect={handleUpiSelection}
-                    onClose={() => { upiSheetAppRef.current = null; setUpiSheetApp(null) }}
-                />,
-                document.body
-            )}
+
         </>
     )
 }
