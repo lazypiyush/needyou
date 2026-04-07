@@ -712,6 +712,59 @@ public class MainActivity extends BridgeActivity {
             }
         });
 
+        // ── UPI Intent deep-link handler ──────────────────────────────────────
+        // Razorpay emits upi:// or intent:// URLs when the user picks a UPI app
+        // inside the Razorpay checkout. Without this WebViewClient those URLs are
+        // silently swallowed by the WebView and no UPI app ever opens.
+        // webview_intent:true must also be set in the JS checkout options.
+        getBridge().getWebView().setWebViewClient(new WebViewClient() {
+            @Override
+            public boolean shouldOverrideUrlLoading(WebView view,
+                    android.webkit.WebResourceRequest request) {
+                String url = request.getUrl().toString();
+
+                // UPI scheme: direct deep link (e.g. upi://pay?...)
+                if (url.startsWith("upi://")) {
+                    try {
+                        Intent intent = new Intent(Intent.ACTION_VIEW,
+                                android.net.Uri.parse(url));
+                        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                        startActivity(intent);
+                    } catch (ActivityNotFoundException e) {
+                        Log.e("NeedYouUPI", "No UPI app found for: " + url, e);
+                        Toast.makeText(MainActivity.this,
+                                "No UPI app installed", Toast.LENGTH_SHORT).show();
+                    }
+                    return true;
+                }
+
+                // Intent scheme: used by GPay, PhonePe, Paytm etc.
+                if (url.startsWith("intent://")) {
+                    try {
+                        Intent intent = Intent.parseUri(url, Intent.URI_INTENT_SCHEME);
+                        if (intent.resolveActivity(getPackageManager()) != null) {
+                            startActivity(intent);
+                        } else {
+                            // App not installed — try Play Store fallback
+                            String fallback = intent.getStringExtra("browser_fallback_url");
+                            if (fallback != null) {
+                                view.loadUrl(fallback);
+                            } else {
+                                Toast.makeText(MainActivity.this,
+                                        "UPI app not installed", Toast.LENGTH_SHORT).show();
+                            }
+                        }
+                    } catch (Exception e) {
+                        Log.e("NeedYouUPI", "Failed to parse intent URL: " + url, e);
+                    }
+                    return true;
+                }
+
+                // All other URLs (http/https) load normally in the WebView
+                return false;
+            }
+        });
+
         // 6. Load bundled splash intro — works offline, runs 2.7 s animation,
         // then calls NeedYouBridge.splashDone() to go to app or offline page
         getBridge().getWebView().loadUrl(SPLASH_INTRO_URL);

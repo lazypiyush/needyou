@@ -259,6 +259,11 @@ export default function JobApplicationsModal({ jobId, jobTitle, jobBudget, jobPo
                 theme: { color: '#6366f1' },
                 handler: onSuccess,
                 modal: { ondismiss: () => setPaymentLoading(prev => ({ ...prev, [app.id]: false })) },
+                // Required for UPI Intent to work inside an Android WebView.
+                // Tells Razorpay to emit upi:// / intent:// deep links instead
+                // of trying the collect (VPA) flow. The WebViewClient in
+                // MainActivity.java intercepts those links and opens the UPI app.
+                webview_intent: true,
             }).open()
 
         } catch (err: any) {
