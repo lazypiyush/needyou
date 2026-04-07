@@ -16,7 +16,6 @@ import { acceptStartRequest } from '@/lib/startJob'
 import { acceptMeetingRequest, rejectBill, acceptBillForPayment, completePayment, failPayment } from '@/lib/jobBilling'
 import LiveTrackingMap from './LiveTrackingMap'
 import JobBillModal from './JobBillModal'
-import UpiPaymentSheet, { UpiApp, UpiSelection } from './UpiPaymentSheet'
 
 interface JobApplicationsModalProps {
     jobId: string
@@ -55,10 +54,6 @@ export default function JobApplicationsModal({ jobId, jobTitle, jobBudget, jobPo
     const [showBillReviewForApp, setShowBillReviewForApp] = useState<string | null>(null)
     const [showReceiptForApp, setShowReceiptForApp] = useState<string | null>(null)
     const [paymentLoading, setPaymentLoading] = useState<Record<string, boolean>>({})
-    // UPI payment sheet
-    const [upiSheetApp, setUpiSheetApp] = useState<any | null>(null)
-    const upiSheetAppRef = useRef<any | null>(null)  // ref so handleUpiSelection never reads stale closure
-    const [upiDismissHint, setUpiDismissHint] = useState<string | null>(null) // shown when Razorpay dismissed
     // Other Applications tab - only visible after someone is hired
     const [showOtherApps, setShowOtherApps] = useState(false)
     const [applicantNames, setApplicantNames] = useState<Record<string, string>>({})
@@ -183,47 +178,21 @@ export default function JobApplicationsModal({ jobId, jobTitle, jobBudget, jobPo
         document.body.appendChild(s)
     })
 
-    // ── Show UPI sheet before initiating payment ──────────────────────────────
+    // ── Accept bill & open Razorpay directly with UPI intent flow ──────────────
     const handleAcceptBillAndPay = async (app: any) => {
         const total = app.bill?.total
         if (!total) return
-        // Open our custom UPI app picker instead of going straight to Razorpay
-        upiSheetAppRef.current = app   // always up-to-date, no stale closure
-        setUpiSheetApp(app)
-    }
-
-    // ── Called when user picks an app / UPI-ID from the sheet ─────────────────
-    const handleUpiSelection = async (selection: UpiSelection) => {
-        // Read from ref — never stale even across React render cycles
-        const app = upiSheetAppRef.current
-        if (!app) return
-        const total = app.bill?.total
-        if (!total) return
-
-        upiSheetAppRef.current = null
-        setUpiSheetApp(null)               // close sheet immediately
-        setUpiDismissHint(null)            // clear any previous dismiss hint
         setPaymentLoading(prev => ({ ...prev, [app.id]: true }))
 
-        // ──────────────────────────────────────────────────────────────────
-        // Helper: re-open the sheet with a hint message (e.g. app not installed)
-        const reopenSheetWithHint = (hint: string) => {
-            upiSheetAppRef.current = app
-            setUpiDismissHint(hint)
-            setUpiSheetApp(app)
-            setPaymentLoading(prev => ({ ...prev, [app.id]: false }))
-        }
-
-        // Helper: surface a hard failure alert + run cleanup
-        const handleHardFailure = async (userMsg: string) => {
-            alert(userMsg)
+        // Helper: alert + cleanup on hard failure
+        const fail = async (msg: string) => {
+            alert(msg)
             await failPayment(app.id).catch(console.error)
             setPaymentLoading(prev => ({ ...prev, [app.id]: false }))
         }
-        // ──────────────────────────────────────────────────────────────────
 
         try {
-            // ── Step 1: Create Razorpay order ────────────────────────────
+            // Step 1: Create order
             let orderRes: Response
             try {
                 orderRes = await fetch('/api/create-bill-order', {
@@ -232,134 +201,90 @@ export default function JobApplicationsModal({ jobId, jobTitle, jobBudget, jobPo
                     body: JSON.stringify({ amount: total, applicationId: app.id })
                 })
             } catch {
-                // Network error (offline, server unreachable)
-                reopenSheetWithHint('No internet connection. Please check your network and try again.')
+                await fail('No internet connection. Please check your network and try again.')
                 return
             }
             const order = await orderRes.json()
             if (!order.orderId) {
-                reopenSheetWithHint(order.error || 'Could not create payment order. Please try again.')
+                await fail(order.error || 'Could not create payment order. Please try again.')
                 return
             }
 
-            // ── Step 2: Mark bill accepted in Firestore ──────────────────
+            // Step 2: Mark bill accepted
             try {
                 await acceptBillForPayment(app.id, order.orderId)
             } catch {
-                reopenSheetWithHint('Could not update payment status. Please try again.')
+                await fail('Could not update payment status. Please try again.')
                 return
             }
 
-            // ── Step 3: Load Razorpay checkout.js ──────────────────────
+            // Step 3: Load Razorpay SDK
             const loaded = await loadRazorpay()
             if (!loaded) {
-                reopenSheetWithHint('Razorpay could not load. Check your internet connection and try again.')
-                await failPayment(app.id).catch(console.error)
+                await fail('Razorpay could not load. Check your connection and try again.')
                 return
             }
 
-            // ── Step 4: Payment success callback ───────────────────────
-            const onPaymentSuccess = async (response: any) => {
-                try {
-                    const verifyRes = await fetch('/api/verify-payment', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                            razorpayOrderId: response.razorpay_order_id,
-                            razorpayPaymentId: response.razorpay_payment_id,
-                            razorpaySignature: response.razorpay_signature
-                        })
-                    })
-                    const verification = await verifyRes.json()
-                    if (!verification.valid) {
-                        await handleHardFailure('Payment signature invalid — please contact support with Payment ID: ' + response.razorpay_payment_id)
-                        return
-                    }
-                    await completePayment(app.id, jobId, app.userId, total, response.razorpay_payment_id, livePosterName || jobPosterName, jobTitle)
-                    setShowBillReviewForApp(null)
-                    setPaymentLoading(prev => ({ ...prev, [app.id]: false }))
-                } catch (e) {
-                    console.error('Payment completion error', e)
-                    // Payment went through Razorpay but our DB update failed —
-                    // show payment ID so user can follow up with support
-                    alert('Payment was processed but confirmation failed. Please contact support with this ID: ' + response.razorpay_payment_id)
-                    setPaymentLoading(prev => ({ ...prev, [app.id]: false }))
-                }
-            }
-
-            // ── Step 5: Razorpay dismissed (user cancel / app not installed) ──
-            const appName = selection.type === 'app' ? selection.app.name : 'the UPI app'
-            const onDismiss = () => {
-                // Re-open sheet with a helpful hint so user can pick another method
-                reopenSheetWithHint(
-                    selection.type === 'app'
-                        ? `${appName} could not be opened. It may not be installed on your device.`
-                        : 'Payment was cancelled. You can try again or pick a different method.'
-                )
-            }
-
-            // ── Step 6: Build Razorpay options per selection type ──────────
-            const baseOptions: any = {
+            // Step 4: Open Razorpay — UPI intent flow shows installed apps directly
+            const rzp = new (window as any).Razorpay({
                 key: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID,
                 amount: order.amount,
                 currency: order.currency,
                 name: 'NeedYou',
                 description: `Payment for: ${jobTitle}`,
                 order_id: order.orderId,
-                handler: onPaymentSuccess,
                 prefill: { name: jobPosterName },
                 theme: { color: '#6366f1' },
-                modal: { ondismiss: onDismiss },
-            }
-
-            if (selection.type === 'app') {
-                // Intent flow — opens the specific UPI app directly on Android
-                const rzp = new (window as any).Razorpay({
-                    ...baseOptions,
-                    config: {
-                        display: {
-                            blocks: {
-                                utib: {
-                                    name: `Pay via ${selection.app.name}`,
-                                    instruments: [
-                                        { method: 'upi', flows: ['intent'], apps: [selection.app.packageName] }
-                                    ]
-                                }
-                            },
-                            sequence: ['block.utib'],
-                            preferences: { show_default_blocks: false }
-                        }
+                modal: {
+                    ondismiss: () => setPaymentLoading(prev => ({ ...prev, [app.id]: false }))
+                },
+                // Show UPI apps (intent on Android) + collect + QR — Razorpay detects
+                // installed apps and shows them as tap-to-pay buttons in its own UI
+                config: {
+                    display: {
+                        blocks: {
+                            utib: {
+                                name: 'Pay via UPI',
+                                instruments: [
+                                    { method: 'upi', flows: ['intent', 'collect', 'qr'] }
+                                ]
+                            }
+                        },
+                        sequence: ['block.utib'],
+                        preferences: { show_default_blocks: false }
                     }
-                })
-                rzp.open()
-            } else {
-                // Collect flow — UPI ID entered manually, pre-filled in Razorpay
-                const rzp = new (window as any).Razorpay({
-                    ...baseOptions,
-                    config: {
-                        display: {
-                            blocks: {
-                                utib: {
-                                    name: 'Pay via UPI ID',
-                                    instruments: [
-                                        { method: 'upi', flows: ['collect'] }
-                                    ]
-                                }
-                            },
-                            sequence: ['block.utib'],
-                            preferences: { show_default_blocks: false }
+                },
+                handler: async (response: any) => {
+                    try {
+                        const verifyRes = await fetch('/api/verify-payment', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                razorpayOrderId: response.razorpay_order_id,
+                                razorpayPaymentId: response.razorpay_payment_id,
+                                razorpaySignature: response.razorpay_signature
+                            })
+                        })
+                        const verification = await verifyRes.json()
+                        if (!verification.valid) {
+                            await fail('Payment signature invalid — contact support with ID: ' + response.razorpay_payment_id)
+                            return
                         }
-                    },
-                    prefill: { ...baseOptions.prefill, vpa: selection.upiId },
-                })
-                rzp.open()
-            }
+                        await completePayment(app.id, jobId, app.userId, total, response.razorpay_payment_id, livePosterName || jobPosterName, jobTitle)
+                        setShowBillReviewForApp(null)
+                        setPaymentLoading(prev => ({ ...prev, [app.id]: false }))
+                    } catch (e) {
+                        console.error('Payment completion error', e)
+                        alert('Payment processed but confirmation failed. Contact support with ID: ' + response.razorpay_payment_id)
+                        setPaymentLoading(prev => ({ ...prev, [app.id]: false }))
+                    }
+                },
+            })
+            rzp.open()
 
         } catch (err: any) {
-            // Unexpected error not caught above
             console.error('Unexpected payment error', err)
-            reopenSheetWithHint('An unexpected error occurred. Please try again.')
-            await failPayment(app.id).catch(console.error)
+            await fail('An unexpected error occurred. Please try again.')
         }
     }
 
@@ -1208,18 +1133,6 @@ export default function JobApplicationsModal({ jobId, jobTitle, jobBudget, jobPo
                     document.body
                 )
             })()}
-            {/* UPI Payment Sheet — shown when user taps "Accept & Pay" */}
-            {upiSheetApp && mounted && createPortal(
-                <UpiPaymentSheet
-                    amount={upiSheetApp.bill?.total ?? 0}
-                    jobTitle={jobTitle}
-                    isDark={isDark}
-                    onSelect={handleUpiSelection}
-                    dismissHint={upiDismissHint}
-                    onClose={() => { upiSheetAppRef.current = null; setUpiSheetApp(null); setUpiDismissHint(null) }}
-                />,
-                document.body
-            )}
         </>
     )
 }
