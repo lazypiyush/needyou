@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react'
 import { createPortal } from 'react-dom'
+import { AnimatePresence } from 'framer-motion'
 import { X, User, Clock, ChevronDown, ChevronUp, CheckCircle, XCircle, IndianRupee, MessageCircle, Loader2, MapPin, Wrench, Receipt, KeyRound, FileText, Map, Users } from 'lucide-react'
 import { getJobApplications } from '@/lib/auth'
 import { auth, db } from '@/lib/firebase'
@@ -16,6 +17,7 @@ import { acceptStartRequest } from '@/lib/startJob'
 import { acceptMeetingRequest, rejectBill, acceptBillForPayment, completePayment, failPayment } from '@/lib/jobBilling'
 import LiveTrackingMap from './LiveTrackingMap'
 import JobBillModal from './JobBillModal'
+import UpiPaymentSheet, { UpiApp, UpiSelection } from './UpiPaymentSheet'
 
 interface JobApplicationsModalProps {
     jobId: string
@@ -54,6 +56,8 @@ export default function JobApplicationsModal({ jobId, jobTitle, jobBudget, jobPo
     const [showBillReviewForApp, setShowBillReviewForApp] = useState<string | null>(null)
     const [showReceiptForApp, setShowReceiptForApp] = useState<string | null>(null)
     const [paymentLoading, setPaymentLoading] = useState<Record<string, boolean>>({})
+    // UPI payment sheet
+    const [upiSheetApp, setUpiSheetApp] = useState<any | null>(null)
     // Other Applications tab - only visible after someone is hired
     const [showOtherApps, setShowOtherApps] = useState(false)
     const [applicantNames, setApplicantNames] = useState<Record<string, string>>({})
@@ -178,10 +182,24 @@ export default function JobApplicationsModal({ jobId, jobTitle, jobBudget, jobPo
         document.body.appendChild(s)
     })
 
+    // ── Show UPI sheet before initiating payment ──────────────────────────────
     const handleAcceptBillAndPay = async (app: any) => {
         const total = app.bill?.total
         if (!total) return
+        // Open our custom UPI app picker instead of going straight to Razorpay
+        setUpiSheetApp(app)
+    }
+
+    // ── Called when user picks an app / UPI-ID from the sheet ─────────────────
+    const handleUpiSelection = async (selection: UpiSelection) => {
+        const app = upiSheetApp
+        if (!app) return
+        const total = app.bill?.total
+        if (!total) return
+
+        setUpiSheetApp(null)               // close sheet immediately
         setPaymentLoading(prev => ({ ...prev, [app.id]: true }))
+
         try {
             const orderRes = await fetch('/api/create-bill-order', {
                 method: 'POST',
@@ -191,44 +209,119 @@ export default function JobApplicationsModal({ jobId, jobTitle, jobBudget, jobPo
             const order = await orderRes.json()
             if (!order.orderId) throw new Error(order.error || 'Failed to create order')
             await acceptBillForPayment(app.id, order.orderId)
+
             const loaded = await loadRazorpay()
             if (!loaded) throw new Error('Failed to load Razorpay')
-            const rzp = new (window as any).Razorpay({
+
+            // ── Build Razorpay options based on what user picked ──────────────
+            const onPaymentSuccess = async (response: any) => {
+                try {
+                    const verifyRes = await fetch('/api/verify-payment', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            razorpayOrderId: response.razorpay_order_id,
+                            razorpayPaymentId: response.razorpay_payment_id,
+                            razorpaySignature: response.razorpay_signature
+                        })
+                    })
+                    const verification = await verifyRes.json()
+                    if (!verification.valid) {
+                        alert('Payment signature invalid — please contact support.')
+                        await failPayment(app.id)
+                        return
+                    }
+                    await completePayment(app.id, jobId, app.userId, total, response.razorpay_payment_id, livePosterName || jobPosterName, jobTitle)
+                    setShowBillReviewForApp(null)
+                } catch (e) {
+                    console.error('Payment completion error', e)
+                    alert('Payment recorded but confirmation failed. Please contact support.')
+                }
+            }
+
+            const baseOptions: any = {
                 key: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID,
                 amount: order.amount,
                 currency: order.currency,
                 name: 'NeedYou',
                 description: `Payment for: ${jobTitle}`,
                 order_id: order.orderId,
-                handler: async (response: any) => {
-                    try {
-                        const verifyRes = await fetch('/api/verify-payment', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({
-                                razorpayOrderId: response.razorpay_order_id,
-                                razorpayPaymentId: response.razorpay_payment_id,
-                                razorpaySignature: response.razorpay_signature
-                            })
-                        })
-                        const verification = await verifyRes.json()
-                        if (!verification.valid) {
-                            alert('Payment signature invalid — please contact support.')
-                            await failPayment(app.id)
-                            return
-                        }
-                        await completePayment(app.id, jobId, app.userId, total, response.razorpay_payment_id, livePosterName || jobPosterName, jobTitle)
-                        setShowBillReviewForApp(null)
-                    } catch (e) {
-                        console.error('Payment completion error', e)
-                        alert('Payment recorded but confirmation failed. Please contact support.')
-                    }
-                },
+                handler: onPaymentSuccess,
                 prefill: { name: jobPosterName },
                 theme: { color: '#6366f1' },
-                modal: { ondismiss: () => setPaymentLoading(prev => ({ ...prev, [app.id]: false })) }
-            })
-            rzp.open()
+                modal: { ondismiss: () => setPaymentLoading(prev => ({ ...prev, [app.id]: false })) },
+            }
+
+            if (selection.type === 'app') {
+                // ── Intent flow: open specific UPI app directly ───────────────
+                const upiApp: UpiApp = selection.app
+                const rzp = new (window as any).Razorpay({
+                    ...baseOptions,
+                    config: {
+                        display: {
+                            blocks: {
+                                utib: {
+                                    name: `Pay via ${upiApp.name}`,
+                                    instruments: [
+                                        {
+                                            method: 'upi',
+                                            flows: ['intent'],
+                                            apps: [upiApp.packageName],
+                                        }
+                                    ]
+                                }
+                            },
+                            sequence: ['block.utib'],
+                            preferences: { show_default_blocks: false }
+                        }
+                    }
+                })
+                rzp.open()
+            } else if (selection.type === 'id') {
+                // ── Collect flow: user typed a UPI ID ────────────────────────
+                const rzp = new (window as any).Razorpay({
+                    ...baseOptions,
+                    config: {
+                        display: {
+                            blocks: {
+                                utib: {
+                                    name: 'Pay via UPI ID',
+                                    instruments: [
+                                        { method: 'upi', flows: ['collect'] }
+                                    ]
+                                }
+                            },
+                            sequence: ['block.utib'],
+                            preferences: { show_default_blocks: false }
+                        }
+                    },
+                    prefill: {
+                        ...baseOptions.prefill,
+                        vpa: selection.upiId,
+                    },
+                })
+                rzp.open()
+            } else {
+                // ── QR flow: show QR code ────────────────────────────────────
+                const rzp = new (window as any).Razorpay({
+                    ...baseOptions,
+                    config: {
+                        display: {
+                            blocks: {
+                                utib: {
+                                    name: 'Pay via UPI QR',
+                                    instruments: [
+                                        { method: 'upi', flows: ['qr'] }
+                                    ]
+                                }
+                            },
+                            sequence: ['block.utib'],
+                            preferences: { show_default_blocks: false }
+                        }
+                    }
+                })
+                rzp.open()
+            }
         } catch (err) {
             console.error(err)
             alert('Payment failed. Please try again.')
@@ -1082,6 +1175,19 @@ export default function JobApplicationsModal({ jobId, jobTitle, jobBudget, jobPo
                     document.body
                 )
             })()}
+            {/* UPI Payment Sheet — shown when user taps "Accept & Pay" */}
+            <AnimatePresence>
+                {upiSheetApp && mounted && createPortal(
+                    <UpiPaymentSheet
+                        amount={upiSheetApp.bill?.total ?? 0}
+                        jobTitle={jobTitle}
+                        isDark={isDark}
+                        onSelect={handleUpiSelection}
+                        onClose={() => setUpiSheetApp(null)}
+                    />,
+                    document.body
+                )}
+            </AnimatePresence>
         </>
     )
 }
