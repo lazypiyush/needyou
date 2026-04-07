@@ -225,7 +225,8 @@ export default function JobApplicationsModal({ jobId, jobTitle, jobBudget, jobPo
                 return
             }
 
-            // Step 4: Open Razorpay — UPI intent flow shows installed apps directly
+            // Step 4: Open Razorpay with all payment methods
+            // On Android, Razorpay's UPI section shows installed apps as intent buttons
             const rzp = new (window as any).Razorpay({
                 key: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID,
                 amount: order.amount,
@@ -237,22 +238,6 @@ export default function JobApplicationsModal({ jobId, jobTitle, jobBudget, jobPo
                 theme: { color: '#6366f1' },
                 modal: {
                     ondismiss: () => setPaymentLoading(prev => ({ ...prev, [app.id]: false }))
-                },
-                // Show UPI apps (intent on Android) + collect + QR — Razorpay detects
-                // installed apps and shows them as tap-to-pay buttons in its own UI
-                config: {
-                    display: {
-                        blocks: {
-                            utib: {
-                                name: 'Pay via UPI',
-                                instruments: [
-                                    { method: 'upi', flows: ['intent', 'collect', 'qr'] }
-                                ]
-                            }
-                        },
-                        sequence: ['block.utib'],
-                        preferences: { show_default_blocks: false }
-                    }
                 },
                 handler: async (response: any) => {
                     try {
